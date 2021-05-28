@@ -16,6 +16,9 @@ jobs:
     - name: Make Debian package
       run: |
         pkgver=$(ls|grep mbp-16.1-linux-wifi-headers|cut -d'-' -f6-7)
+        ls -la
+        id
+        chmod 0700 pkg
         for i in pkg/*
         do cd $i
         rm .MTREE .PKGINFO .BUILDINFO
@@ -26,6 +29,8 @@ jobs:
         'Architecture: amd64'
         EOF
         dpkg -b . ../../$i-$pkgver.deb
+        pwd
+        cd ../..
         done
     - name: Upload Debian Package
       uses: actions/upload-artifact@v2
