@@ -12,4 +12,4 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: my-artifact
-        path: $GITHUB_WORKSPACE/mbp-16.1-linux-wifi-*-x86_64.pkg.tar.zst
+        path: ${{ github.workspace }}/mbp-16.1-linux-wifi-*-x86_64.pkg.tar.zst
