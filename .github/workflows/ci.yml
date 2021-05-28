@@ -1,0 +1,13 @@
+name: CI
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-18.04
+    steps:
+    - name: build in docker
+      run: ./docker.sh
+    - name: Upload
+      uses: actions/upload-artifact@v2
+      with:
+        name: my-artifact
+        path: ./mbp-16.1-linux-wifi-*-x86_64.pkg.tar.zst
