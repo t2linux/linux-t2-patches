@@ -4,31 +4,31 @@ jobs:
   build:
     runs-on: ubuntu-18.04
     steps:
-    - name: checkout repo
+    - name: Checkout Repo
       uses: actions/checkout@v2
-    - name: build in docker
+    - name: Duild in Docker
       run: docker run -t -v $PWD:/build archlinux /bin/bash -c "cd /build && useradd builduser -m && passwd -d builduser && pacman -Syu --noconfirm --needed sudo base-devel && printf 'builduser ALL=(ALL) ALL\\n' | tee -a /etc/sudoers && chown -R builduser:builduser ./ && sudo -u builduser gpg --keyserver hkp://keys.gnupg.net:80 --recv-keys 38DBBDC86092693E && sudo -u builduser bash -c 'export MAKEFLAGS=j\$(nproc) && makepkg -s --noconfirm'"
     - name: Upload Arch Package
       uses: actions/upload-artifact@v2
       with:
         name: mbp-16.1-linux-wifi-arch
         path: ${{ github.workspace }}/mbp-16.1-linux-wifi-*-x86_64.pkg.tar.zst
-    - name: Make debian package
+    - name: Make Debian package
       run: |
         pkgver=$(ls|grep mbp-16.1-linux-wifi-headers|cut -d'-' -f6-7)
-        cp pkg/mbp-16.1-linux-wifi-headers/ pkg/mbp-16.1-linux-wifi -RT
-        cd pkg/mbp-16.1-linux-wifi
+        for i in pkg/*
+        do cd pkg/$i
         rm .MTREE .PKGINFO .BUILDINFO
         mkdir DEBIAN
         cat << EOF > DEBIAN/control
-        'Package: mbp-16.1-linux-wifi'
+        'Package:' $i
         'Version:' $pkgver
         'Architecture: amd64'
         EOF
-        dpkg -b . ../../mbp-16.1-linux-wifi-$pkgver.deb
+        dpkg -b . ../../$i-$pkgver.deb
+        done
     - name: Upload Debian Package
       uses: actions/upload-artifact@v2
       with:
-        name: mbp-16.1-linux-wifi.deb
-        path: ${{ github.workspace }}/mbp-16.1-linux-wifi-*.deb
-
+        name: mbp-16.1-linux-wifi-debian
+        path: ${{ github.workspace }}/*.deb
