@@ -17,7 +17,7 @@ jobs:
       run: |
         pkgver=$(ls|grep mbp-16.1-linux-wifi-headers|cut -d'-' -f6-7)
         for i in pkg/*
-        do cd pkg/$i
+        do cd $i
         rm .MTREE .PKGINFO .BUILDINFO
         mkdir DEBIAN
         cat << EOF > DEBIAN/control
