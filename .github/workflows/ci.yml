@@ -35,13 +35,13 @@ jobs:
         pkgver=$(ls|grep mbp-16.1-linux-wifi-headers|cut -d'-' -f6-7)
         sudo chown -R $USER:$USER pkg
         rm -v pkg/*/.???*
-        mkdir -v pkg/*/DEBIAN
+
         for i in mbp-16.1-linux-wifi-headers mbp-16.1-linux-wifi-docs mbp-16.1-linux-wifi
-        do echo package is $i
+        do mkdir -v pkg/$i/DEBIAN
         cat << EOF > pkg/$i/DEBIAN/control
-        'Package:' $i
-        'Version:' $pkgver
-        'Architecture: amd64'
+        Package: $i
+        Version: $pkgver
+        Architecture: amd64
         EOF
         cat pkg/$i/DEBIAN/control
         dpkg -b pkg/$i $i-$pkgver.deb
