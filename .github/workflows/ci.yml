@@ -18,7 +18,7 @@ jobs:
         pkgver=$(ls|grep mbp-16.1-linux-wifi-headers|cut -d'-' -f6-7)
         ls -la
         id
-        chmod 0700 pkg
+        sudo chown -R $USER:$USER pkg
         for i in pkg/*
         do cd $i
         rm .MTREE .PKGINFO .BUILDINFO
@@ -36,4 +36,4 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: mbp-16.1-linux-wifi-debian
-        path: ${{ github.workspace }}/*.deb
+        path: ${{ github.workspace }}/pkg/*.deb
