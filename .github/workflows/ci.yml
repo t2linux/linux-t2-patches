@@ -34,7 +34,7 @@ jobs:
         env
         pkgver=$(ls|grep mbp-16.1-linux-wifi-headers|cut -d'-' -f6-7)
         sudo chown -R $USER:$USER pkg
-        rm -v pkg/*/.*
+        rm -v pkg/*/.???*
         mkdir -v pkg/*/DEBIAN
         for i in mbp-16.1-linux-wifi-headers mbp-16.1-linux-wifi-docs mbp-16.1-linux-wifi
         do echo package is $i
