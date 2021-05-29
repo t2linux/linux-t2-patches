@@ -32,7 +32,7 @@ jobs:
       run: |
         source PKGBUILD
         echo "::set-output name=tag::${pkgver}-${pkgrel}"
-        sudo chown -R $USER:$USER pkg
+        sudo chown -R $USER:$USER .
 
         for i in mbp-16.1-linux-wifi-headers mbp-16.1-linux-wifi-docs mbp-16.1-linux-wifi
         do rm -v pkg/$i/.???*
@@ -45,7 +45,9 @@ jobs:
         EOF
         
         cat pkg/$i/DEBIAN/control
-        dpkg -b pkg/$i $i-$pkgver.deb
+        ls -la
+        sudo dpkg -b pkg/$i $i-$pkgver.deb ||:
+        ls -la
         done
         
     - name: Upload Debian package
