@@ -1,12 +1,12 @@
-name: CI
+name: Build Kernel Package
 on: [push]
 jobs:
   build:
     runs-on: ubuntu-18.04
     steps:
-    - name: Checkout Repo
+    - name: Checkout repo
       uses: actions/checkout@v2
-    - name: Duild in Docker
+    - name: Build in Docker
       run: |
         cat << EOF > entrypoint.sh
         cd /build
@@ -18,51 +18,49 @@ jobs:
         sudo -u builduser gpg --keyserver hkp://keys.gnupg.net:80 --recv-keys 38DBBDC86092693E
         sudo -u builduser bash -c 'export MAKEFLAGS=j\$(nproc) && makepkg -s --noconfirm'
         EOF
-        echo entrypoint.sh:
-        cat entrypoint.sh
-        echo end of file
+
         docker run -t -v $PWD:/build archlinux /bin/bash /build/entrypoint.sh
 
-    - name: Upload Arch Package
+    - name: Upload Arch package
       uses: actions/upload-artifact@v2
       with:
         name: mbp-16.1-linux-wifi-arch
         path: ${{ github.workspace }}/mbp-16.1-linux-wifi-*-x86_64.pkg.tar.zst
         
-    - name: Make Debian package
+    - name: Package for Debian
+      id: create_tag
       run: |
-        env
-        pkgver=$(ls|grep mbp-16.1-linux-wifi-headers|cut -d'-' -f6-7)
+        source PKGBUILD
+        echo "::set-output name=tag::${pkgver}-${pkgrel}"
         sudo chown -R $USER:$USER pkg
-        rm -v pkg/*/.???*
 
         for i in mbp-16.1-linux-wifi-headers mbp-16.1-linux-wifi-docs mbp-16.1-linux-wifi
-        do mkdir -v pkg/$i/DEBIAN
+        do rm -v pkg/$i/.???*
+        mkdir -v pkg/$i/DEBIAN
+        
         cat << EOF > pkg/$i/DEBIAN/control
         Package: $i
         Version: $pkgver
         Architecture: amd64
         EOF
+        
         cat pkg/$i/DEBIAN/control
         dpkg -b pkg/$i $i-$pkgver.deb
         done
         
-    - name: Upload Debian Package
+    - name: Upload Debian package
       uses: actions/upload-artifact@v2
       with:
         name: mbp-16.1-linux-wifi-debian
         path: ${{ github.workspace }}/*.deb
 
 
-    - name: Create Tag and Zip Packages
-      id: create_tag
+    - name: Zip packages
       run: |
-        source PKGBUILD
-        echo "::set-output name=tag::${pkgver}-${pkgrel}"
         zip mbp-16.1-linux-wifi-arch-${pkgver}-${pkgrel}.zip *.pkg.tar.*
         zip mbp-16.1-linux-wifi-debian-${pkgver}-${pkgrel}.zip *.deb
         
-    - name: Create Draft Release
+    - name: Create draft release
       id: create_release
       uses: actions/create-release@v1
       env:
@@ -74,7 +72,7 @@ jobs:
         prerelease: false
 
 
-    - name: Add Debian pkg to release
+    - name: Add Debian package to release
       uses: actions/upload-release-asset@v1.0.1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -84,7 +82,7 @@ jobs:
         asset_name: mbp-16.1-linux-wifi-debian-${{ steps.create_tag.outputs.tag }}.zip
         asset_content_type: application/zip
 
-    - name: Add Arch pkg to release
+    - name: Add Arch package to release
       uses: actions/upload-release-asset@v1.0.1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -94,9 +92,10 @@ jobs:
         asset_name: mbp-16.1-linux-wifi-arch-${{ steps.create_tag.outputs.tag }}.zip
         asset_content_type: application/zip
           
-          #    - uses: eregon/publish-release@v1
-          # env:
-          #GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          #  with:
-          # release_id: ${{ steps.create_release.outputs.id }}
+#    - name: Publish release
+#      uses: eregon/publish-release@v1
+#      env:
+#        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#      with:
+#        release_id: ${{ steps.create_release.outputs.id }}
 
