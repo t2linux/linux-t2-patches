@@ -13,13 +13,15 @@ jobs:
         useradd builduser -m
         passwd -d builduser
         pacman -Syu --noconfirm --needed sudo base-devel
-        printf \'builduser ALL=(ALL) ALL\\n\' | tee -a /etc/sudoers
+        printf 'builduser ALL=(ALL) ALL\\n' | tee -a /etc/sudoers
         chown -R builduser:builduser ./
         sudo -u builduser gpg --keyserver hkp://keys.gnupg.net:80 --recv-keys 38DBBDC86092693E
-        sudo -u builduser bash -c \'export MAKEFLAGS=j\$(nproc) && makepkg -s --noconfirm\'
+        sudo -u builduser bash -c 'export MAKEFLAGS=j\$(nproc) && makepkg -s --noconfirm'
         EOF
+        echo entrypoint.sh:
         cat entrypoint.sh
-      #docker run -t -v $PWD:/build archlinux /bin/bash /build/entrypoint.sh
+        echo end of file
+        docker run -t -v $PWD:/build archlinux /bin/bash /build/entrypoint.sh
 
     - name: Upload Arch Package
       uses: actions/upload-artifact@v2
