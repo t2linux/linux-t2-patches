@@ -8,15 +8,18 @@ jobs:
       uses: actions/checkout@v2
     - name: Duild in Docker
       run: |
-        docker run -t -v $PWD:/build archlinux /bin/bash -c \\\
-        "cd /build" \\\
-        "useradd builduser -m" \\\
-        "passwd -d builduser" \\\
-        "pacman -Syu --noconfirm --needed sudo base-devel" \\\
-        "printf 'builduser ALL=(ALL) ALL\\n' | tee -a /etc/sudoers" \\\
-        "chown -R builduser:builduser ./" \\\
-        "sudo -u builduser gpg --keyserver hkp://keys.gnupg.net:80 --recv-keys 38DBBDC86092693E" \\\
-        "sudo -u builduser bash -c 'export MAKEFLAGS=j\$(nproc) && makepkg -s --noconfirm'"
+        cat << EOF > entrypoint.sh
+        "cd /build
+        useradd builduser -m
+        passwd -d builduser
+        pacman -Syu --noconfirm --needed sudo base-devel
+        printf 'builduser ALL=(ALL) ALL\\n' | tee -a /etc/sudoers
+        chown -R builduser:builduser ./
+        sudo -u builduser gpg --keyserver hkp://keys.gnupg.net:80 --recv-keys 38DBBDC86092693E
+        sudo -u builduser bash -c 'export MAKEFLAGS=j\$(nproc) && makepkg -s --noconfirm'"
+        EOF
+        cat entrypoint.sh
+        docker run -t -v $PWD:/build archlinux /bin/bash /build/entrypoint.sh
 
     - name: Upload Arch Package
       uses: actions/upload-artifact@v2
