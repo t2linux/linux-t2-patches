@@ -59,8 +59,8 @@ jobs:
 
     - name: Zip packages
       run: |
-        zip mbp-16.1-linux-wifi-arch-${pkgver}-${pkgrel}.zip *.pkg.tar.*
-        zip mbp-16.1-linux-wifi-debian-${pkgver}-${pkgrel}.zip *.deb
+        zip mbp-16.1-linux-wifi-arch-${{ steps.create_tag.outputs.tag }}.zip *.pkg.tar.*
+        zip mbp-16.1-linux-wifi-debian-${{ steps.create_tag.outputs.tag }}.zip *.deb
         
     - name: Create draft release
       id: create_release
