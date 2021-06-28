@@ -1,4 +1,4 @@
-mbp-16.1-linux-wifi - 5.12.8
+mbp-16.1-linux-wifi - 5.12.13
 ==============
 
 Arch Linux package for Linux kernel with bleeding edge 2018+ MacBook Pro support.
