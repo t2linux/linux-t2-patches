@@ -15,7 +15,7 @@ jobs:
         pacman -Syu --noconfirm --needed sudo base-devel
         printf 'builduser ALL=(ALL) ALL\\n' | tee -a /etc/sudoers
         chown -R builduser:builduser ./
-        sudo -u builduser gpg --keyserver pgp.mit.edu --recv-keys 38DBBDC86092693E
+        sudo -u builduser gpg --keyserver keyserver.ubuntu.com --recv-keys 38DBBDC86092693E
         sudo -u builduser bash -c 'export MAKEFLAGS=j\$(nproc) && makepkg -s --noconfirm'
         EOF
 
