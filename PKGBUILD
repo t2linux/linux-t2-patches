@@ -6,7 +6,7 @@
 pkgbase=linux-t2
 pkgver=5.15.11
 _srcname=linux-${pkgver}
-pkgrel=1
+pkgrel=2
 pkgdesc='Linux kernel for T2 Macs'
 _srctag=v${pkgver%.*}-${pkgver##*.}
 url="https://git.archlinux.org/linux.git/log/?h=v$_srctag"
@@ -32,6 +32,7 @@ source=(
   apple-bce::git+https://github.com/t2linux/apple-bce-drv#commit=f93c6566f98b3c95677de8010f7445fa19f75091
   apple-ibridge::git+https://github.com/t2linux/apple-ib-drv#commit=d8411ad1d87db8491e53887e36c3d37f445203eb
   1001-Put-apple-bce-and-apple-ibridge-in-drivers-staging.patch
+  1002-add-modalias-to-apple-bce.patch
 
   # Hack for AMD DC eDP link rate bug
   2001-drm-amd-display-Force-link_rate-as-LINK_RATE_RBR2-fo.patch
@@ -289,6 +290,7 @@ sha256sums=('c1178b7e7e12d91292e670191268e3fe9a3563faf899eef43e468577e973a1ce'
             'SKIP'
             'SKIP'
             'b7c987889d92a48d638d5258842b10f6c856e57f29ad23475aa507c7b4ad5710'
+            '0e371fe1efd1ec422f89439a2befb5a0c3dd28c9e60780f55493d9699c6ebc0e'
             '786dfc22e4c6ece883e7dedd0ba3f6c14018584df95450b2cb78f3da8b01f7cb'
             '7366a08383900a09f8e742b1e4f0a02e0839a385e68e70a89d1815c197df3300'
             '8d8401a99a9dfbc41aa2dc5b6a409a19860b1b918465e19de4a4ff18de075ea3'
