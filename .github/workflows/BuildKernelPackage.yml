@@ -1,12 +1,12 @@
 name: Build Kernel Package
-on: [push]
+on: [push, pull_request]
 jobs:
   build:
     runs-on: ubuntu-18.04
     steps:
-    - name: Checkout repo
+    - name: Checkout Repo
       uses: actions/checkout@v2
-    - name: Build in Docker
+    - name: Build In Docker
       run: |
         cat << EOF > entrypoint.sh
         cd /build
@@ -24,19 +24,20 @@ jobs:
     - name: Print sha512sums
       run: sha512sum *.pkg.tar*
 
-    - name: Upload Arch package
+    - name: Upload Built Packages
       uses: actions/upload-artifact@v2
       with:
-        name: mbp-16.1-linux-wifi-arch
-        path: ${{ github.workspace }}/mbp-16.1-linux-wifi-*-x86_64.pkg.tar.zst
+        name: built-packages
+        path: ${{ github.workspace }}/*.pkg.tar.zst
         
-    - name: create tag
+    - name: Create Tag
       id: create_tag
       run: |
         source PKGBUILD
         echo "::set-output name=tag::${pkgver}-${pkgrel}"
         echo $pkgver $pkgrel
     - name: Release
+      if: github.ref == 'refs/heads/main'
       uses: softprops/action-gh-release@v1
       with:
          files: |
@@ -45,8 +46,6 @@ jobs:
          draft: false
          body: |
           Install packages with `sudo pacman -U <file>`, you can use urls or file paths.
-          You will need to be using `apple-bce-dkms-git` as `apple-bce-git` only works on `linux-mbp`.
-          You will need wifi firmware from MacOS, as described [here](https://wiki.t2linux.org/guides/wifi/#on-macos).
       env:
          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

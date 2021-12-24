@@ -1,12 +1,13 @@
-# Maintainer: James Lambert (jamlam) <jamesl@mbert.onmicrosoft.com>
+# Maintainer: Redecorating
+# Contributor: James Lambert (jamlam) <jamesl@mbert.onmicrosoft.com>
 # Contributor: Aun-Ali Zaidi <admin@kodeit.net>
 # Contributor: Jan Alexander Steffens (heftig) <jan.steffens@gmail.com>
 
-pkgbase=mbp-16.1-linux-wifi
-pkgver=5.15.7
+pkgbase=linux-t2
+pkgver=5.15.11
 _srcname=linux-${pkgver}
-pkgrel=3
-pkgdesc='Linux for MBP 16.1 Wifi'
+pkgrel=1
+pkgdesc='Linux kernel for T2 Macs'
 _srctag=v${pkgver%.*}-${pkgver##*.}
 url="https://git.archlinux.org/linux.git/log/?h=v$_srctag"
 arch=(x86_64)
@@ -26,6 +27,11 @@ source=(
   # Arch Linux patches
   0001-ZEN-Add-sysctl-and-CONFIG-to-disallow-unprivileged-C.patch
   0002-HID-quirks-Add-Apple-Magic-Trackpad-2-to-hid_have_sp.patch
+
+  # apple-bce, apple-ibridge
+  apple-bce::git+https://github.com/t2linux/apple-bce-drv#commit=f93c6566f98b3c95677de8010f7445fa19f75091
+  apple-ibridge::git+https://github.com/t2linux/apple-ib-drv#commit=d8411ad1d87db8491e53887e36c3d37f445203eb
+  1001-Put-apple-bce-and-apple-ibridge-in-drivers-staging.patch
 
   # Hack for AMD DC eDP link rate bug
   2001-drm-amd-display-Force-link_rate-as-LINK_RATE_RBR2-fo.patch
@@ -49,13 +55,13 @@ source=(
   4008-HID-apple-Add-support-for-MacBookAir9-1-keyboard-tra.patch
   4009-HID-apple-Add-support-for-MacBookPro16-1-keyboard-tr.patch
   
-  # MBP Peripheral support
-  6001-media-uvcvideo-Add-support-for-Apple-T2-attached-iSi.patch	# UVC Camera support
+  # UVC Camera support
+  6001-media-uvcvideo-Add-support-for-Apple-T2-attached-iSi.patch
 
   # Hack for i915 overscan issues
   7001-drm-i915-fbdev-Discard-BIOS-framebuffers-exceeding-h.patch
 
-  # Broadcom WIFI/BT device support
+  # Broadcom WIFI device support
   8001-brcmfmac-pcie-Declare-missing-firmware-files-in-pcie.patch
   8002-brcmfmac-firmware-Support-having-multiple-alt-paths.patch
   8003-brcmfmac-firmware-Handle-per-board-clm_blob-files.patch
@@ -86,10 +92,12 @@ source=(
   8028-brcmfmac-pcie-Read-the-console-on-init-and-shutdown.patch
   8029-brcmfmac-pcie-Release-firmwares-in-the-brcmf_pcie_se.patch
 
-  
+  # Broadcom BT device support
   9001-bluetooth-add-disable-read-tx-power-quirk.patch
   9002-add-bluetooth-support-for-16,2.patch
-  intel-lpss.patch
+  9003-mfd-intel-lpss-Fix-too-early-PM-enablement-in-the-AC.patch
+
+  
 )
 
 validpgpkeys=(
@@ -108,6 +116,13 @@ prepare() {
   scripts/setlocalversion --save-scmversion
   echo "-$pkgrel" > localversion.10-pkgrel
   echo "${pkgbase#linux}" > localversion.20-pkgname
+
+  for i in apple-bce apple-ibridge; do
+    echo "Copying $i in to drivers/staging..."
+	# no need to copy .git/
+	mkdir drivers/staging/$i
+    cp -r $srcdir/$i/* drivers/staging/$i/
+  done
 
   local src
   for src in "${source[@]}"; do
@@ -266,11 +281,14 @@ for _p in "${pkgname[@]}"; do
   }"
 done
 
-sha256sums=('5d9050a839edc7480c5c8f7a284cd28bee6db07bec9e41c684f399192bbe5db1'
+sha256sums=('c1178b7e7e12d91292e670191268e3fe9a3563faf899eef43e468577e973a1ce'
             'SKIP'
             '324a9d46c2338806a0c3ce0880c8d5e85c2ef30d342af3dc96f87b54fae7a586'
             '6b4da532421cac5600d09c0c52742aa52d848af098f7853abe60c02e9d0a3752'
             '2184069ab00ef43d9674756e9b7a56d15188bc4494d34425f04ddc779c52acd8'
+            'SKIP'
+            'SKIP'
+            'b7c987889d92a48d638d5258842b10f6c856e57f29ad23475aa507c7b4ad5710'
             '786dfc22e4c6ece883e7dedd0ba3f6c14018584df95450b2cb78f3da8b01f7cb'
             '7366a08383900a09f8e742b1e4f0a02e0839a385e68e70a89d1815c197df3300'
             '8d8401a99a9dfbc41aa2dc5b6a409a19860b1b918465e19de4a4ff18de075ea3'
@@ -320,4 +338,4 @@ sha256sums=('5d9050a839edc7480c5c8f7a284cd28bee6db07bec9e41c684f399192bbe5db1'
             '5980bbc0702eafebcbbe80c53d39f985422247020b811e44c333fe047d1ab779'
             '31e414978a947bdb71f27ed364c4da73b81fcf1921250cb69ee1bcf2bbd25636'
             '5d36770f436b69e69633d060deb55a37b8b3871983068e95fb33d5a195f00574'
-            '22b2695afcc4103743e55ceeda4691a59ddce84a8f16d1d572159dd2ff7f8537')
+            '3bffb2bb84800453ba05676293de9b0b1619d0c19b6295e803f0d9c3a07be23a')

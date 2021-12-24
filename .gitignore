@@ -3,3 +3,5 @@
 *.pkg.tar.*
 src/
 pkg/
+apple-bce/
+apple-ibridge/

@@ -1,3 +1,15 @@
+From: "Andy Shevchenko" <andriy.shevchenko@linux.intel.com>
+To: "Andy Shevchenko" <andriy.shevchenko@linux.intel.com>, "Lee Jones"  <lee.jones@linaro.org>, <linux-kernel@vger.kernel.org>
+Cc: "Orlando Chamberlain" <redecorating@protonmail.com>, "Aditya Garg"  <gargaditya08@live.com>
+Subject: [PATCH v2 1/1] mfd: intel-lpss: Fix too early PM enablement in the  ACPI ->probe()
+Date: Tue, 02 Nov 2021 06:00:08 +1100
+
+The runtime PM callback may be called as soon as the runtime PM facility
+is enabled and activated. It means that ->suspend() may be called before
+we finish probing the device in the ACPI case. Hence, NULL pointer
+dereference:
+
+  intel-lpss INT34BA:00: IRQ index 0 not found
   BUG: kernel NULL pointer dereference, address: 0000000000000030
   ...
   Workqueue: pm pm_runtime_work
