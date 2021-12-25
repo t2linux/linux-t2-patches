@@ -6,7 +6,7 @@
 pkgbase=linux-t2
 pkgver=5.15.11
 _srcname=linux-${pkgver}
-pkgrel=3
+pkgrel=4
 pkgdesc='Linux kernel for T2 Macs'
 _srctag=v${pkgver%.*}-${pkgver##*.}
 url="https://git.archlinux.org/linux.git/log/?h=v$_srctag"
@@ -44,6 +44,7 @@ source=(
   3004-applesmc-key-interface-wrappers.patch
   3005-applesmc-basic-mmio-interface-implementation.patch
   3006-applesmc-fan-support-on-T2-Macs.patch
+  3007-applesmc-Add-iMacPro-to-applesmc_whitelist.patch
 
   # T2 USB Keyboard/Touchpad support
   4001-HID-apple-Add-support-for-keyboard-backlight-on-supp.patch
@@ -55,6 +56,7 @@ source=(
   4007-HID-apple-Add-support-for-MacBookPro16-3-keyboard-tr.patch
   4008-HID-apple-Add-support-for-MacBookAir9-1-keyboard-tra.patch
   4009-HID-apple-Add-support-for-MacBookPro16-1-keyboard-tr.patch
+  4010-HID-apple-Add-ability-to-use-numbers-as-function-key.patch
   
   # UVC Camera support
   6001-media-uvcvideo-Add-support-for-Apple-T2-attached-iSi.patch
@@ -298,6 +300,7 @@ sha256sums=('c1178b7e7e12d91292e670191268e3fe9a3563faf899eef43e468577e973a1ce'
             '459906cab172df9f6712a4168e7a5d529f85b2bb58a068f2d44746df14a6d27a'
             '2827dab6eeb2d2a08034938024f902846b5813e967a0ea253dc1ea88315da383'
             '398dec7d54c6122ae2263cd5a6d52353800a1a60fd85e52427c372ea9974a625'
+            '80198d668e894656cd6a13fad5e55dfc22a242fa5919da8e29efeed55ed061ef'
             '11565cff9c6a7db8846dc7d5930419045e9527863b8df5979a7465006211bd16'
             '83f4be6849ba4d5f9fad647ad2eb78bf6409ee98a40ac62e8a5b80496233d70a'
             '44bd3643b2b22fedc59d79511199f30ce6759fa0acdd9a66262a53c5e046da6b'
@@ -307,6 +310,7 @@ sha256sums=('c1178b7e7e12d91292e670191268e3fe9a3563faf899eef43e468577e973a1ce'
             '40eff5e88bb30c51c6b97e85c2e7b8dec5f97916f768e6c07618d9c5afe68574'
             'cac035fe07663a319185c644c5b39b34bef89ada348881fa4a02d15290260445'
             '9dfa9f02d17c5cd9620fa2c1d43ca967b81b6a56d33c2bafae14e0c64e498baa'
+            '2cfc28a394117184c4fd4c14fd8d1cbf2ed6d2c5ddba93f077cbbc621d73ca81'
             '9640178d6251686c980c30fc528b3d70beac6ce8246bf433506a3f843808326c'
             '90a6012cdd8a64ede8e0bbaf7331960bd68f628e0973b65459188eb1ccb5b829'
             '23a44991bcd6254ff91ab259900bb7decad16efc5b87498c93fcd9bb86fe561a'

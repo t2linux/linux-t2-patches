@@ -2,7 +2,8 @@ name: Build Kernel Package
 on: [push, pull_request]
 jobs:
   build:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, '[no ci]')"
     steps:
     - name: Checkout Repo
       uses: actions/checkout@v2
@@ -22,13 +23,13 @@ jobs:
         docker run -t -v $PWD:/build archlinux /bin/bash /build/entrypoint.sh
     
     - name: Print sha512sums
-      run: sha512sum *.pkg.tar*
+      run: sha512sum *.pkg.tar.*
 
     - name: Upload Built Packages
       uses: actions/upload-artifact@v2
       with:
         name: built-packages
-        path: ${{ github.workspace }}/*.pkg.tar.zst
+        path: ${{ github.workspace }}/*.pkg.tar.*
         
     - name: Create Tag
       id: create_tag
@@ -37,13 +38,14 @@ jobs:
         echo "::set-output name=tag::${pkgver}-${pkgrel}"
         echo $pkgver $pkgrel
     - name: Release
-      if: github.ref == 'refs/heads/main'
+      if: ${{ github.ref == 'refs/heads/main' && "!contains(github.event.head_commit.message, '[no rel]')" }}
       uses: softprops/action-gh-release@v1
       with:
          files: |
            ${{ github.workspace }}/*.pkg.tar.*
          tag_name: v${{ steps.create_tag.outputs.tag }}
-         draft: false
+         draft: ${{ contains(github.event.head_commit.message, '[draft]') }}
+         prerelease: ${{ contains(github.event.head_commit.message, '[prerel]') }}
          body: |
           Install packages with `sudo pacman -U <file>`, you can use urls or file paths.
       env:
