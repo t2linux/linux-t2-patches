@@ -1,7 +1,7 @@
-From 7f5b8ed753c3616f7e20ac7ed95aea7276483298 Mon Sep 17 00:00:00 2001
+From 680ef41dd2e00b3e891e62f5ed8a746e96b8567d Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:51:52 +0900
-Subject: [PATCH 19/30] brcmfmac: pcie: Perform correct BCM4364 firmware
+Subject: [PATCH 19/34] brcmfmac: pcie: Perform correct BCM4364 firmware
  selection
 
 This chip exists in two revisions (B2=r3 and B3=r4) on different
@@ -38,7 +38,7 @@ Signed-off-by: Hector Martin <marcan@marcan.st>
  1 file changed, 9 insertions(+), 2 deletions(-)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-index ca3c2a29d..5bf67f1e6 100644
+index 5b4a4cb33..b6b789b49 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 @@ -54,7 +54,8 @@ BRCMF_FW_CLM_DEF(4356, "brcmfmac4356-pcie");
@@ -61,9 +61,9 @@ index ca3c2a29d..5bf67f1e6 100644
  	BRCMF_FW_ENTRY(BRCM_CC_4365_CHIP_ID, 0x0000000F, 4365B),
  	BRCMF_FW_ENTRY(BRCM_CC_4365_CHIP_ID, 0xFFFFFFF0, 4365C),
  	BRCMF_FW_ENTRY(BRCM_CC_4366_CHIP_ID, 0x0000000F, 4366B),
-@@ -2050,6 +2052,11 @@ static int brcmf_pcie_read_otp(struct brcmf_pciedev_info *devinfo)
- 		base = 0x800;
- 		words = 0x112;
+@@ -2057,6 +2059,11 @@ static int brcmf_pcie_read_otp(struct brcmf_pciedev_info *devinfo)
+ 		base = 0x8c0;
+ 		words = 0xb2;
  		break;
 +	case BRCM_CC_4364_CHIP_ID:
 +		coreid = BCMA_CORE_CHIPCOMMON;

@@ -1,7 +1,7 @@
-From e80782889c8e9e319bbecc2da5d61514352d58d0 Mon Sep 17 00:00:00 2001
+From 505a2532e3795409d3f179ade118845992c30a14 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:14:59 +0900
-Subject: [PATCH 21/30] brcmfmac: chip: Handle 1024-unit sizes for TCM blocks
+Subject: [PATCH 21/34] brcmfmac: chip: Handle 1024-unit sizes for TCM blocks
 
 BCM4387 has trailing odd-sized blocks as part of TCM which have
 their size described as a multiple of 1024 instead of 8192. Handle this

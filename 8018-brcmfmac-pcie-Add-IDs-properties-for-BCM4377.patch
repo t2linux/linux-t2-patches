@@ -1,7 +1,7 @@
-From 1a5efb5e8af74f3f349094dd52092c62aaf9b1b4 Mon Sep 17 00:00:00 2001
+From a014d5ec01f8b9084b55a368f5847105c5a87758 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:51:31 +0900
-Subject: [PATCH 18/30] brcmfmac: pcie: Add IDs/properties for BCM4377
+Subject: [PATCH 18/34] brcmfmac: pcie: Add IDs/properties for BCM4377
 
 This chip is present on at least these Apple T2 Macs:
 
@@ -29,7 +29,7 @@ index fdff7f5fc..73ab96968 100644
  	case BRCM_CC_4378_CHIP_ID:
  		return 0x352000;
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-index 035656433..ca3c2a29d 100644
+index 6d95c704f..5b4a4cb33 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 @@ -60,6 +60,7 @@ BRCMF_FW_DEF(4365C, "brcmfmac4365c-pcie");
@@ -48,15 +48,15 @@ index 035656433..ca3c2a29d 100644
  	BRCMF_FW_ENTRY(BRCM_CC_4378_CHIP_ID, 0xFFFFFFFF, 4378B1), /* 3 */
  };
  
-@@ -2048,6 +2050,7 @@ static int brcmf_pcie_read_otp(struct brcmf_pciedev_info *devinfo)
- 		base = 0x800;
- 		words = 0x112;
+@@ -2055,6 +2057,7 @@ static int brcmf_pcie_read_otp(struct brcmf_pciedev_info *devinfo)
+ 		base = 0x8c0;
+ 		words = 0xb2;
  		break;
 +	case BRCM_CC_4377_CHIP_ID:
  	case BRCM_CC_4378_CHIP_ID:
  		coreid = BCMA_CORE_GCI;
  		base = 0x1120;
-@@ -2561,6 +2564,7 @@ static const struct pci_device_id brcmf_pcie_devid_table[] = {
+@@ -2568,6 +2571,7 @@ static const struct pci_device_id brcmf_pcie_devid_table[] = {
  	BRCMF_PCIE_DEVICE(BRCM_PCIE_4366_2G_DEVICE_ID),
  	BRCMF_PCIE_DEVICE(BRCM_PCIE_4366_5G_DEVICE_ID),
  	BRCMF_PCIE_DEVICE(BRCM_PCIE_4371_DEVICE_ID),

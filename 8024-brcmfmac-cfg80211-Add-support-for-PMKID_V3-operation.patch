@@ -1,7 +1,7 @@
-From c2848618077ddc37b3e2e2ff2c22b8cc423822a6 Mon Sep 17 00:00:00 2001
+From b9bed13f0ee89343529d7d0cce615cffdbea972b Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Mon, 20 Dec 2021 18:16:33 +0900
-Subject: [PATCH 24/30] brcmfmac: cfg80211: Add support for PMKID_V3 operations
+Subject: [PATCH 24/34] brcmfmac: cfg80211: Add support for PMKID_V3 operations
 
 Add support for the new PMKID_V3 API, which allows performing PMKID
 mutations individually, instead of requiring the driver to keep track of

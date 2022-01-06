@@ -1,7 +1,7 @@
-From 09b15f594d459c1bc6b63d00c1b208021460e88e Mon Sep 17 00:00:00 2001
+From e5278ec18dc59d4c01afb60e706df41d7e83f1cf Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:39:28 +0900
-Subject: [PATCH 27/30] brcmfmac: pcie: Replace brcmf_pcie_copy_mem_todev with
+Subject: [PATCH 27/34] brcmfmac: pcie: Replace brcmf_pcie_copy_mem_todev with
  memcpy_toio
 
 The alignment check was wrong (e.g. & 4 instead of & 3), and the logic
@@ -19,7 +19,7 @@ Signed-off-by: Hector Martin <marcan@marcan.st>
  1 file changed, 6 insertions(+), 47 deletions(-)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-index 8778d9950..1e3d5e3c3 100644
+index bc2a53812..865e3f28c 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 @@ -14,6 +14,7 @@
@@ -78,7 +78,7 @@ index 8778d9950..1e3d5e3c3 100644
  static void
  brcmf_pcie_copy_dev_tomem(struct brcmf_pciedev_info *devinfo, u32 mem_offset,
  			  void *dstaddr, u32 len)
-@@ -1695,8 +1655,8 @@ static int brcmf_pcie_download_fw_nvram(struct brcmf_pciedev_info *devinfo,
+@@ -1702,8 +1662,8 @@ static int brcmf_pcie_download_fw_nvram(struct brcmf_pciedev_info *devinfo,
  		return err;
  
  	brcmf_dbg(PCIE, "Download FW %s\n", devinfo->fw_name);
@@ -89,7 +89,7 @@ index 8778d9950..1e3d5e3c3 100644
  
  	resetintr = get_unaligned_le32(fw->data);
  	release_firmware(fw);
-@@ -1717,7 +1677,7 @@ static int brcmf_pcie_download_fw_nvram(struct brcmf_pciedev_info *devinfo,
+@@ -1724,7 +1684,7 @@ static int brcmf_pcie_download_fw_nvram(struct brcmf_pciedev_info *devinfo,
  		brcmf_dbg(PCIE, "Download NVRAM %s\n", devinfo->nvram_name);
  		address = devinfo->ci->rambase + devinfo->ci->ramsize -
  			  nvram_len;
@@ -98,7 +98,7 @@ index 8778d9950..1e3d5e3c3 100644
  		brcmf_fw_nvram_free(nvram);
  
  		/*
-@@ -1727,13 +1687,12 @@ static int brcmf_pcie_download_fw_nvram(struct brcmf_pciedev_info *devinfo,
+@@ -1734,13 +1694,12 @@ static int brcmf_pcie_download_fw_nvram(struct brcmf_pciedev_info *devinfo,
  		brcmf_dbg(PCIE, "Download random seed\n");
  
  		address -= sizeof(footer);

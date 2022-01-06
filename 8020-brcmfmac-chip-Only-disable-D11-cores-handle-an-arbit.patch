@@ -1,7 +1,7 @@
-From d1da7977d230e10a35a6f0744c37ffccc1c83631 Mon Sep 17 00:00:00 2001
+From 9600a63e7c36866faac8c458dc48ba9eb19032bc Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Mon, 20 Dec 2021 20:00:57 +0900
-Subject: [PATCH 20/30] brcmfmac: chip: Only disable D11 cores; handle an
+Subject: [PATCH 20/34] brcmfmac: chip: Only disable D11 cores; handle an
  arbitrary number
 
 At least on BCM4387, the D11 cores are held in reset on cold startup and

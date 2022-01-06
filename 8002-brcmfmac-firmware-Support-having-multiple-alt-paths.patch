@@ -1,7 +1,7 @@
 From 59c61aa5ad2e12fdbccb5712d35c203cf9079230 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Sat, 18 Dec 2021 20:38:34 +0900
-Subject: [PATCH 02/30] brcmfmac: firmware: Support having multiple alt paths
+Subject: [PATCH 02/34] brcmfmac: firmware: Support having multiple alt paths
 
 Apple platforms have firmware and config files identified with multiple
 dimensions. We want to be able to find the most specific firmware

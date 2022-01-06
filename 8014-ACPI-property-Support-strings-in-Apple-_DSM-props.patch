@@ -1,7 +1,7 @@
-From d7efc0ae360df39dea3a843fb7bd57127652f728 Mon Sep 17 00:00:00 2001
+From 599bfcd71c7c6b995db7a4453e03244d032b4317 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Thu, 23 Dec 2021 19:51:11 +0900
-Subject: [PATCH 14/30] ACPI / property: Support strings in Apple _DSM props
+Subject: [PATCH 14/34] ACPI / property: Support strings in Apple _DSM props
 
 The Wi-Fi module in Apple machines has a "module-instance" device
 property that specifies the platform type and is used for firmware

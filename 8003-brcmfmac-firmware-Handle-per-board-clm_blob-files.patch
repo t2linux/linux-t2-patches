@@ -1,7 +1,7 @@
 From 637e3946944e25c98c8955ec2a84133b79afca4d Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Sat, 18 Dec 2021 20:52:04 +0900
-Subject: [PATCH 03/30] brcmfmac: firmware: Handle per-board clm_blob files
+Subject: [PATCH 03/34] brcmfmac: firmware: Handle per-board clm_blob files
 
 Teach brcm_alt_fw_paths to correctly split off variable length
 extensions, and enable alt firmware lookups for the CLM blob firmware

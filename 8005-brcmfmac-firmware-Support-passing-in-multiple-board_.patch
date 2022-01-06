@@ -1,7 +1,7 @@
-From f7df4e463c323eaf303ca4d1a6721c8458a8cdd1 Mon Sep 17 00:00:00 2001
+From 880d3f98041005210a332974c3b19e0116e14053 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:38:37 +0900
-Subject: [PATCH 05/30] brcmfmac: firmware: Support passing in multiple
+Subject: [PATCH 05/34] brcmfmac: firmware: Support passing in multiple
  board_types
 
 In order to make use of the multiple alt_path functionality, change
@@ -94,10 +94,10 @@ index e290dec9c..d94a1d5be 100644
  };
  
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-index ea8776fd2..cdfb32d6f 100644
+index ab0503c6f..0e4ba33fb 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-@@ -1870,11 +1870,16 @@ brcmf_pcie_prepare_fw_request(struct brcmf_pciedev_info *devinfo)
+@@ -1877,11 +1877,16 @@ brcmf_pcie_prepare_fw_request(struct brcmf_pciedev_info *devinfo)
  	fwreq->items[BRCMF_PCIE_FW_NVRAM].flags = BRCMF_FW_REQF_OPTIONAL;
  	fwreq->items[BRCMF_PCIE_FW_CLM].type = BRCMF_FW_TYPE_BINARY;
  	fwreq->items[BRCMF_PCIE_FW_CLM].flags = BRCMF_FW_REQF_OPTIONAL;
@@ -116,10 +116,10 @@ index ea8776fd2..cdfb32d6f 100644
  }
  
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/sdio.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/sdio.c
-index 593ddd237..637aef30c 100644
+index 7466e6fd6..32f457bf0 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/sdio.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/sdio.c
-@@ -4425,7 +4425,9 @@ brcmf_sdio_prepare_fw_request(struct brcmf_sdio *bus)
+@@ -4432,7 +4432,9 @@ brcmf_sdio_prepare_fw_request(struct brcmf_sdio *bus)
  	fwreq->items[BRCMF_SDIO_FW_NVRAM].type = BRCMF_FW_TYPE_NVRAM;
  	fwreq->items[BRCMF_SDIO_FW_CLM].type = BRCMF_FW_TYPE_BINARY;
  	fwreq->items[BRCMF_SDIO_FW_CLM].flags = BRCMF_FW_REQF_OPTIONAL;

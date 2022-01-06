@@ -1,7 +1,7 @@
-From a27a7388f9ad605b90998037d6e75910252bab4f Mon Sep 17 00:00:00 2001
+From bc717842356e7739ee9b58838592ef0e540d0b39 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Mon, 20 Dec 2021 19:15:58 +0900
-Subject: [PATCH 25/30] brcmfmac: cfg80211: Pass the PMK in binary instead of
+Subject: [PATCH 25/34] brcmfmac: cfg80211: Pass the PMK in binary instead of
  hex
 
 Apparently the hex passphrase mechanism does not work on newer

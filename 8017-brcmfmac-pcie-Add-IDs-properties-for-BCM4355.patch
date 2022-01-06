@@ -1,7 +1,7 @@
-From 255bc66f8a00a5d100d82ccfeb162a59312c9609 Mon Sep 17 00:00:00 2001
+From e46046ce92838278ec265de9d662ca3ee0be8cef Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:50:15 +0900
-Subject: [PATCH 17/30] brcmfmac: pcie: Add IDs/properties for BCM4355
+Subject: [PATCH 17/34] brcmfmac: pcie: Add IDs/properties for BCM4355
 
 This chip is present on at least these Apple T2 Macs:
 
@@ -9,7 +9,6 @@ This chip is present on at least these Apple T2 Macs:
 * hawaii: MacBook Air 13" (True Tone, 2019)
 
 Signed-off-by: Hector Martin <marcan@marcan.st>
-[fixed otp base and words values]
 ---
  drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c   | 1 +
  drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c   | 8 ++++++++
@@ -29,7 +28,7 @@ index 56a6f4168..fdff7f5fc 100644
  	case CY_CC_4373_CHIP_ID:
  		return 0x160000;
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-index bd55f5a30..035656433 100644
+index b71952254..6d95c704f 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 @@ -49,6 +49,7 @@ enum brcmf_pcie_state {
@@ -48,7 +47,7 @@ index bd55f5a30..035656433 100644
  	BRCMF_FW_ENTRY(BRCM_CC_4356_CHIP_ID, 0xFFFFFFFF, 4356),
  	BRCMF_FW_ENTRY(BRCM_CC_43567_CHIP_ID, 0xFFFFFFFF, 43570),
  	BRCMF_FW_ENTRY(BRCM_CC_43569_CHIP_ID, 0xFFFFFFFF, 43570),
-@@ -2041,6 +2043,11 @@ static int brcmf_pcie_read_otp(struct brcmf_pciedev_info *devinfo)
+@@ -2048,6 +2050,11 @@ static int brcmf_pcie_read_otp(struct brcmf_pciedev_info *devinfo)
  	int ret;
  
  	switch (devinfo->ci->chip) {
@@ -60,7 +59,7 @@ index bd55f5a30..035656433 100644
  	case BRCM_CC_4378_CHIP_ID:
  		coreid = BCMA_CORE_GCI;
  		base = 0x1120;
-@@ -2535,6 +2542,7 @@ static const struct pci_device_id brcmf_pcie_devid_table[] = {
+@@ -2542,6 +2549,7 @@ static const struct pci_device_id brcmf_pcie_devid_table[] = {
  	BRCMF_PCIE_DEVICE(BRCM_PCIE_4350_DEVICE_ID),
  	BRCMF_PCIE_DEVICE_SUB(0x4355, BRCM_PCIE_VENDOR_ID_BROADCOM, 0x4355),
  	BRCMF_PCIE_DEVICE(BRCM_PCIE_4354_RAW_DEVICE_ID),

@@ -1,7 +1,7 @@
-From 3b481da6295a389716c2d8fcfb4b5b87a0ef4103 Mon Sep 17 00:00:00 2001
+From dd4b327a30697ddad3819ca145d4ce319b7cf528 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Thu, 23 Dec 2021 22:32:08 +0900
-Subject: [PATCH 09/30] brcmfmac: firmware: Allow platform to override macaddr
+Subject: [PATCH 09/34] brcmfmac: firmware: Allow platform to override macaddr
 
 On Device Tree platforms, it is customary to be able to set the MAC
 address via the Device Tree, as it is often stored in system firmware.

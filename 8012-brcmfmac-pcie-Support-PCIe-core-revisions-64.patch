@@ -1,7 +1,7 @@
-From fa24c7e164edae9afea03d4af6264e0151b42649 Mon Sep 17 00:00:00 2001
+From 6de1197eadd384f977934fb85061db7108f0c86d Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:25:35 +0900
-Subject: [PATCH 12/30] brcmfmac: pcie: Support PCIe core revisions >= 64
+Subject: [PATCH 12/34] brcmfmac: pcie: Support PCIe core revisions >= 64
 
 These newer PCIe core revisions include new sets of registers that must
 be used instead of the legacy ones. Introduce a brcmf_pcie_reginfo to
@@ -14,7 +14,7 @@ Signed-off-by: Hector Martin <marcan@marcan.st>
  1 file changed, 107 insertions(+), 20 deletions(-)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-index a4b49d175..4a6370efb 100644
+index 7190b7b80..01c7b2703 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 @@ -117,6 +117,14 @@ static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
@@ -204,7 +204,7 @@ index a4b49d175..4a6370efb 100644
  
  	return 0;
  }
-@@ -1756,15 +1829,22 @@ static int brcmf_pcie_buscoreprep(void *ctx)
+@@ -1763,15 +1836,22 @@ static int brcmf_pcie_buscoreprep(void *ctx)
  static int brcmf_pcie_buscore_reset(void *ctx, struct brcmf_chip *chip)
  {
  	struct brcmf_pciedev_info *devinfo = (struct brcmf_pciedev_info *)ctx;
@@ -231,7 +231,7 @@ index a4b49d175..4a6370efb 100644
  
  	return 0;
  }
-@@ -2176,6 +2256,7 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
+@@ -2183,6 +2263,7 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
  	struct brcmf_pciedev_info *devinfo;
  	struct brcmf_pciedev *pcie_bus_dev;
  	struct brcmf_bus *bus;
@@ -239,7 +239,7 @@ index a4b49d175..4a6370efb 100644
  
  	brcmf_dbg(PCIE, "Enter %x:%x\n", pdev->vendor, pdev->device);
  
-@@ -2194,6 +2275,12 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
+@@ -2201,6 +2282,12 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
  		goto fail;
  	}
  
@@ -252,7 +252,7 @@ index a4b49d175..4a6370efb 100644
  	pcie_bus_dev = kzalloc(sizeof(*pcie_bus_dev), GFP_KERNEL);
  	if (pcie_bus_dev == NULL) {
  		ret = -ENOMEM;
-@@ -2362,7 +2449,7 @@ static int brcmf_pcie_pm_leave_D3(struct device *dev)
+@@ -2369,7 +2456,7 @@ static int brcmf_pcie_pm_leave_D3(struct device *dev)
  	brcmf_dbg(PCIE, "Enter, dev=%p, bus=%p\n", dev, bus);
  
  	/* Check if device is still up and running, if so we are ready */

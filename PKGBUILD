@@ -4,14 +4,18 @@
 # Contributor: Jan Alexander Steffens (heftig) <jan.steffens@gmail.com>
 
 pkgbase=linux-t2
-pkgver=5.15.11
+pkgver=5.15.13
 _srcname=linux-${pkgver}
-pkgrel=4
+pkgrel=1
 pkgdesc='Linux kernel for T2 Macs'
 _srctag=v${pkgver%.*}-${pkgver##*.}
 url="https://git.archlinux.org/linux.git/log/?h=v$_srctag"
 arch=(x86_64)
 license=(GPL2)
+provides=(
+  apple-bce
+  apple-ibridge
+)
 makedepends=(
   bc kmod libelf pahole cpio perl tar xz 
   xmlto python-sphinx python-sphinx_rtd_theme graphviz imagemagick
@@ -94,6 +98,11 @@ source=(
   8027-brcmfmac-pcie-Replace-brcmf_pcie_copy_mem_todev-with.patch
   8028-brcmfmac-pcie-Read-the-console-on-init-and-shutdown.patch
   8029-brcmfmac-pcie-Release-firmwares-in-the-brcmf_pcie_se.patch
+  # 8030 only applies to the linux-asahi tree and is only for M1 Macs
+  8031-brcmfmac-fwil-Constify-iovar-name-arguments.patch
+  8032-brcmfmac-common-Add-support-for-downloading-TxCap-bl.patch
+  8033-brcmfmac-pcie-Load-and-provide-TxCap-blobs.patch
+  8034-brcmfmac-common-Add-support-for-external-calibration.patch
 
   # Broadcom BT device support
   9001-bluetooth-add-disable-read-tx-power-quirk.patch
@@ -284,7 +293,7 @@ for _p in "${pkgname[@]}"; do
   }"
 done
 
-sha256sums=('c1178b7e7e12d91292e670191268e3fe9a3563faf899eef43e468577e973a1ce'
+sha256sums=('0a131b6a2f9f5ee37ecb332b5459ab35a87f0bf2d4ec923988d0663646cf156a'
             'SKIP'
             '324a9d46c2338806a0c3ce0880c8d5e85c2ef30d342af3dc96f87b54fae7a586'
             '6b4da532421cac5600d09c0c52742aa52d848af098f7853abe60c02e9d0a3752'
@@ -313,35 +322,39 @@ sha256sums=('c1178b7e7e12d91292e670191268e3fe9a3563faf899eef43e468577e973a1ce'
             '2cfc28a394117184c4fd4c14fd8d1cbf2ed6d2c5ddba93f077cbbc621d73ca81'
             '9640178d6251686c980c30fc528b3d70beac6ce8246bf433506a3f843808326c'
             '90a6012cdd8a64ede8e0bbaf7331960bd68f628e0973b65459188eb1ccb5b829'
-            '23a44991bcd6254ff91ab259900bb7decad16efc5b87498c93fcd9bb86fe561a'
-            '0d0c3b2a5e30b29d6c93a760f9b4fab1dd30a9561be56ecd43c7471e674aee26'
-            '9bf9dd0d978a649c7e0437ac8f42a11f09af4917fe1968dc26223692137fc517'
-            'c4966acab11e2e9f61132d8740371b404317d49ba86e899e01faa6896736675e'
-            '53ad3c9fae3472c9f572bb485190c6d865656435742584a83f411c3f6eaebf49'
-            '7616371062addcc256c9217c65b92da59e5f16b35845cd3f7d537bf2bcde08bd'
-            '0011ae2df9e8cd87adb46f7c0a0edfe83bbbb845cc141db304be63cb03118f26'
-            '4f36a11f3545c4db77187395b10e078525a4c494fa6a0f58bc85bdb53403afda'
-            '4f7b22bc363fab93199e77a5713ea51b6a32d1087c0efbc8b36cb9d1ce3df620'
-            'e2b483966f138e9112027e47280a5045c80694bc1b8f132ebfec271b9155bbe2'
-            'e71a275dbcfb7f394b946c748f3317fffe7a6d6df897f766b537fe0ba7cd1e0d'
-            '8770b56adb15004e624a98b9675e496c2ac662744f899f058a18b16868bd04f6'
-            '3badfb3ea7c17ce948524a22284370f0739c59e62ea529c869329243e66682ca'
-            'c25d935ed2e21308389aac775d029c32eecc6a8fdef1dc3df4c745c0d46981ea'
-            '96b954987bcbe7ea0ba24943c00570570adfb74e2ba7e1f0df3c4074d0f4d112'
-            '5c89f30332ce30e010c1e6dcfcef41bb7ce3411acc147b6b00925c24cc0f9086'
-            'd314b41614c6e730cd43467eedd22c15197b437e82088242fa9dc453316f2398'
-            '54fa470bc8b1b3a449e19860a11cd9ee5dfdf297a05f90dc0029a4e30ee0de43'
-            'e5e2cdd0140e93e1f599f37ba0380ce1f51646b35cfccdb7a5a0e02a7eb7afdb'
-            '4b1d72c3d402e9135810dde26bcfd41cee3c988c4f5644eedf8d5254376dc329'
-            'b256ec4d4057019ede92fff228a959a8be99a9130078b7cda5265a5f1e3a000e'
-            '0c30315c95c27e1fb64e0af972e8ec27ffd3333869ffa7ab5cefb8cbc7abce38'
-            '5453c12bb8084e19c5e8e627084a644663b209f7812fd6149dee0c5e18f7f577'
-            'a9497ecbb19e3c24eb057d2a5c57ddc91dd78be7f370ea0965e7a93316f11ade'
-            '143e7c874feb714f0075969662a245ecacf60f243ed6c7b3bb1030c00b605f94'
-            '1745213ecf75126cd77a98324545995faef0477e9df35a76ae02a3bb8707ab3f'
-            'ba5660c533d3d91bcb2f4452e7e3125f594457567478e87fba58c1296c58c096'
-            '1096b078a9870ffc528a4001b534dd5bc3e03b24e33225d930b4f5be2efadeb8'
-            '5980bbc0702eafebcbbe80c53d39f985422247020b811e44c333fe047d1ab779'
+            '862f631ef9f25453ce38d9ed0197e62d85f9f5a0625ed77237e643297fb42f75'
+            '2f7899b70d5c55aea3f6385385fea01ce21b48f9441982a94f36c842cceec083'
+            '2b126cda3863f49b8d3a6de8fa8cca979d87bd9e66812531be5c02c9e5840d82'
+            '70a277c9ad4fba624b3916e397624e557135b269c34eb704ace29aa1a6b8e430'
+            '42ae52b93ea0cbd0d1859512b88e0c290e3500b8e52f8de3be7398cb6039d0b4'
+            '300d926bac23b81d267e73433d668581ec1e3b12fa76462ba3d0b1cf2728b82d'
+            '01f3185e551dd49007b533d4bae37774131820a51715e1f1a391220e055afc66'
+            'db55305b8e3c2a8fa0a85aeaad661717ae745d5dabc7735221adb184e89a2d1b'
+            '82f679f3736e09ee9ea8a8b53c052e84bb40df8a05f21a2082224184ad3cf162'
+            '9907f67d099a2b6243747350a2c057d82c39e822107ca57cbfdc32baf378d2cb'
+            'd25cd32de8c74ba8bcb430c21f9d84deae1174594d00ea94e1fd1e2ab70ea5cb'
+            '823d35349844605dadf381ae7c6097379a23c72da59e3cf393fcf3e5d466dafd'
+            'ed6e84bc03cd6adfc3f8def843f150b71470df6d6a88fc348d5e1b36f133f424'
+            '23d9018c90d02389f2ddeb0821e581d354184b3b38d4488fbc0f3363463a0c9e'
+            'd2e2b0f0c80fb5b4da36d3a7a87b10c2419255c0e38e0faa1d7478eaab1b9a35'
+            'ecef58f944bf61950b3211e88acd104b0006a177e76f59a47b8253aaf5e6acc6'
+            '1eb6e14b5504efbad7911aabc801a265e9ba13cb2fd6ce8e029af55bf97cec86'
+            'f2b553e11240bb88e5d0ffd7883d808c069ede544e5c578c22975466a5c9d26a'
+            'ac4b200dadbb88179bf37dcea280efe25bf42b420a90ab1399c3bd9c7905f592'
+            'e12726162b868435081a215f04d921cd8b9307de71738c41090ec93a267725de'
+            'bfa3bb8d16b6c26831f9b5e833d46ea2c60854f016540a051f96c418be1a728f'
+            'e9df13adedefd0043ea6678c19a9de608aa69fe83929a13213c528052096ed3c'
+            'b51a916bb0048d7cb57ed2afc25394ec72664efe2a8c5705b0dcfe62384e34ed'
+            '2ec5dddd41327b5018d41b920955182bc3f220f692a32b061d8797c8fee99dbc'
+            'a8596e6180a895515cbc1f361edc8fca460f630dd15bbd161037d84717717ba8'
+            '55b6981468b489f5bb7c59d5f9a6b479c0d96bb1018efa209ed8506d54de8399'
+            '2339acd32f020db66f2a3190910d925a030798e3fd57006a09dda56e5acbf279'
+            'f41ab41dd9445dee28699c1af7909723514f9d41d30a5c148d4f99617ed2d46e'
+            '0e6cd10376f13873a9226d233161a0dab6b1d3c6a7d66bc3c4e8d3cc0f0397d0'
+            '8f9a6d47eaec7d9df9a822a146ab15ca7bee906866545493cac8621570237060'
+            'ecede30aa68ea4646d3efb0a7190466ff1784f4e93756a04bb58756536f28035'
+            '0bed877897873ae86e512d711b86fa11adc5b8e7fe35139e290e8d0a0133f6a5'
+            '23f4a7002632f95abb1ed75a4df0570b7a81e5cf4067a16da7101b16eb582a01'
             '31e414978a947bdb71f27ed364c4da73b81fcf1921250cb69ee1bcf2bbd25636'
             '5d36770f436b69e69633d060deb55a37b8b3871983068e95fb33d5a195f00574'
             '3bffb2bb84800453ba05676293de9b0b1619d0c19b6295e803f0d9c3a07be23a')

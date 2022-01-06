@@ -1,7 +1,7 @@
-From 7d0f1f3475206fe2a37ee9e3180783d1c72daaaa Mon Sep 17 00:00:00 2001
+From 3ecb57b6628211ef42a6267f17a1d5c5fcecd012 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Thu, 23 Dec 2021 19:30:17 +0900
-Subject: [PATCH 16/30] brcmfmac: pcie: Provide a buffer of random bytes to the
+Subject: [PATCH 16/34] brcmfmac: pcie: Provide a buffer of random bytes to the
  device
 
 Newer Apple firmwares on chipsets without a hardware RNG require the
@@ -18,7 +18,7 @@ Signed-off-by: Hector Martin <marcan@marcan.st>
  1 file changed, 31 insertions(+)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-index 785090570..bd55f5a30 100644
+index e1bc7e4a9..b71952254 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 @@ -12,6 +12,7 @@
@@ -29,7 +29,7 @@ index 785090570..bd55f5a30 100644
  #include <asm/unaligned.h>
  
  #include <soc.h>
-@@ -1660,6 +1661,13 @@ brcmf_pcie_init_share_ram_info(struct brcmf_pciedev_info *devinfo,
+@@ -1667,6 +1668,13 @@ brcmf_pcie_init_share_ram_info(struct brcmf_pciedev_info *devinfo,
  	return 0;
  }
  
@@ -43,7 +43,7 @@ index 785090570..bd55f5a30 100644
  
  static int brcmf_pcie_download_fw_nvram(struct brcmf_pciedev_info *devinfo,
  					const struct firmware *fw, void *nvram,
-@@ -1691,11 +1699,34 @@ static int brcmf_pcie_download_fw_nvram(struct brcmf_pciedev_info *devinfo,
+@@ -1698,11 +1706,34 @@ static int brcmf_pcie_download_fw_nvram(struct brcmf_pciedev_info *devinfo,
  	brcmf_pcie_write_ram32(devinfo, devinfo->ci->ramsize - 4, 0);
  
  	if (nvram) {

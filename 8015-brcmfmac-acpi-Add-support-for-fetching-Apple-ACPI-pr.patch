@@ -1,7 +1,7 @@
-From 5aa741e9fbe7650a4018be84e6a3b60905625107 Mon Sep 17 00:00:00 2001
+From ebdaee11be6e18ea1952a72a4a9ef80ca4228b7d Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Thu, 23 Dec 2021 19:51:36 +0900
-Subject: [PATCH 15/30] brcmfmac: acpi: Add support for fetching Apple ACPI
+Subject: [PATCH 15/34] brcmfmac: acpi: Add support for fetching Apple ACPI
  properties
 
 On DT platforms, the module-instance and antenna-sku-info properties
@@ -91,7 +91,7 @@ index 000000000..b70cd6970
 +	}
 +}
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.c
-index ec4cb7050..0151d129c 100644
+index b8ed85112..c84c48e49 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.c
 @@ -437,6 +437,7 @@ struct brcmf_mp_device *brcmf_get_module_param(struct device *dev,

@@ -1,7 +1,7 @@
-From da1558f263300fcf9798e5c918aec9a90e65619b Mon Sep 17 00:00:00 2001
+From fbf132e816fb5ab9fc5e44be8a3ba78cdc5bb1e1 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:44:51 +0900
-Subject: [PATCH 29/30] brcmfmac: pcie: Release firmwares in the
+Subject: [PATCH 29/34] brcmfmac: pcie: Release firmwares in the
  brcmf_pcie_setup error path
 
 This avoids leaking memory if brcmf_chip_get_raminfo fails. Note that
@@ -14,10 +14,10 @@ Signed-off-by: Hector Martin <marcan@marcan.st>
  1 file changed, 2 insertions(+)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-index 30802d922..293443a1c 100644
+index 8b67cddb7..f1b90b5e7 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-@@ -2118,6 +2118,8 @@ static void brcmf_pcie_setup(struct device *dev, int ret,
+@@ -2125,6 +2125,8 @@ static void brcmf_pcie_setup(struct device *dev, int ret,
  	ret = brcmf_chip_get_raminfo(devinfo->ci);
  	if (ret) {
  		brcmf_err(bus, "Failed to get RAM info\n");

@@ -1,7 +1,7 @@
 From 3f43bc112ea442739258e2c6b143408c7c45e2e9 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 19:32:16 +0900
-Subject: [PATCH 01/30] brcmfmac: pcie: Declare missing firmware files in
+Subject: [PATCH 01/34] brcmfmac: pcie: Declare missing firmware files in
  pcie.c
 
 Move one of the declarations from sdio.c to pcie.c, since it makes no
