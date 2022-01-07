@@ -3,7 +3,7 @@ on: [push, pull_request]
 jobs:
   build:
     runs-on: ubuntu-latest
-    if: "!contains(github.event.head_commit.message, '[no ci]')"
+    if: !contains(github.event.head_commit.message, '[no ci]')
     steps:
     - name: Checkout Repo
       uses: actions/checkout@v2
@@ -38,7 +38,7 @@ jobs:
         echo "::set-output name=tag::${pkgver}-${pkgrel}"
         echo $pkgver $pkgrel
     - name: Release
-      if: ${{ github.ref == 'refs/heads/main' && "!contains(github.event.head_commit.message, '[no rel]')" }}
+      if: ${{ github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[no rel]') }}
       uses: softprops/action-gh-release@v1
       with:
          files: |
