@@ -4,7 +4,7 @@
 # Contributor: Jan Alexander Steffens (heftig) <jan.steffens@gmail.com>
 
 pkgbase=linux-t2
-pkgver=5.15.13
+pkgver=5.16
 _srcname=linux-${pkgver}
 pkgrel=1
 pkgdesc='Linux kernel for T2 Macs'
@@ -106,7 +106,7 @@ source=(
 
   # Broadcom BT device support
   9001-bluetooth-add-disable-read-tx-power-quirk.patch
-  9002-add-bluetooth-support-for-16,2.patch
+  9002-mfd-intel-lpss-pci-fix-clock-speed-for-38a8-UART.patch
   9003-mfd-intel-lpss-Fix-too-early-PM-enablement-in-the-AC.patch
 
   
@@ -293,9 +293,9 @@ for _p in "${pkgname[@]}"; do
   }"
 done
 
-sha256sums=('0a131b6a2f9f5ee37ecb332b5459ab35a87f0bf2d4ec923988d0663646cf156a'
+sha256sums=('027d7e8988bb69ac12ee92406c3be1fe13f990b1ca2249e226225cd1573308bb'
             'SKIP'
-            '324a9d46c2338806a0c3ce0880c8d5e85c2ef30d342af3dc96f87b54fae7a586'
+            '7cbba374356a189faac71001c5344ce8f02434684b1ce1accefc0cc4bd6718e5'
             '6b4da532421cac5600d09c0c52742aa52d848af098f7853abe60c02e9d0a3752'
             '2184069ab00ef43d9674756e9b7a56d15188bc4494d34425f04ddc779c52acd8'
             'SKIP'
@@ -303,14 +303,14 @@ sha256sums=('0a131b6a2f9f5ee37ecb332b5459ab35a87f0bf2d4ec923988d0663646cf156a'
             'b7c987889d92a48d638d5258842b10f6c856e57f29ad23475aa507c7b4ad5710'
             '0e371fe1efd1ec422f89439a2befb5a0c3dd28c9e60780f55493d9699c6ebc0e'
             '786dfc22e4c6ece883e7dedd0ba3f6c14018584df95450b2cb78f3da8b01f7cb'
-            '7366a08383900a09f8e742b1e4f0a02e0839a385e68e70a89d1815c197df3300'
+            'cfd23a06797ac86575044428a393dd7f10f06eff7648d0b78aedad82cbe41279'
             '8d8401a99a9dfbc41aa2dc5b6a409a19860b1b918465e19de4a4ff18de075ea3'
             '08d165106fe35b68a7b48f216566951a5db0baac19098c015bcc81c5fcba678d'
-            '459906cab172df9f6712a4168e7a5d529f85b2bb58a068f2d44746df14a6d27a'
+            '62f6d63815d4843ca893ca76b84a9d32590a50358ca0962017ccd75a40884ba8'
             '2827dab6eeb2d2a08034938024f902846b5813e967a0ea253dc1ea88315da383'
             '398dec7d54c6122ae2263cd5a6d52353800a1a60fd85e52427c372ea9974a625'
             '80198d668e894656cd6a13fad5e55dfc22a242fa5919da8e29efeed55ed061ef'
-            '11565cff9c6a7db8846dc7d5930419045e9527863b8df5979a7465006211bd16'
+            '1366719f62b2d698693b31916569f1178f3d1b0a66e747b7f40f1389edceff07'
             '83f4be6849ba4d5f9fad647ad2eb78bf6409ee98a40ac62e8a5b80496233d70a'
             '44bd3643b2b22fedc59d79511199f30ce6759fa0acdd9a66262a53c5e046da6b'
             'eb04a492197783643b3e72b1d0cf0e856290381997bd165a14fbc63ac1489c25'
@@ -355,6 +355,6 @@ sha256sums=('0a131b6a2f9f5ee37ecb332b5459ab35a87f0bf2d4ec923988d0663646cf156a'
             'ecede30aa68ea4646d3efb0a7190466ff1784f4e93756a04bb58756536f28035'
             '0bed877897873ae86e512d711b86fa11adc5b8e7fe35139e290e8d0a0133f6a5'
             '23f4a7002632f95abb1ed75a4df0570b7a81e5cf4067a16da7101b16eb582a01'
-            '31e414978a947bdb71f27ed364c4da73b81fcf1921250cb69ee1bcf2bbd25636'
-            '5d36770f436b69e69633d060deb55a37b8b3871983068e95fb33d5a195f00574'
+            '541043c30198baa7e026261d150748de057f0499720e6568da3cc4560090ff29'
+            'f2cff107e536fb7331994be0920632b60b3da42e3404a20919dcffcaeec79bdb'
             '3bffb2bb84800453ba05676293de9b0b1619d0c19b6295e803f0d9c3a07be23a')

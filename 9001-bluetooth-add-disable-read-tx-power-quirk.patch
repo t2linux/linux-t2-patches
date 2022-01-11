@@ -3,6 +3,10 @@ From: Orlando Chamberlain <redecorating@protonmail.com>
 Date: Tue, 28 Sep 2021 20:41:35 +1000
 Subject: [PATCH] bluetooth: add disable read tx power quirk
 
+150 seems to be BCM4364b3
+123 seems to be BCM4364b2 (doesn't have this issue)
+133 seems to be BCM4355c1
+
 ---
  drivers/bluetooth/btbcm.c   | 4 ++++
  include/net/bluetooth/hci.h | 9 +++++++++
@@ -18,7 +22,7 @@ index e4182acee488..4ecc50d93107 100644
  
  	bt_dev_info(hdev, "BCM: chip id %u", skb->data[1]);
 +
-+	if (skb->data[1] == 150)
++	if ((skb->data[1] == 150)||(skb->data[1] == 133))
 +		set_bit(HCI_QUIRK_BROKEN_READ_TRANSMIT_POWER, &hdev->quirks);
 +
  	kfree_skb(skb);
@@ -54,7 +58,7 @@ index 8a47a3017d61..9a23fe7c8d67 100644
  
 -		if (hdev->commands[38] & 0x80) {
 +		if (hdev->commands[38] & 0x80 &&
-+	    	!test_bit(HCI_QUIRK_BROKEN_READ_TRANSMIT_POWER, &hdev->quirks)) {
++		!test_bit(HCI_QUIRK_BROKEN_READ_TRANSMIT_POWER, &hdev->quirks)) {
  			/* Read LE Min/Max Tx Power*/
  			hci_req_add(req, HCI_OP_LE_READ_TRANSMIT_POWER,
  				    0, NULL);

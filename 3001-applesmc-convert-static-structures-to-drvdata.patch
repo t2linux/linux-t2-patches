@@ -140,7 +140,7 @@ index 79b498f816fe..62211b590a61 100644
  	if (cache->valid)
  		goto out;
 @@ -394,20 +402,21 @@ static const struct applesmc_entry *applesmc_get_entry_by_index(int index)
- 	cache->valid = 1;
+ 	cache->valid = true;
  
  out:
 -	mutex_unlock(&smcreg.mutex);
