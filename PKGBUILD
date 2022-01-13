@@ -12,10 +12,7 @@ _srctag=v${pkgver%.*}-${pkgver##*.}
 url="https://git.archlinux.org/linux.git/log/?h=v$_srctag"
 arch=(x86_64)
 license=(GPL2)
-provides=(
-  apple-bce
-  apple-ibridge
-)
+provides=()
 makedepends=(
   bc kmod libelf pahole cpio perl tar xz 
   xmlto python-sphinx python-sphinx_rtd_theme graphviz imagemagick
@@ -33,7 +30,7 @@ source=(
   0002-HID-quirks-Add-Apple-Magic-Trackpad-2-to-hid_have_sp.patch
 
   # Nvram Write without panic
-  0101-x86-efi-force-runtime-v1.10-fix-T2-nvram-writes.patch
+  0101-efi-runtime-avoid-EFIv2-runtime-services-on-Apple-x8.patch
 
   # apple-bce, apple-ibridge
   apple-bce::git+https://github.com/t2linux/apple-bce-drv#commit=f93c6566f98b3c95677de8010f7445fa19f75091
@@ -301,12 +298,12 @@ sha256sums=('027d7e8988bb69ac12ee92406c3be1fe13f990b1ca2249e226225cd1573308bb'
             '7cbba374356a189faac71001c5344ce8f02434684b1ce1accefc0cc4bd6718e5'
             '6b4da532421cac5600d09c0c52742aa52d848af098f7853abe60c02e9d0a3752'
             '2184069ab00ef43d9674756e9b7a56d15188bc4494d34425f04ddc779c52acd8'
-            'dfaa7a8ba9244ca8947d7caf312daa96b272edcc989421c8b33d5c3f706333de'
+            'f34b14ea53d216cc5cfe63c2a97b6922845c7f40ea6b05145504711c382ec6ee'
             'SKIP'
             'SKIP'
             'b7c987889d92a48d638d5258842b10f6c856e57f29ad23475aa507c7b4ad5710'
             '0e371fe1efd1ec422f89439a2befb5a0c3dd28c9e60780f55493d9699c6ebc0e'
-            '786dfc22e4c6ece883e7dedd0ba3f6c14018584df95450b2cb78f3da8b01f7cb'
+            '114ed15a4769aa4c7f9bdf2e4f892119c7f033462f0fe1a7cfd544f110e3d034'
             'cfd23a06797ac86575044428a393dd7f10f06eff7648d0b78aedad82cbe41279'
             '8d8401a99a9dfbc41aa2dc5b6a409a19860b1b918465e19de4a4ff18de075ea3'
             '08d165106fe35b68a7b48f216566951a5db0baac19098c015bcc81c5fcba678d'
@@ -324,8 +321,8 @@ sha256sums=('027d7e8988bb69ac12ee92406c3be1fe13f990b1ca2249e226225cd1573308bb'
             'cac035fe07663a319185c644c5b39b34bef89ada348881fa4a02d15290260445'
             '9dfa9f02d17c5cd9620fa2c1d43ca967b81b6a56d33c2bafae14e0c64e498baa'
             '2cfc28a394117184c4fd4c14fd8d1cbf2ed6d2c5ddba93f077cbbc621d73ca81'
-            '9640178d6251686c980c30fc528b3d70beac6ce8246bf433506a3f843808326c'
-            '90a6012cdd8a64ede8e0bbaf7331960bd68f628e0973b65459188eb1ccb5b829'
+            '31e65ffa0ec2a998de6a806f931a9ca684a9be5933918a94b0e79ef6456e0821'
+            '9ede98eceb69e9c93e25fdb2c567466963bdd2f81c0ecb9fb9e5107f6142ff26'
             '862f631ef9f25453ce38d9ed0197e62d85f9f5a0625ed77237e643297fb42f75'
             '2f7899b70d5c55aea3f6385385fea01ce21b48f9441982a94f36c842cceec083'
             '2b126cda3863f49b8d3a6de8fa8cca979d87bd9e66812531be5c02c9e5840d82'
