@@ -4,9 +4,9 @@
 # Contributor: Jan Alexander Steffens (heftig) <jan.steffens@gmail.com>
 
 pkgbase=linux-t2
-pkgver=5.16
+pkgver=5.16.1
 _srcname=linux-${pkgver}
-pkgrel=4
+pkgrel=1
 pkgdesc='Linux kernel for T2 Macs'
 _srctag=v${pkgver%.*}-${pkgver##*.}
 url="https://git.archlinux.org/linux.git/log/?h=v$_srctag"
@@ -103,12 +103,6 @@ source=(
   8033-brcmfmac-pcie-Load-and-provide-TxCap-blobs.patch
   8034-brcmfmac-common-Add-support-for-external-calibration.patch
 
-  # Broadcom BT device support
-  9001-bluetooth-add-disable-read-tx-power-quirk.patch
-  9002-mfd-intel-lpss-pci-fix-clock-speed-for-38a8-UART.patch
-  9003-mfd-intel-lpss-Fix-too-early-PM-enablement-in-the-AC.patch
-
-  
 )
 
 validpgpkeys=(
@@ -295,7 +289,7 @@ for _p in "${pkgname[@]}"; do
   }"
 done
 
-sha256sums=('027d7e8988bb69ac12ee92406c3be1fe13f990b1ca2249e226225cd1573308bb'
+sha256sums=('c7bf36231c6ea1e67283802a005430d14fe3f8a3498c0724ba3439afaf723545'
             'SKIP'
             '7cbba374356a189faac71001c5344ce8f02434684b1ce1accefc0cc4bd6718e5'
             '6b4da532421cac5600d09c0c52742aa52d848af098f7853abe60c02e9d0a3752'
@@ -357,8 +351,5 @@ sha256sums=('027d7e8988bb69ac12ee92406c3be1fe13f990b1ca2249e226225cd1573308bb'
             '8f9a6d47eaec7d9df9a822a146ab15ca7bee906866545493cac8621570237060'
             'ecede30aa68ea4646d3efb0a7190466ff1784f4e93756a04bb58756536f28035'
             '0bed877897873ae86e512d711b86fa11adc5b8e7fe35139e290e8d0a0133f6a5'
-            '23f4a7002632f95abb1ed75a4df0570b7a81e5cf4067a16da7101b16eb582a01'
-            '541043c30198baa7e026261d150748de057f0499720e6568da3cc4560090ff29'
-            'f2cff107e536fb7331994be0920632b60b3da42e3404a20919dcffcaeec79bdb'
-            '3bffb2bb84800453ba05676293de9b0b1619d0c19b6295e803f0d9c3a07be23a')
+            '23f4a7002632f95abb1ed75a4df0570b7a81e5cf4067a16da7101b16eb582a01')
 # vim:set ts=8 sts=2 sw=2 et:
