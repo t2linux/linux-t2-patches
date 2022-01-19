@@ -11,13 +11,15 @@ diff --git a/drivers/staging/apple-bce/apple_bce.c b/drivers/staging/apple-bce/a
 index a6a656f..8cfbd3f 100644
 --- a/drivers/staging/apple-bce/apple_bce.c
 +++ b/drivers/staging/apple-bce/apple_bce.c
-@@ -432,5 +432,6 @@ MODULE_LICENSE("GPL");
+@@ -434,5 +434,6 @@ MODULE_LICENSE("GPL");
  MODULE_AUTHOR("MrARM");
  MODULE_DESCRIPTION("Apple BCE Driver");
  MODULE_VERSION("0.01");
 +MODULE_ALIAS("pci:v0000106Bd00001801sv*sd*bc*sc*i*");
  module_init(apple_bce_module_init);
- module_exit(apple_bce_module_exit);
- -- 
+-module_exit(apple_bce_module_exit);
+\ No newline at end of file
++module_exit(apple_bce_module_exit);
+-- 
 2.34.1
 
