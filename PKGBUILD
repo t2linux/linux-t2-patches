@@ -6,7 +6,7 @@
 pkgbase=linux-t2
 pkgver=5.16.1
 _srcname=linux-${pkgver}
-pkgrel=1
+pkgrel=2
 pkgdesc='Linux kernel for T2 Macs'
 _srctag=v${pkgver%.*}-${pkgver##*.}
 url="https://git.archlinux.org/linux.git/log/?h=v$_srctag"
@@ -298,7 +298,7 @@ sha256sums=('c7bf36231c6ea1e67283802a005430d14fe3f8a3498c0724ba3439afaf723545'
             'SKIP'
             'SKIP'
             'b7c987889d92a48d638d5258842b10f6c856e57f29ad23475aa507c7b4ad5710'
-            '0e371fe1efd1ec422f89439a2befb5a0c3dd28c9e60780f55493d9699c6ebc0e'
+            '06f2923337310b9a1137892a90078e940820bddcd875f9c388d66c49353ca770'
             '114ed15a4769aa4c7f9bdf2e4f892119c7f033462f0fe1a7cfd544f110e3d034'
             'cfd23a06797ac86575044428a393dd7f10f06eff7648d0b78aedad82cbe41279'
             '8d8401a99a9dfbc41aa2dc5b6a409a19860b1b918465e19de4a4ff18de075ea3'
