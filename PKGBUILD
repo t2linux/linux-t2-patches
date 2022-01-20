@@ -4,9 +4,9 @@
 # Contributor: Jan Alexander Steffens (heftig) <jan.steffens@gmail.com>
 
 pkgbase=linux-t2
-pkgver=5.16.1
+pkgver=5.16.2
 _srcname=linux-${pkgver}
-pkgrel=2
+pkgrel=1
 pkgdesc='Linux kernel for T2 Macs'
 _srctag=v${pkgver%.*}-${pkgver##*.}
 url="https://git.archlinux.org/linux.git/log/?h=v$_srctag"
@@ -33,7 +33,8 @@ source=(
 
   # apple-bce, apple-ibridge
   apple-bce::git+https://github.com/t2linux/apple-bce-drv#commit=f93c6566f98b3c95677de8010f7445fa19f75091
-  apple-ibridge::git+https://github.com/t2linux/apple-ib-drv#commit=d8411ad1d87db8491e53887e36c3d37f445203eb
+  # Redecorating fork has kbd bl working on mbp16,*. Code quality of those changes could be better.
+  apple-ibridge::git+https://github.com/Redecorating/apple-ib-drv#commit=467df9b11cb55456f0365f40dd11c9e666623bf3
   1001-Put-apple-bce-and-apple-ibridge-in-drivers-staging.patch
   1002-add-modalias-to-apple-bce.patch
 
@@ -289,7 +290,7 @@ for _p in "${pkgname[@]}"; do
   }"
 done
 
-sha256sums=('c7bf36231c6ea1e67283802a005430d14fe3f8a3498c0724ba3439afaf723545'
+sha256sums=('09fe833a4d6304327bbe00e75ad7a2587188d1f406b3265fed11a0f8c5663b44'
             'SKIP'
             '7cbba374356a189faac71001c5344ce8f02434684b1ce1accefc0cc4bd6718e5'
             '6b4da532421cac5600d09c0c52742aa52d848af098f7853abe60c02e9d0a3752'
