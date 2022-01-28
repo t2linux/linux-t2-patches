@@ -4,7 +4,7 @@
 # Contributor: Jan Alexander Steffens (heftig) <jan.steffens@gmail.com>
 
 pkgbase=linux-t2
-pkgver=5.16.2
+pkgver=5.16.3
 _srcname=linux-${pkgver}
 pkgrel=1
 pkgdesc='Linux kernel for T2 Macs'
@@ -290,7 +290,7 @@ for _p in "${pkgname[@]}"; do
   }"
 done
 
-sha256sums=('09fe833a4d6304327bbe00e75ad7a2587188d1f406b3265fed11a0f8c5663b44'
+sha256sums=('ba402fe9c05b70505172664ccf8d3dd2d7b78c4fa8ec8fb27fa83a6ce6b9b5b1'
             'SKIP'
             '7cbba374356a189faac71001c5344ce8f02434684b1ce1accefc0cc4bd6718e5'
             '6b4da532421cac5600d09c0c52742aa52d848af098f7853abe60c02e9d0a3752'
