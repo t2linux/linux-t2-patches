@@ -4,7 +4,7 @@
 # Contributor: Jan Alexander Steffens (heftig) <jan.steffens@gmail.com>
 
 pkgbase=linux-t2
-pkgver=5.16.4
+pkgver=5.16.5
 _srcname=linux-${pkgver}
 pkgrel=1
 pkgdesc='Linux kernel for T2 Macs'
@@ -27,9 +27,6 @@ source=(
   # Arch Linux patches
   0001-ZEN-Add-sysctl-and-CONFIG-to-disallow-unprivileged-C.patch
   0002-HID-quirks-Add-Apple-Magic-Trackpad-2-to-hid_have_sp.patch
-
-  # Nvram Write without panic
-  0101-efi-runtime-avoid-EFIv2-runtime-services-on-Apple-x8.patch
 
   # apple-bce, apple-ibridge
   apple-bce::git+https://github.com/t2linux/apple-bce-drv#commit=f93c6566f98b3c95677de8010f7445fa19f75091
@@ -61,6 +58,9 @@ source=(
   4008-HID-apple-Add-support-for-MacBookAir9-1-keyboard-tra.patch
   4009-HID-apple-Add-support-for-MacBookPro16-1-keyboard-tr.patch
   4010-HID-apple-Add-ability-to-use-numbers-as-function-key.patch
+
+  # make hid not touch tb to avoid `vhci: [00] URB failed: 3`
+  5001-Fix-for-touchbar.patch
   
   # UVC Camera support
   6001-media-uvcvideo-Add-support-for-Apple-T2-attached-iSi.patch
@@ -290,12 +290,11 @@ for _p in "${pkgname[@]}"; do
   }"
 done
 
-sha256sums=('2be32a40b9be35a914166ab1de096ffdb50872366219e17471789a59e43b50bf'
+sha256sums=('ecaeedd9d289934f97c572aa965b6959d4d47f9789220e4fc3fbb525d8f1c7ab'
             'SKIP'
             '7cbba374356a189faac71001c5344ce8f02434684b1ce1accefc0cc4bd6718e5'
             '6b4da532421cac5600d09c0c52742aa52d848af098f7853abe60c02e9d0a3752'
             '2184069ab00ef43d9674756e9b7a56d15188bc4494d34425f04ddc779c52acd8'
-            'f34b14ea53d216cc5cfe63c2a97b6922845c7f40ea6b05145504711c382ec6ee'
             'SKIP'
             'SKIP'
             'b7c987889d92a48d638d5258842b10f6c856e57f29ad23475aa507c7b4ad5710'
@@ -318,6 +317,7 @@ sha256sums=('2be32a40b9be35a914166ab1de096ffdb50872366219e17471789a59e43b50bf'
             'cac035fe07663a319185c644c5b39b34bef89ada348881fa4a02d15290260445'
             '9dfa9f02d17c5cd9620fa2c1d43ca967b81b6a56d33c2bafae14e0c64e498baa'
             '2cfc28a394117184c4fd4c14fd8d1cbf2ed6d2c5ddba93f077cbbc621d73ca81'
+            'bfc4fb37d7bc9744d6fe060c8f846d13b95a94bc5354ccce024d058451f6add1'
             '31e65ffa0ec2a998de6a806f931a9ca684a9be5933918a94b0e79ef6456e0821'
             '9ede98eceb69e9c93e25fdb2c567466963bdd2f81c0ecb9fb9e5107f6142ff26'
             '862f631ef9f25453ce38d9ed0197e62d85f9f5a0625ed77237e643297fb42f75'
