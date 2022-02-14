@@ -4,7 +4,7 @@
 # Contributor: Jan Alexander Steffens (heftig) <jan.steffens@gmail.com>
 
 pkgbase=linux-t2
-pkgver=5.16.7
+pkgver=5.16.9
 _srcname=linux-${pkgver}
 pkgrel=1
 pkgdesc='Linux kernel for T2 Macs'
@@ -159,7 +159,7 @@ _package() {
   depends=(coreutils kmod initramfs)
   optdepends=('crda: to set the correct wireless channels of your country'
               'linux-firmware: firmware images needed for some devices')
-  provides=(VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE)
+  provides=(VIRTUALBOX-GUEST-MODULES WIREGUARD-MODULE linux)
   replaces=(virtualbox-guest-modules-arch wireguard-arch)
 
   cd $_srcname
@@ -184,6 +184,7 @@ _package() {
 _package-headers() {
   pkgdesc="Headers and scripts for building modules for the $pkgdesc kernel"
   depends=(pahole)
+  provides=(linux-headers)
 
   cd $_srcname
   local builddir="$pkgdir/usr/lib/modules/$(<version)/build"
@@ -265,6 +266,7 @@ _package-headers() {
 
 _package-docs() {
   pkgdesc="Documentation for the $pkgdesc kernel"
+  provides=(linux-docs)
 
   cd $_srcname
   local builddir="$pkgdir/usr/lib/modules/$(<version)/build"
@@ -290,7 +292,7 @@ for _p in "${pkgname[@]}"; do
   }"
 done
 
-sha256sums=('5751f53e8e5415eb0494ac1513765cbdea28848963999dfdb5d4e7f4c3d8a6cd'
+sha256sums=('1660e7228ec299c187c19739d115ded97f6b1be05a24986c4c443e7c5e8b744f'
             'SKIP'
             '7cbba374356a189faac71001c5344ce8f02434684b1ce1accefc0cc4bd6718e5'
             '6b4da532421cac5600d09c0c52742aa52d848af098f7853abe60c02e9d0a3752'
@@ -306,7 +308,7 @@ sha256sums=('5751f53e8e5415eb0494ac1513765cbdea28848963999dfdb5d4e7f4c3d8a6cd'
             '62f6d63815d4843ca893ca76b84a9d32590a50358ca0962017ccd75a40884ba8'
             '2827dab6eeb2d2a08034938024f902846b5813e967a0ea253dc1ea88315da383'
             '398dec7d54c6122ae2263cd5a6d52353800a1a60fd85e52427c372ea9974a625'
-            '80198d668e894656cd6a13fad5e55dfc22a242fa5919da8e29efeed55ed061ef'
+            'd4ca5a01da5468a1d2957b8eb4a819e1b867a3bcd1cd47389d7c9ac9154b5430'
             '1366719f62b2d698693b31916569f1178f3d1b0a66e747b7f40f1389edceff07'
             '83f4be6849ba4d5f9fad647ad2eb78bf6409ee98a40ac62e8a5b80496233d70a'
             '44bd3643b2b22fedc59d79511199f30ce6759fa0acdd9a66262a53c5e046da6b'
