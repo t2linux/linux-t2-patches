@@ -1,0 +1,38 @@
+From b6740001d1adbfe84768b859bee038ceeccdc50c Mon Sep 17 00:00:00 2001
+From: Paul Pawlowski <paul@mrarm.io>
+Date: Thu, 13 Jan 2022 00:13:01 +1100
+Subject: [PATCH] media: uvcvideo: Add support for Apple T2-attached FaceTime  HD Camera
+
+Adds the requisite device id to support detection of the Apple FaceTime
+HD webcam exposed over the T2 BCE VHCI interface.
+
+Tested-by: Aun-Ali Zaidi <admin@kodeit.net>
+Signed-off-by: Paul Pawlowski <paul@mrarm.io>
+Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
+Signed-off-by: Aditya Garg <gargaditya08@live.com>
+---
+ drivers/media/usb/uvc/uvc_driver.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/drivers/media/usb/uvc/uvc_driver.c b/drivers/media/usb/uvc/uvc_driver.c
+index 7c007426e..88dc9e7aa 100644
+--- a/drivers/media/usb/uvc/uvc_driver.c
++++ b/drivers/media/usb/uvc/uvc_driver.c
+@@ -2848,6 +2848,15 @@ static const struct usb_device_id uvc_ids[] = {
+ 	  .bInterfaceProtocol	= 0,
+ 	  .driver_info		= UVC_INFO_QUIRK(UVC_QUIRK_PROBE_MINMAX
+ 					| UVC_QUIRK_BUILTIN_ISIGHT) },
++	/* Apple FaceTime HD Camera (Built-In) */
++	{ .match_flags		= USB_DEVICE_ID_MATCH_DEVICE
++				| USB_DEVICE_ID_MATCH_INT_INFO,
++	  .idVendor		= 0x05ac,
++	  .idProduct		= 0x8514,
++	  .bInterfaceClass	= USB_CLASS_VIDEO,
++	  .bInterfaceSubClass	= 1,
++	  .bInterfaceProtocol	= 0,
++	  .driver_info		= (kernel_ulong_t)&uvc_quirk_probe_def },
+ 	/* Apple Built-In iSight via iBridge */
+ 	{ .match_flags		= USB_DEVICE_ID_MATCH_DEVICE
+ 				| USB_DEVICE_ID_MATCH_INT_INFO,
+--
+2.25.1
