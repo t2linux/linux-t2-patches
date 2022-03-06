@@ -1,7 +1,7 @@
-From 10ae20866cddd7ba8421dfa331d617c36e1510f6 Mon Sep 17 00:00:00 2001
+From 2a33be44976577007be09404ee29cf976c20f960 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:13:49 +0900
-Subject: [PATCH 04/34] brcmfmac: pcie/sdio/usb: Get CLM blob via standard
+Subject: [PATCH 04/33] brcmfmac: pcie/sdio/usb: Get CLM blob via standard
  firmware mechanism
 
 Now that the firmware fetcher can handle per-board CLM files, load the
@@ -11,6 +11,7 @@ just return the existing blob, instead of fetching the filename.
 This enables per-board CLM blobs, which are required on Apple platforms.
 
 Signed-off-by: Hector Martin <marcan@marcan.st>
+Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
  .../broadcom/brcm80211/brcmfmac/bus.h         | 19 ++++++---
  .../broadcom/brcm80211/brcmfmac/common.c      | 12 +-----
@@ -370,5 +371,5 @@ index 9fb68c2dc..85e18fb9c 100644
  
  #define BRCMF_USB_FW_CODE	0
 -- 
-2.34.1
+2.25.1
 

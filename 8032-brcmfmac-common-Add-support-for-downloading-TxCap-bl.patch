@@ -1,13 +1,14 @@
-From 4c496f67db9939ac2be78a91c483d3afd4960f08 Mon Sep 17 00:00:00 2001
+From 10db9c2ed21b562ca52fb21f3648cb1b4de2c048 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Sun, 26 Dec 2021 00:25:00 +0900
-Subject: [PATCH 32/34] brcmfmac: common: Add support for downloading TxCap
+Subject: [PATCH 31/33] brcmfmac: common: Add support for downloading TxCap
  blobs
 
 The TxCap blobs are additional data blobs used on Apple devices, and
 are uploaded analogously to CLM blobs. Add core support for doing this.
 
 Signed-off-by: Hector Martin <marcan@marcan.st>
+Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
  .../broadcom/brcm80211/brcmfmac/bus.h         |  1 +
  .../broadcom/brcm80211/brcmfmac/common.c      | 97 +++++++++++++------
@@ -185,5 +186,5 @@ index c84c48e49..d65308c3f 100644
  	memset(buf, 0, sizeof(buf));
  	err = brcmf_fil_iovar_data_get(ifp, "ver", buf, sizeof(buf));
 -- 
-2.34.1
+2.25.1
 

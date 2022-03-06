@@ -1,7 +1,7 @@
-From 534075f8cc83a2d5b57af7622e0bc03277e2aa84 Mon Sep 17 00:00:00 2001
+From 3c13ae185596e5861150ec3aac9e64dba3135f4e Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:52:03 +0900
-Subject: [PATCH 26/34] brcmfmac: pcie: Add IDs/properties for BCM4387
+Subject: [PATCH 26/33] brcmfmac: pcie: Add IDs/properties for BCM4387
 
 This chip is present on Apple M1 Pro/Max (t600x) platforms:
 
@@ -11,6 +11,7 @@ This chip is present on Apple M1 Pro/Max (t600x) platforms:
 * madagascar (apple,j316c): MacBook Pro (16-inch, M1 Max, 2021)
 
 Signed-off-by: Hector Martin <marcan@marcan.st>
+Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
  drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c   | 2 ++
  drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c   | 8 ++++++++
@@ -91,5 +92,5 @@ index 54d7ec515..3d6c803fb 100644
  
  /* brcmsmac IDs */
 -- 
-2.34.1
+2.25.1
 

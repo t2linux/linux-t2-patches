@@ -1,7 +1,7 @@
-From ebdaee11be6e18ea1952a72a4a9ef80ca4228b7d Mon Sep 17 00:00:00 2001
+From 65727024796647d6848003f40c9d1af863842e46 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Thu, 23 Dec 2021 19:51:36 +0900
-Subject: [PATCH 15/34] brcmfmac: acpi: Add support for fetching Apple ACPI
+Subject: [PATCH 15/33] brcmfmac: acpi: Add support for fetching Apple ACPI
  properties
 
 On DT platforms, the module-instance and antenna-sku-info properties
@@ -14,6 +14,7 @@ Add support for this, to allow proper firmware selection on Apple
 platforms.
 
 Signed-off-by: Hector Martin <marcan@marcan.st>
+Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
  .../broadcom/brcm80211/brcmfmac/Makefile      |  2 +
  .../broadcom/brcm80211/brcmfmac/acpi.c        | 52 +++++++++++++++++++
@@ -123,5 +124,5 @@ index d4aa25d64..a88c4a931 100644
  
  u8 brcmf_map_prio_to_aci(void *cfg, u8 prio);
 -- 
-2.34.1
+2.25.1
 

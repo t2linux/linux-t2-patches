@@ -1,7 +1,7 @@
-From 880d3f98041005210a332974c3b19e0116e14053 Mon Sep 17 00:00:00 2001
+From 10a854cb42b9e85483a9a07887b9b24dbc1d02a3 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:38:37 +0900
-Subject: [PATCH 05/34] brcmfmac: firmware: Support passing in multiple
+Subject: [PATCH 05/33] brcmfmac: firmware: Support passing in multiple
  board_types
 
 In order to make use of the multiple alt_path functionality, change
@@ -10,14 +10,18 @@ of board type strings to try for the firmware fetch.
 
 Signed-off-by: Hector Martin <marcan@marcan.st>
 ---
- .../broadcom/brcm80211/brcmfmac/firmware.c    | 35 +++++++++++++------
+Adjusted for rebase on:
+- c4caf72 ("brcmfmac: firmware: Fix crash in brcm_alt_fw_path")
+Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
+---
+ .../broadcom/brcm80211/brcmfmac/firmware.c    | 37 +++++++++++++------
  .../broadcom/brcm80211/brcmfmac/firmware.h    |  2 +-
  .../broadcom/brcm80211/brcmfmac/pcie.c        |  7 +++-
- .../broadcom/brcm80211/brcmfmac/sdio.c        |  4 ++-
- 4 files changed, 35 insertions(+), 13 deletions(-)
+ .../broadcom/brcm80211/brcmfmac/sdio.c        |  4 +-
+ 4 files changed, 36 insertions(+), 14 deletions(-)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.c
-index 16f342bc5..02e36fa3d 100644
+index 93e31ddd0..68627c51c 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.c
 @@ -594,26 +594,41 @@ static int brcmf_fw_complete_request(const struct firmware *fw,
@@ -80,6 +84,15 @@ index 16f342bc5..02e36fa3d 100644
  		const char **alt_paths = brcm_alt_fw_paths(cur->path, fwctx);
  		if (!alt_paths)
  			goto fallback;
+@@ -748,7 +763,7 @@ int brcmf_fw_get_firmwares(struct device *dev, struct brcmf_fw_request *req,
+ 	fwctx->done = fw_cb;
+ 
+ 	/* First try alternative board-specific path if any */
+-	if (fwctx->req->board_type)
++	if (fwctx->req->board_types)
+ 		fwctx->alt_paths = brcm_alt_fw_paths(first->path, fwctx);
+ 
+ 	if (fwctx->alt_paths) {
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.h b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.h
 index e290dec9c..d94a1d5be 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.h
@@ -131,5 +144,5 @@ index 7466e6fd6..32f457bf0 100644
  	return fwreq;
  }
 -- 
-2.34.1
+2.25.1
 

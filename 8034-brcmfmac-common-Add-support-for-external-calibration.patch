@@ -1,7 +1,7 @@
-From f92aef8679038a4d0b055babf368f8f43bdd072b Mon Sep 17 00:00:00 2001
+From f18a47632c0ba2c032d7a0427f78df33a6a85582 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Sun, 26 Dec 2021 00:53:37 +0900
-Subject: [PATCH 34/34] brcmfmac: common: Add support for external calibration
+Subject: [PATCH 33/33] brcmfmac: common: Add support for external calibration
  blobs
 
 The calibration blob for a chip is normally stored in SROM and loaded
@@ -14,6 +14,7 @@ dongle. The loading mechanism is the same as used for the CLM and TxCap
 blobs.
 
 Signed-off-by: Hector Martin <marcan@marcan.st>
+Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
  .../broadcom/brcm80211/brcmfmac/common.c      | 24 +++++++++++++++++++
  .../broadcom/brcm80211/brcmfmac/common.h      |  2 ++
@@ -96,5 +97,5 @@ index 31407d3a1..9db5fa106 100644
  	root = of_find_node_by_path("/");
  	if (root && !settings->board_type) {
 -- 
-2.34.1
+2.25.1
 

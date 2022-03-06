@@ -1,7 +1,7 @@
-From e5278ec18dc59d4c01afb60e706df41d7e83f1cf Mon Sep 17 00:00:00 2001
+From 3e028855aba2a4f5ccf62afdb5ec849212902ff5 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:39:28 +0900
-Subject: [PATCH 27/34] brcmfmac: pcie: Replace brcmf_pcie_copy_mem_todev with
+Subject: [PATCH 27/33] brcmfmac: pcie: Replace brcmf_pcie_copy_mem_todev with
  memcpy_toio
 
 The alignment check was wrong (e.g. & 4 instead of & 3), and the logic
@@ -14,6 +14,7 @@ was already using it anyway.
 
 Fixes: 9e37f045d5e7 ("brcmfmac: Adding PCIe bus layer support.")
 Signed-off-by: Hector Martin <marcan@marcan.st>
+Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
  .../broadcom/brcm80211/brcmfmac/pcie.c        | 53 +++----------------
  1 file changed, 6 insertions(+), 47 deletions(-)
@@ -115,5 +116,5 @@ index bc2a53812..865e3f28c 100644
  	} else {
  		brcmf_dbg(PCIE, "No matching NVRAM file found %s\n",
 -- 
-2.34.1
+2.25.1
 

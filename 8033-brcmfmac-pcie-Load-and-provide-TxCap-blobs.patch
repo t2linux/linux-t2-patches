@@ -1,13 +1,14 @@
-From de52f6bca772503aa189136b565584c1fbf6b43a Mon Sep 17 00:00:00 2001
+From eb6de2cd7464af4db644a3da750482d6ce4bbb6e Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Sun, 26 Dec 2021 00:26:10 +0900
-Subject: [PATCH 33/34] brcmfmac: pcie: Load and provide TxCap blobs
+Subject: [PATCH 32/33] brcmfmac: pcie: Load and provide TxCap blobs
 
 These blobs are named .txcap_blob, and exist alongside the existing
 .clm_blob files. Use the existing firmware machinery to provide them to
 the core.
 
 Signed-off-by: Hector Martin <marcan@marcan.st>
+Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
  .../net/wireless/broadcom/brcm80211/brcmfmac/pcie.c | 13 +++++++++++++
  1 file changed, 13 insertions(+)
@@ -87,5 +88,5 @@ index f1b90b5e7..b16bab061 100644
  	if (devinfo->ci)
  		brcmf_chip_detach(devinfo->ci);
 -- 
-2.34.1
+2.25.1
 

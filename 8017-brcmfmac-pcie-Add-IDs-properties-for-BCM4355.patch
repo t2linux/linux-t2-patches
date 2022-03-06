@@ -1,7 +1,7 @@
-From e46046ce92838278ec265de9d662ca3ee0be8cef Mon Sep 17 00:00:00 2001
+From c74f1421fb8d246b22117608406d4e843853072e Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:50:15 +0900
-Subject: [PATCH 17/34] brcmfmac: pcie: Add IDs/properties for BCM4355
+Subject: [PATCH 17/33] brcmfmac: pcie: Add IDs/properties for BCM4355
 
 This chip is present on at least these Apple T2 Macs:
 
@@ -9,6 +9,7 @@ This chip is present on at least these Apple T2 Macs:
 * hawaii: MacBook Air 13" (True Tone, 2019)
 
 Signed-off-by: Hector Martin <marcan@marcan.st>
+Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
  drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c   | 1 +
  drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c   | 8 ++++++++
@@ -88,5 +89,5 @@ index 8f552b53f..9636ab4dd 100644
  #define BRCM_PCIE_43567_DEVICE_ID	0x43d3
  #define BRCM_PCIE_43570_DEVICE_ID	0x43d9
 -- 
-2.34.1
+2.25.1
 

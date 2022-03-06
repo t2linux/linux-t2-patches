@@ -1,7 +1,7 @@
-From 18b840ed5dc7084d4ba83345a63a7f5f33cec013 Mon Sep 17 00:00:00 2001
+From b6aadc75a336f1d9d9b31448dfe13978c0254325 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:26:34 +0900
-Subject: [PATCH 06/34] brcmfmac: pcie: Read Apple OTP information
+Subject: [PATCH 06/33] brcmfmac: pcie: Read Apple OTP information
 
 On Apple platforms, the One Time Programmable ROM in the Broadcom chips
 contains information about the specific board design (module, vendor,
@@ -12,6 +12,7 @@ Note that the user OTP offset/size is per-chip. This patch does not add
 any chips yet.
 
 Signed-off-by: Hector Martin <marcan@marcan.st>
+Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
  .../broadcom/brcm80211/brcmfmac/pcie.c        | 221 ++++++++++++++++++
  include/linux/bcma/bcma_driver_chipcommon.h   |   1 +
@@ -297,5 +298,5 @@ index d35b92060..c91db7460 100644
  #define  BCMA_CC_SROM_CONTROL_SIZE_MASK	0x00000006
  #define  BCMA_CC_SROM_CONTROL_SIZE_1K	0x00000000
 -- 
-2.34.1
+2.25.1
 

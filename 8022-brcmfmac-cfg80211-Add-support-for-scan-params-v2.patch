@@ -1,12 +1,13 @@
-From db9e401c2913bb2f8055ace80e99d1a5578a08b1 Mon Sep 17 00:00:00 2001
+From 69cec9fe9891c2a34dcbedb8fe454cce89a64282 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Mon, 20 Dec 2021 03:39:44 +0900
-Subject: [PATCH 22/34] brcmfmac: cfg80211: Add support for scan params v2
+Subject: [PATCH 22/33] brcmfmac: cfg80211: Add support for scan params v2
 
 This new API version is required for at least the BCM4387 firmware. Add
 support for it, with a fallback to the v1 API.
 
 Signed-off-by: Hector Martin <marcan@marcan.st>
+Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
  .../broadcom/brcm80211/brcmfmac/cfg80211.c    | 113 ++++++++++++++----
  .../broadcom/brcm80211/brcmfmac/feature.c     |   1 +
@@ -15,7 +16,7 @@ Signed-off-by: Hector Martin <marcan@marcan.st>
  4 files changed, 145 insertions(+), 22 deletions(-)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
-index ba5231861..f9de22f77 100644
+index fb7277783..af7792d62 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
 @@ -769,12 +769,50 @@ void brcmf_set_mpc(struct brcmf_if *ifp, int mpc)
@@ -250,7 +251,7 @@ index d1f4257af..9d098a068 100644
  /*
   * Quirks:
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h
-index e69d1e569..9b794d20f 100644
+index ff2ef557f..d99aba504 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h
 @@ -48,6 +48,10 @@
@@ -331,5 +332,5 @@ index e69d1e569..9b794d20f 100644
  
  struct brcmf_escan_result_le {
 -- 
-2.34.1
+2.25.1
 

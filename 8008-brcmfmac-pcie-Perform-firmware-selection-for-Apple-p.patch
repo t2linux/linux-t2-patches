@@ -1,7 +1,7 @@
-From 2ea0163cdf39c28e923961180b8dd158467a3751 Mon Sep 17 00:00:00 2001
+From 4fe7b8a7ba38e6a124b0a6be20533495382629c0 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:45:21 +0900
-Subject: [PATCH 08/34] brcmfmac: pcie: Perform firmware selection for Apple
+Subject: [PATCH 08/33] brcmfmac: pcie: Perform firmware selection for Apple
  platforms
 
 On Apple platforms, firmware selection uses the following elements:
@@ -72,6 +72,7 @@ the mapping is not consistent between different chip types, so this has
 to be determined experimentally.
 
 Signed-off-by: Hector Martin <marcan@marcan.st>
+Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
  .../broadcom/brcm80211/brcmfmac/pcie.c        | 68 +++++++++++++++++--
  1 file changed, 63 insertions(+), 5 deletions(-)
@@ -156,5 +157,5 @@ index 0f19fc9b1..4f14b261a 100644
  	return fwreq;
  }
 -- 
-2.34.1
+2.25.1
 

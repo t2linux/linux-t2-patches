@@ -1,7 +1,7 @@
-From bc717842356e7739ee9b58838592ef0e540d0b39 Mon Sep 17 00:00:00 2001
+From b2bdad2205da0cba4d520d59947a6bd08c26b36c Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Mon, 20 Dec 2021 19:15:58 +0900
-Subject: [PATCH 25/34] brcmfmac: cfg80211: Pass the PMK in binary instead of
+Subject: [PATCH 25/33] brcmfmac: cfg80211: Pass the PMK in binary instead of
  hex
 
 Apparently the hex passphrase mechanism does not work on newer
@@ -15,12 +15,13 @@ Also clear the structure before setting the PMK. This was leaking
 uninitialized stack contents to the device.
 
 Signed-off-by: Hector Martin <marcan@marcan.st>
+Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
  .../wireless/broadcom/brcm80211/brcmfmac/cfg80211.c | 13 +++++++------
  1 file changed, 7 insertions(+), 6 deletions(-)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
-index ccda7ce39..d6d34e079 100644
+index d97a21f27..9a8ca59ad 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
 @@ -1420,13 +1420,14 @@ static int brcmf_set_pmk(struct brcmf_if *ifp, const u8 *pmk_data, u16 pmk_len)
@@ -45,5 +46,5 @@ index ccda7ce39..d6d34e079 100644
  	/* store psk in firmware */
  	err = brcmf_fil_cmd_data_set(ifp, BRCMF_C_SET_WSEC_PMK,
 -- 
-2.34.1
+2.25.1
 

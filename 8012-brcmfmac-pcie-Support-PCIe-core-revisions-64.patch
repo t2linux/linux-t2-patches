@@ -1,7 +1,7 @@
-From 6de1197eadd384f977934fb85061db7108f0c86d Mon Sep 17 00:00:00 2001
+From 215e445d3271dada17f435e830b1b73987ba22e7 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:25:35 +0900
-Subject: [PATCH 12/34] brcmfmac: pcie: Support PCIe core revisions >= 64
+Subject: [PATCH 12/33] brcmfmac: pcie: Support PCIe core revisions >= 64
 
 These newer PCIe core revisions include new sets of registers that must
 be used instead of the legacy ones. Introduce a brcmf_pcie_reginfo to
@@ -9,6 +9,7 @@ hold the specific register offsets and values to use for a given
 platform, and change all the register accesses to indirect through it.
 
 Signed-off-by: Hector Martin <marcan@marcan.st>
+Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
  .../broadcom/brcm80211/brcmfmac/pcie.c        | 127 +++++++++++++++---
  1 file changed, 107 insertions(+), 20 deletions(-)
@@ -262,5 +263,5 @@ index 7190b7b80..01c7b2703 100644
  		if (brcmf_pcie_send_mb_data(devinfo, BRCMF_H2D_HOST_D0_INFORM))
  			goto cleanup;
 -- 
-2.34.1
+2.25.1
 

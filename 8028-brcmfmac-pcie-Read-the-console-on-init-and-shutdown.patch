@@ -1,12 +1,13 @@
-From f6f42c43e1301ba77fe6b4480007871b3a2da85c Mon Sep 17 00:00:00 2001
+From f9d950b6a4e5fe3a5fa8b729a1f17e6f2091c6a7 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:43:03 +0900
-Subject: [PATCH 28/34] brcmfmac: pcie: Read the console on init and shutdown
+Subject: [PATCH 28/33] brcmfmac: pcie: Read the console on init and shutdown
 
 This allows us to get console messages if the firmware crashed during
 early init, or if an operation failed and we're about to shut down.
 
 Signed-off-by: Hector Martin <marcan@marcan.st>
+Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
  drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c | 4 ++++
  1 file changed, 4 insertions(+)
@@ -41,5 +42,5 @@ index 865e3f28c..8b67cddb7 100644
  	devinfo->state = BRCMFMAC_PCIE_STATE_DOWN;
  	if (devinfo->ci)
 -- 
-2.34.1
+2.25.1
 

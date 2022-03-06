@@ -1,7 +1,7 @@
-From d37f0e2bd8a981c82aaec33c4916b216a245d87c Mon Sep 17 00:00:00 2001
+From 2e57c94d84c20596dafb0e7d94fe36f77b239292 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:46:40 +0900
-Subject: [PATCH 13/34] brcmfmac: pcie: Add IDs/properties for BCM4378
+Subject: [PATCH 13/33] brcmfmac: pcie: Add IDs/properties for BCM4378
 
 This chip is present on Apple M1 (t8103) platforms:
 
@@ -12,6 +12,7 @@ This chip is present on Apple M1 (t8103) platforms:
 * santorini (apple,j457): iMac (24-inch, 2x USB-C, M1, 2020)
 
 Signed-off-by: Hector Martin <marcan@marcan.st>
+Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
  drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c   | 2 ++
  drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c   | 8 ++++++++
@@ -92,5 +93,5 @@ index 9d8132016..8f552b53f 100644
  
  /* brcmsmac IDs */
 -- 
-2.34.1
+2.25.1
 

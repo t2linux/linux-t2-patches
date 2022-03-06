@@ -1,7 +1,7 @@
-From 3ecb57b6628211ef42a6267f17a1d5c5fcecd012 Mon Sep 17 00:00:00 2001
+From 6584070cfb25335f4ac239a71637161e978dfdd7 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Thu, 23 Dec 2021 19:30:17 +0900
-Subject: [PATCH 16/34] brcmfmac: pcie: Provide a buffer of random bytes to the
+Subject: [PATCH 16/33] brcmfmac: pcie: Provide a buffer of random bytes to the
  device
 
 Newer Apple firmwares on chipsets without a hardware RNG require the
@@ -13,6 +13,7 @@ This won't affect chips/firmwares that do not use this feature, so do it
 unconditionally.
 
 Signed-off-by: Hector Martin <marcan@marcan.st>
+Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
  .../broadcom/brcm80211/brcmfmac/pcie.c        | 31 +++++++++++++++++++
  1 file changed, 31 insertions(+)
@@ -79,5 +80,5 @@ index e1bc7e4a9..b71952254 100644
  		brcmf_dbg(PCIE, "No matching NVRAM file found %s\n",
  			  devinfo->nvram_name);
 -- 
-2.34.1
+2.25.1
 

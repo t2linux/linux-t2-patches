@@ -1,7 +1,7 @@
-From dd4b327a30697ddad3819ca145d4ce319b7cf528 Mon Sep 17 00:00:00 2001
+From 37666ce8bd160b8eb281ade724e11ac560277926 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Thu, 23 Dec 2021 22:32:08 +0900
-Subject: [PATCH 09/34] brcmfmac: firmware: Allow platform to override macaddr
+Subject: [PATCH 09/33] brcmfmac: firmware: Allow platform to override macaddr
 
 On Device Tree platforms, it is customary to be able to set the MAC
 address via the Device Tree, as it is often stored in system firmware.
@@ -18,12 +18,13 @@ without one, such as Apple ARM64 devices, this is required for the
 firmware to boot (it will fail if it does not have a valid MAC at all).
 
 Signed-off-by: Hector Martin <marcan@marcan.st>
+Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
  .../broadcom/brcm80211/brcmfmac/firmware.c    | 30 +++++++++++++++++--
  1 file changed, 28 insertions(+), 2 deletions(-)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.c
-index 02e36fa3d..dc4151bcc 100644
+index 68627c51c..a0ee0fab6 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.c
 @@ -21,6 +21,8 @@
@@ -121,5 +122,5 @@ index 02e36fa3d..dc4151bcc 100644
  	if (free_bcm47xx_nvram)
  		bcm47xx_nvram_release_contents(data);
 -- 
-2.34.1
+2.25.1
 

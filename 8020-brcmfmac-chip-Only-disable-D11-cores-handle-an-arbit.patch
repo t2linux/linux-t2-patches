@@ -1,7 +1,7 @@
-From 9600a63e7c36866faac8c458dc48ba9eb19032bc Mon Sep 17 00:00:00 2001
+From 66c8e1424e89aebddce3f0bea7961f8848eaf9ac Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Mon, 20 Dec 2021 20:00:57 +0900
-Subject: [PATCH 20/34] brcmfmac: chip: Only disable D11 cores; handle an
+Subject: [PATCH 20/33] brcmfmac: chip: Only disable D11 cores; handle an
  arbitrary number
 
 At least on BCM4387, the D11 cores are held in reset on cold startup and
@@ -15,6 +15,7 @@ brcmf_chip_ai_resetcore(), but since we aren't using that any more, just
 handle it here.
 
 Signed-off-by: Hector Martin <marcan@marcan.st>
+Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
  .../wireless/broadcom/brcm80211/brcmfmac/chip.c    | 14 +++++++++-----
  1 file changed, 9 insertions(+), 5 deletions(-)
@@ -49,5 +50,5 @@ index 73ab96968..15a1211f0 100644
  
  static bool brcmf_chip_cr4_set_active(struct brcmf_chip_priv *chip, u32 rstvec)
 -- 
-2.34.1
+2.25.1
 

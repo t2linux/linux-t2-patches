@@ -1,11 +1,12 @@
-From 540d5a24c9b0c9a14dce5b59167628b9f18c27cd Mon Sep 17 00:00:00 2001
+From c0aebf2589cc5360ca0dfdbef24f48f79ff2f3da Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Sun, 26 Dec 2021 00:24:02 +0900
-Subject: [PATCH 31/34] brcmfmac: fwil: Constify iovar name arguments
+Subject: [PATCH 30/33] brcmfmac: fwil: Constify iovar name arguments
 
 Make all the iovar name arguments const char * instead of just char *.
 
 Signed-off-by: Hector Martin <marcan@marcan.st>
+Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
  .../broadcom/brcm80211/brcmfmac/fwil.c        | 34 +++++++++----------
  .../broadcom/brcm80211/brcmfmac/fwil.h        | 28 +++++++--------
@@ -211,5 +212,5 @@ index cb26f8c59..bc693157c 100644
  
  #endif /* _fwil_h_ */
 -- 
-2.34.1
+2.25.1
 

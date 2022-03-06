@@ -1,7 +1,7 @@
-From 3f43bc112ea442739258e2c6b143408c7c45e2e9 Mon Sep 17 00:00:00 2001
+From 5fab9624a67973825bb62d0b1bdb104ead2937eb Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 19:32:16 +0900
-Subject: [PATCH 01/34] brcmfmac: pcie: Declare missing firmware files in
+Subject: [PATCH 01/33] brcmfmac: pcie: Declare missing firmware files in
  pcie.c
 
 Move one of the declarations from sdio.c to pcie.c, since it makes no
@@ -9,6 +9,7 @@ sense in the former (SDIO support is optional), and add missing ones.
 
 Signed-off-by: Hector Martin <marcan@marcan.st>
 Fixes: 75729e110e68 ("brcmfmac: expose firmware config files through modinfo")
+Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
  drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c | 7 +++++++
  drivers/net/wireless/broadcom/brcm80211/brcmfmac/sdio.c | 1 -
@@ -45,5 +46,5 @@ index 8effeb7a7..5d156e591 100644
  /* per-board firmware binaries */
  MODULE_FIRMWARE(BRCMF_FW_DEFAULT_PATH "brcmfmac*-sdio.*.bin");
 -- 
-2.34.1
+2.25.1
 

@@ -1,7 +1,7 @@
-From 150f44fdb2184e9bd9ceed6a05dcdfb9334d8924 Mon Sep 17 00:00:00 2001
+From 8778a49e71985e5bb5e2c16540a41d88f590ec15 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Mon, 20 Dec 2021 18:15:10 +0900
-Subject: [PATCH 23/34] brcmfmac: feature: Add support for setting feats based
+Subject: [PATCH 23/33] brcmfmac: feature: Add support for setting feats based
  on WLC version
 
 The "wlc_ver" iovar returns information on the WLC and EPI versions.
@@ -9,6 +9,7 @@ This can be used to determine whether the PMKID_V2 and _V3 features are
 supported.
 
 Signed-off-by: Hector Martin <marcan@marcan.st>
+Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
  .../broadcom/brcm80211/brcmfmac/feature.c     | 48 +++++++++++++++++++
  .../broadcom/brcm80211/brcmfmac/feature.h     |  4 +-
@@ -97,7 +98,7 @@ index 9d098a068..becbcc50d 100644
  /*
   * Quirks:
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h
-index 9b794d20f..7be1f4ca5 100644
+index d99aba504..6b9516cca 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h
 @@ -788,6 +788,31 @@ struct brcmf_rev_info_le {
@@ -133,5 +134,5 @@ index 9b794d20f..7be1f4ca5 100644
   * struct brcmf_assoclist_le - request assoc list.
   *
 -- 
-2.34.1
+2.25.1
 

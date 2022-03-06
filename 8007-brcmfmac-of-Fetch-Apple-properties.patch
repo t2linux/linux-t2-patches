@@ -1,7 +1,7 @@
-From c42886eecdf0752c2525bb9f24a4a1db862fdd18 Mon Sep 17 00:00:00 2001
+From 07d5d74638a8c297b48201e0ada94bdd08caaf44 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:27:19 +0900
-Subject: [PATCH 07/34] brcmfmac: of: Fetch Apple properties
+Subject: [PATCH 07/33] brcmfmac: of: Fetch Apple properties
 
 On Apple ARM64 platforms, firmware selection requires two properties
 that come from system firmware: the module-instance (aka "island", a
@@ -16,6 +16,7 @@ The module-instance is used to construct a board_type by prepending it
 with "apple,".
 
 Signed-off-by: Hector Martin <marcan@marcan.st>
+Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
  .../broadcom/brcm80211/brcmfmac/common.h      |  1 +
  .../wireless/broadcom/brcm80211/brcmfmac/of.c | 20 ++++++++++++++++++-
@@ -72,5 +73,5 @@ index 513c7e642..31407d3a1 100644
  		char *board_type;
  		const char *tmp;
 -- 
-2.34.1
+2.25.1
 

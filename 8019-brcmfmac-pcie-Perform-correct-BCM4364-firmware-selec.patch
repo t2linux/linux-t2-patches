@@ -1,7 +1,7 @@
-From 680ef41dd2e00b3e891e62f5ed8a746e96b8567d Mon Sep 17 00:00:00 2001
+From 0ea04c1f73e506a45383afb20e9ecf28e39b02a7 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:51:52 +0900
-Subject: [PATCH 19/34] brcmfmac: pcie: Perform correct BCM4364 firmware
+Subject: [PATCH 19/33] brcmfmac: pcie: Perform correct BCM4364 firmware
  selection
 
 This chip exists in two revisions (B2=r3 and B3=r4) on different
@@ -33,6 +33,7 @@ kure:     iMac 27" (5K, 2020, 5700/XT)
 Cc: brian m. carlson <sandals@crustytoothpaste.net>
 Fixes: 24f0bd136264 ("brcmfmac: add the BRCM 4364 found in MacBook Pro 15,2")
 Signed-off-by: Hector Martin <marcan@marcan.st>
+Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
  .../net/wireless/broadcom/brcm80211/brcmfmac/pcie.c   | 11 +++++++++--
  1 file changed, 9 insertions(+), 2 deletions(-)
@@ -74,5 +75,5 @@ index 5b4a4cb33..b6b789b49 100644
  	case BRCM_CC_4378_CHIP_ID:
  		coreid = BCMA_CORE_GCI;
 -- 
-2.34.1
+2.25.1
 
