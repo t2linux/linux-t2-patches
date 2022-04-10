@@ -19,7 +19,7 @@ Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
  1 file changed, 31 insertions(+)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-index e1bc7e4a9..b71952254 100644
+index 2342d4cd7..74fbbf266 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 @@ -12,6 +12,7 @@
@@ -27,10 +27,10 @@ index e1bc7e4a9..b71952254 100644
  #include <linux/bcma/bcma.h>
  #include <linux/sched.h>
 +#include <linux/random.h>
+ #include <linux/io.h>
  #include <asm/unaligned.h>
  
- #include <soc.h>
-@@ -1667,6 +1668,13 @@ brcmf_pcie_init_share_ram_info(struct brcmf_pciedev_info *devinfo,
+@@ -1625,6 +1626,13 @@ brcmf_pcie_init_share_ram_info(struct brcmf_pciedev_info *devinfo,
  	return 0;
  }
  
@@ -44,7 +44,7 @@ index e1bc7e4a9..b71952254 100644
  
  static int brcmf_pcie_download_fw_nvram(struct brcmf_pciedev_info *devinfo,
  					const struct firmware *fw, void *nvram,
-@@ -1698,11 +1706,34 @@ static int brcmf_pcie_download_fw_nvram(struct brcmf_pciedev_info *devinfo,
+@@ -1656,11 +1664,34 @@ static int brcmf_pcie_download_fw_nvram(struct brcmf_pciedev_info *devinfo,
  	brcmf_pcie_write_ram32(devinfo, devinfo->ci->ramsize - 4, 0);
  
  	if (nvram) {
@@ -58,7 +58,7 @@ index e1bc7e4a9..b71952254 100644
  		brcmf_dbg(PCIE, "Download NVRAM %s\n", devinfo->nvram_name);
  		address = devinfo->ci->rambase + devinfo->ci->ramsize -
  			  nvram_len;
- 		brcmf_pcie_copy_mem_todev(devinfo, address, nvram, nvram_len);
+ 		memcpy_toio(devinfo->tcm + address, nvram, nvram_len);
  		brcmf_fw_nvram_free(nvram);
 +
 +		/*
