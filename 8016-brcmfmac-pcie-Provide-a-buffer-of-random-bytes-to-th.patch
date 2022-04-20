@@ -44,7 +44,7 @@ index 2342d4cd7..74fbbf266 100644
  
  static int brcmf_pcie_download_fw_nvram(struct brcmf_pciedev_info *devinfo,
  					const struct firmware *fw, void *nvram,
-@@ -1656,11 +1664,34 @@ static int brcmf_pcie_download_fw_nvram(struct brcmf_pciedev_info *devinfo,
+@@ -1656,11 +1664,33 @@ static int brcmf_pcie_download_fw_nvram(struct brcmf_pciedev_info *devinfo,
  	brcmf_pcie_write_ram32(devinfo, devinfo->ci->ramsize - 4, 0);
  
  	if (nvram) {
@@ -68,13 +68,12 @@ index 2342d4cd7..74fbbf266 100644
 +		brcmf_dbg(PCIE, "Download random seed\n");
 +
 +		address -= sizeof(footer);
-+		brcmf_pcie_copy_mem_todev(devinfo, address, &footer,
-+					  sizeof(footer));
++		memcpy_toio(devinfo->tcm + address, &footer, sizeof(footer));
 +
 +		address -= rand_len;
 +		randbuf = kzalloc(rand_len, GFP_KERNEL);
 +		get_random_bytes(randbuf, rand_len);
-+		brcmf_pcie_copy_mem_todev(devinfo, address, randbuf, rand_len);
++		memcpy_toio(devinfo->tcm + address, randbuf, rand_len);
 +		kfree(randbuf);
  	} else {
  		brcmf_dbg(PCIE, "No matching NVRAM file found %s\n",
