@@ -1,39 +1,37 @@
-From 215e445d3271dada17f435e830b1b73987ba22e7 Mon Sep 17 00:00:00 2001
+From 976f53c5e34623a3d503243ba0cc2d3e03649835 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:25:35 +0900
-Subject: [PATCH 12/33] brcmfmac: pcie: Support PCIe core revisions >= 64
+Subject: [PATCH 09/27] brcmfmac: pcie: Support PCIe core revisions >= 64
 
 These newer PCIe core revisions include new sets of registers that must
 be used instead of the legacy ones. Introduce a brcmf_pcie_reginfo to
 hold the specific register offsets and values to use for a given
 platform, and change all the register accesses to indirect through it.
 
+Reviewed-by: Linus Walleij <linus.walleij@linaro.org>
 Signed-off-by: Hector Martin <marcan@marcan.st>
-Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
- .../broadcom/brcm80211/brcmfmac/pcie.c        | 127 +++++++++++++++---
- 1 file changed, 107 insertions(+), 20 deletions(-)
+ .../broadcom/brcm80211/brcmfmac/pcie.c        | 125 +++++++++++++++---
+ 1 file changed, 105 insertions(+), 20 deletions(-)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-index 7190b7b80..01c7b2703 100644
+index 86807d990cc7..a2ef3de834f6 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-@@ -117,6 +117,14 @@ static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
- #define BRCMF_PCIE_PCIE2REG_CONFIGDATA		0x124
+@@ -119,6 +119,12 @@ static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
  #define BRCMF_PCIE_PCIE2REG_H2D_MAILBOX_0	0x140
  #define BRCMF_PCIE_PCIE2REG_H2D_MAILBOX_1	0x144
-+#define BRCMF_PCIE_PCIE2REG_D2H_MAILBOX_0	0x148
-+#define BRCMF_PCIE_PCIE2REG_D2H_MAILBOX_1	0x14c
-+
+ 
 +#define BRCMF_PCIE_64_PCIE2REG_INTMASK		0xC14
 +#define BRCMF_PCIE_64_PCIE2REG_MAILBOXINT	0xC30
 +#define BRCMF_PCIE_64_PCIE2REG_MAILBOXMASK	0xC34
 +#define BRCMF_PCIE_64_PCIE2REG_H2D_MAILBOX_0	0xA20
 +#define BRCMF_PCIE_64_PCIE2REG_H2D_MAILBOX_1	0xA24
- 
++
  #define BRCMF_PCIE2_INTA			0x01
  #define BRCMF_PCIE2_INTB			0x02
-@@ -137,6 +145,8 @@ static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
+ 
+@@ -138,6 +144,8 @@ static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
  #define	BRCMF_PCIE_MB_INT_D2H3_DB0		0x400000
  #define	BRCMF_PCIE_MB_INT_D2H3_DB1		0x800000
  
@@ -42,7 +40,7 @@ index 7190b7b80..01c7b2703 100644
  #define BRCMF_PCIE_MB_INT_D2H_DB		(BRCMF_PCIE_MB_INT_D2H0_DB0 | \
  						 BRCMF_PCIE_MB_INT_D2H0_DB1 | \
  						 BRCMF_PCIE_MB_INT_D2H1_DB0 | \
-@@ -146,6 +156,40 @@ static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
+@@ -147,6 +155,40 @@ static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
  						 BRCMF_PCIE_MB_INT_D2H3_DB0 | \
  						 BRCMF_PCIE_MB_INT_D2H3_DB1)
  
@@ -83,7 +81,7 @@ index 7190b7b80..01c7b2703 100644
  #define BRCMF_PCIE_SHARED_VERSION_7		7
  #define BRCMF_PCIE_MIN_SHARED_VERSION		5
  #define BRCMF_PCIE_MAX_SHARED_VERSION		BRCMF_PCIE_SHARED_VERSION_7
-@@ -272,6 +316,7 @@ struct brcmf_pciedev_info {
+@@ -273,6 +315,7 @@ struct brcmf_pciedev_info {
  	char nvram_name[BRCMF_FW_NAME_LEN];
  	char clm_name[BRCMF_FW_NAME_LEN];
  	const struct firmware *clm_fw;
@@ -91,7 +89,7 @@ index 7190b7b80..01c7b2703 100644
  	void __iomem *regs;
  	void __iomem *tcm;
  	u32 ram_base;
-@@ -358,6 +403,36 @@ static const u32 brcmf_ring_itemsize[BRCMF_NROF_COMMON_MSGRINGS] = {
+@@ -359,6 +402,36 @@ static const u32 brcmf_ring_itemsize[BRCMF_NROF_COMMON_MSGRINGS] = {
  	BRCMF_D2H_MSGRING_RX_COMPLETE_ITEMSIZE
  };
  
@@ -128,7 +126,7 @@ index 7190b7b80..01c7b2703 100644
  static void brcmf_pcie_setup(struct device *dev, int ret,
  			     struct brcmf_fw_request *fwreq);
  static struct brcmf_fw_request *
-@@ -841,30 +916,29 @@ static void brcmf_pcie_bus_console_read(struct brcmf_pciedev_info *devinfo,
+@@ -802,30 +875,29 @@ static void brcmf_pcie_bus_console_read(struct brcmf_pciedev_info *devinfo,
  
  static void brcmf_pcie_intr_disable(struct brcmf_pciedev_info *devinfo)
  {
@@ -165,7 +163,7 @@ index 7190b7b80..01c7b2703 100644
  		brcmf_pcie_intr_disable(devinfo);
  		brcmf_dbg(PCIE, "Enter\n");
  		return IRQ_WAKE_THREAD;
-@@ -879,15 +953,14 @@ static irqreturn_t brcmf_pcie_isr_thread(int irq, void *arg)
+@@ -840,15 +912,14 @@ static irqreturn_t brcmf_pcie_isr_thread(int irq, void *arg)
  	u32 status;
  
  	devinfo->in_irq = true;
@@ -185,7 +183,7 @@ index 7190b7b80..01c7b2703 100644
  			if (devinfo->state == BRCMFMAC_PCIE_STATE_UP)
  				brcmf_proto_msgbuf_rx_trigger(
  							&devinfo->pdev->dev);
-@@ -946,8 +1019,8 @@ static void brcmf_pcie_release_irq(struct brcmf_pciedev_info *devinfo)
+@@ -907,8 +978,8 @@ static void brcmf_pcie_release_irq(struct brcmf_pciedev_info *devinfo)
  	if (devinfo->in_irq)
  		brcmf_err(bus, "Still in IRQ (processing) !!!\n");
  
@@ -196,7 +194,7 @@ index 7190b7b80..01c7b2703 100644
  
  	devinfo->irq_allocated = false;
  }
-@@ -999,7 +1072,7 @@ static int brcmf_pcie_ring_mb_ring_bell(void *ctx)
+@@ -960,7 +1031,7 @@ static int brcmf_pcie_ring_mb_ring_bell(void *ctx)
  
  	brcmf_dbg(PCIE, "RING !\n");
  	/* Any arbitrary value will do, lets use 1 */
@@ -205,7 +203,7 @@ index 7190b7b80..01c7b2703 100644
  
  	return 0;
  }
-@@ -1763,15 +1836,22 @@ static int brcmf_pcie_buscoreprep(void *ctx)
+@@ -1723,15 +1794,22 @@ static int brcmf_pcie_buscoreprep(void *ctx)
  static int brcmf_pcie_buscore_reset(void *ctx, struct brcmf_chip *chip)
  {
  	struct brcmf_pciedev_info *devinfo = (struct brcmf_pciedev_info *)ctx;
@@ -232,7 +230,7 @@ index 7190b7b80..01c7b2703 100644
  
  	return 0;
  }
-@@ -2183,6 +2263,7 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
+@@ -2119,6 +2197,7 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
  	struct brcmf_pciedev_info *devinfo;
  	struct brcmf_pciedev *pcie_bus_dev;
  	struct brcmf_bus *bus;
@@ -240,7 +238,7 @@ index 7190b7b80..01c7b2703 100644
  
  	brcmf_dbg(PCIE, "Enter %x:%x\n", pdev->vendor, pdev->device);
  
-@@ -2201,6 +2282,12 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
+@@ -2137,6 +2216,12 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
  		goto fail;
  	}
  
@@ -253,7 +251,7 @@ index 7190b7b80..01c7b2703 100644
  	pcie_bus_dev = kzalloc(sizeof(*pcie_bus_dev), GFP_KERNEL);
  	if (pcie_bus_dev == NULL) {
  		ret = -ENOMEM;
-@@ -2369,7 +2456,7 @@ static int brcmf_pcie_pm_leave_D3(struct device *dev)
+@@ -2306,7 +2391,7 @@ static int brcmf_pcie_pm_leave_D3(struct device *dev)
  	brcmf_dbg(PCIE, "Enter, dev=%p, bus=%p\n", dev, bus);
  
  	/* Check if device is still up and running, if so we are ready */
@@ -263,5 +261,5 @@ index 7190b7b80..01c7b2703 100644
  		if (brcmf_pcie_send_mb_data(devinfo, BRCMF_H2D_HOST_D0_INFORM))
  			goto cleanup;
 -- 
-2.25.1
+2.36.0
 

@@ -1,7 +1,7 @@
-From 6584070cfb25335f4ac239a71637161e978dfdd7 Mon Sep 17 00:00:00 2001
+From a40989f618558c83a2672354deab480ae5d8f2ac Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Thu, 23 Dec 2021 19:30:17 +0900
-Subject: [PATCH 16/33] brcmfmac: pcie: Provide a buffer of random bytes to the
+Subject: [PATCH 13/27] brcmfmac: pcie: Provide a buffer of random bytes to the
  device
 
 Newer Apple firmwares on chipsets without a hardware RNG require the
@@ -12,24 +12,24 @@ suffixed by a footer containing a magic number and the buffer length.
 This won't affect chips/firmwares that do not use this feature, so do it
 unconditionally.
 
+Reviewed-by: Linus Walleij <linus.walleij@linaro.org>
 Signed-off-by: Hector Martin <marcan@marcan.st>
-Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
- .../broadcom/brcm80211/brcmfmac/pcie.c        | 31 +++++++++++++++++++
- 1 file changed, 31 insertions(+)
+ .../broadcom/brcm80211/brcmfmac/pcie.c        | 29 +++++++++++++++++++
+ 1 file changed, 29 insertions(+)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-index 2342d4cd7..74fbbf266 100644
+index 2ca2c4b603cf..1e2afca5a60b 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-@@ -12,6 +12,7 @@
- #include <linux/interrupt.h>
+@@ -13,6 +13,7 @@
  #include <linux/bcma/bcma.h>
  #include <linux/sched.h>
-+#include <linux/random.h>
  #include <linux/io.h>
++#include <linux/random.h>
  #include <asm/unaligned.h>
  
+ #include <soc.h>
 @@ -1625,6 +1626,13 @@ brcmf_pcie_init_share_ram_info(struct brcmf_pciedev_info *devinfo,
  	return 0;
  }
@@ -44,7 +44,7 @@ index 2342d4cd7..74fbbf266 100644
  
  static int brcmf_pcie_download_fw_nvram(struct brcmf_pciedev_info *devinfo,
  					const struct firmware *fw, void *nvram,
-@@ -1656,11 +1664,33 @@ static int brcmf_pcie_download_fw_nvram(struct brcmf_pciedev_info *devinfo,
+@@ -1656,11 +1664,32 @@ static int brcmf_pcie_download_fw_nvram(struct brcmf_pciedev_info *devinfo,
  	brcmf_pcie_write_ram32(devinfo, devinfo->ci->ramsize - 4, 0);
  
  	if (nvram) {
@@ -61,8 +61,7 @@ index 2342d4cd7..74fbbf266 100644
  		memcpy_toio(devinfo->tcm + address, nvram, nvram_len);
  		brcmf_fw_nvram_free(nvram);
 +
-+		/*
-+		 * Some Apple chips/firmwares expect a buffer of random data
++		/* Some Apple chips/firmwares expect a buffer of random data
 +		 * to be present before NVRAM
 +		 */
 +		brcmf_dbg(PCIE, "Download random seed\n");
@@ -79,5 +78,5 @@ index 2342d4cd7..74fbbf266 100644
  		brcmf_dbg(PCIE, "No matching NVRAM file found %s\n",
  			  devinfo->nvram_name);
 -- 
-2.25.1
+2.36.0
 

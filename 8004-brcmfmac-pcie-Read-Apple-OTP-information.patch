@@ -1,7 +1,7 @@
-From b6aadc75a336f1d9d9b31448dfe13978c0254325 Mon Sep 17 00:00:00 2001
+From deeb9254b770bcac4848911a5af7d496138e2ab8 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:26:34 +0900
-Subject: [PATCH 06/33] brcmfmac: pcie: Read Apple OTP information
+Subject: [PATCH 04/27] brcmfmac: pcie: Read Apple OTP information
 
 On Apple platforms, the One Time Programmable ROM in the Broadcom chips
 contains information about the specific board design (module, vendor,
@@ -11,18 +11,18 @@ OTP ROM and extract the required strings.
 Note that the user OTP offset/size is per-chip. This patch does not add
 any chips yet.
 
+Reviewed-by: Arend van Spriel <arend.vanspriel@broadcom.com>
 Signed-off-by: Hector Martin <marcan@marcan.st>
-Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
- .../broadcom/brcm80211/brcmfmac/pcie.c        | 221 ++++++++++++++++++
+ .../broadcom/brcm80211/brcmfmac/pcie.c        | 218 ++++++++++++++++++
  include/linux/bcma/bcma_driver_chipcommon.h   |   1 +
- 2 files changed, 222 insertions(+)
+ 2 files changed, 219 insertions(+)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-index 0e4ba33fb..0f19fc9b1 100644
+index 2a74c9d8d46a..17d0353e9105 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-@@ -255,6 +255,15 @@ struct brcmf_pcie_core_info {
+@@ -256,6 +256,15 @@ struct brcmf_pcie_core_info {
  	u32 wrapbase;
  };
  
@@ -38,7 +38,7 @@ index 0e4ba33fb..0f19fc9b1 100644
  struct brcmf_pciedev_info {
  	enum brcmf_pcie_state state;
  	bool in_irq;
-@@ -282,6 +291,7 @@ struct brcmf_pciedev_info {
+@@ -283,6 +292,7 @@ struct brcmf_pciedev_info {
  	void (*write_ptr)(struct brcmf_pciedev_info *devinfo, u32 mem_offset,
  			  u16 value);
  	struct brcmf_mp_device *settings;
@@ -46,7 +46,7 @@ index 0e4ba33fb..0f19fc9b1 100644
  };
  
  struct brcmf_pcie_ringbuf {
-@@ -353,6 +363,15 @@ static void brcmf_pcie_setup(struct device *dev, int ret,
+@@ -354,6 +364,14 @@ static void brcmf_pcie_setup(struct device *dev, int ret,
  static struct brcmf_fw_request *
  brcmf_pcie_prepare_fw_request(struct brcmf_pciedev_info *devinfo);
  
@@ -55,14 +55,13 @@ index 0e4ba33fb..0f19fc9b1 100644
 +{
 +	void __iomem *address = devinfo->regs + reg_offset;
 +
-+	return (ioread16(address));
++	return ioread16(address);
 +}
-+
 +
  static u32
  brcmf_pcie_read_reg32(struct brcmf_pciedev_info *devinfo, u32 reg_offset)
  {
-@@ -539,6 +558,8 @@ brcmf_pcie_copy_dev_tomem(struct brcmf_pciedev_info *devinfo, u32 mem_offset,
+@@ -499,6 +517,8 @@ brcmf_pcie_copy_dev_tomem(struct brcmf_pciedev_info *devinfo, u32 mem_offset,
  }
  
  
@@ -71,7 +70,7 @@ index 0e4ba33fb..0f19fc9b1 100644
  #define WRITECC32(devinfo, reg, value) brcmf_pcie_write_reg32(devinfo, \
  		CHIPCREGOFFS(reg), value)
  
-@@ -1758,6 +1779,200 @@ static const struct brcmf_buscore_ops brcmf_pcie_buscore_ops = {
+@@ -1734,6 +1754,198 @@ static const struct brcmf_buscore_ops brcmf_pcie_buscore_ops = {
  	.write32 = brcmf_pcie_buscore_write32,
  };
  
@@ -86,7 +85,7 @@ index 0e4ba33fb..0f19fc9b1 100644
 +{
 +	int idx = 4;
 +	const char *chip_params;
-+	const char *module_params;
++	const char *board_params;
 +	const char *p;
 +
 +	/* 4-byte header and two empty strings */
@@ -103,25 +102,22 @@ index 0e4ba33fb..0f19fc9b1 100644
 +	if (idx >= size)
 +		return -EINVAL;
 +
-+	module_params = &data[idx];
++	board_params = &data[idx];
 +
 +	/* Skip to terminator of second string */
-+	idx += strnlen(module_params, size - idx);
++	idx += strnlen(board_params, size - idx);
 +	if (idx >= size)
 +		return -EINVAL;
 +
 +	/* At this point both strings are guaranteed NUL-terminated */
-+	brcmf_dbg(PCIE, "OTP: chip_params='%s' module_params='%s'\n",
-+		  chip_params, module_params);
++	brcmf_dbg(PCIE, "OTP: chip_params='%s' board_params='%s'\n",
++		  chip_params, board_params);
 +
-+	p = module_params;
++	p = skip_spaces(board_params);
 +	while (*p) {
 +		char tag = *p++;
 +		const char *end;
 +		size_t len;
-+
-+		if (tag == ' ') /* Skip extra spaces */
-+			continue;
 +
 +		if (*p++ != '=') /* implicit NUL check */
 +			return -EINVAL;
@@ -136,28 +132,28 @@ index 0e4ba33fb..0f19fc9b1 100644
 +
 +		/* Copy len characters plus a NUL terminator */
 +		switch (tag) {
-+			case 'M':
-+				strlcpy(devinfo->otp.module, p, len + 1);
-+				break;
-+			case 'V':
-+				strlcpy(devinfo->otp.vendor, p, len + 1);
-+				break;
-+			case 'm':
-+				strlcpy(devinfo->otp.version, p, len + 1);
-+				break;
++		case 'M':
++			strscpy(devinfo->otp.module, p, len + 1);
++			break;
++		case 'V':
++			strscpy(devinfo->otp.vendor, p, len + 1);
++			break;
++		case 'm':
++			strscpy(devinfo->otp.version, p, len + 1);
++			break;
 +		}
 +
-+		/* Skip to space separator or NUL */
-+		p = end;
++		/* Skip to next arg, if any */
++		p = skip_spaces(end);
 +	}
 +
 +	brcmf_dbg(PCIE, "OTP: module=%s vendor=%s version=%s\n",
 +		  devinfo->otp.module, devinfo->otp.vendor,
 +		  devinfo->otp.version);
 +
-+	if (!devinfo->otp.module ||
-+	    !devinfo->otp.vendor ||
-+	    !devinfo->otp.version)
++	if (!devinfo->otp.module[0] ||
++	    !devinfo->otp.vendor[0] ||
++	    !devinfo->otp.version[0])
 +		return -EINVAL;
 +
 +	devinfo->otp.valid = true;
@@ -168,7 +164,7 @@ index 0e4ba33fb..0f19fc9b1 100644
 +brcmf_pcie_parse_otp(struct brcmf_pciedev_info *devinfo, u8 *otp, size_t size)
 +{
 +	int p = 0;
-+	int ret = -1;
++	int ret = -EINVAL;
 +
 +	brcmf_dbg(PCIE, "parse_otp size=%ld\n", size);
 +
@@ -184,18 +180,18 @@ index 0e4ba33fb..0f19fc9b1 100644
 +
 +		switch (type) {
 +		case BRCMF_OTP_SYS_VENDOR:
-+			brcmf_dbg(PCIE, "OTP @ 0x%x (0x%x): SYS_VENDOR\n",
++			brcmf_dbg(PCIE, "OTP @ 0x%x (%d): SYS_VENDOR\n",
 +				  p, length);
 +			ret = brcmf_pcie_parse_otp_sys_vendor(devinfo,
 +							      &otp[p + 2],
 +							      length);
 +			break;
 +		case BRCMF_OTP_BRCM_CIS:
-+			brcmf_dbg(PCIE, "OTP @ 0x%x (0x%x): BRCM_CIS\n",
++			brcmf_dbg(PCIE, "OTP @ 0x%x (%d): BRCM_CIS\n",
 +				  p, length);
 +			break;
 +		default:
-+			brcmf_dbg(PCIE, "OTP @ 0x%x (0x%x): Unknown type 0x%x\n",
++			brcmf_dbg(PCIE, "OTP @ 0x%x (%d): Unknown type 0x%x\n",
 +				  p, length, type);
 +			break;
 +		}
@@ -228,8 +224,7 @@ index 0e4ba33fb..0f19fc9b1 100644
 +	}
 +
 +	if (coreid == BCMA_CORE_CHIPCOMMON) {
-+		/*
-+		 * Chips with OTP accessed via ChipCommon need additional
++		/* Chips with OTP accessed via ChipCommon need additional
 +		 * handling to access the OTP
 +		 */
 +		brcmf_pcie_select_core(devinfo, coreid);
@@ -247,7 +242,9 @@ index 0e4ba33fb..0f19fc9b1 100644
 +			  sromctl | BCMA_CC_SROM_CONTROL_OTPSEL);
 +	}
 +
-+	otp = kzalloc(sizeof(u16) * words, GFP_KERNEL);
++	otp = kcalloc(words, sizeof(u16), GFP_KERNEL);
++	if (!otp)
++		return -ENOMEM;
 +
 +	/* Map bus window to SROM/OTP shadow area in core */
 +	base = brcmf_pcie_buscore_prep_addr(devinfo->pdev, base + core->base);
@@ -272,7 +269,7 @@ index 0e4ba33fb..0f19fc9b1 100644
  #define BRCMF_PCIE_FW_CODE	0
  #define BRCMF_PCIE_FW_NVRAM	1
  #define BRCMF_PCIE_FW_CLM	2
-@@ -1958,6 +2173,12 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
+@@ -1930,6 +2142,12 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
  	if (ret)
  		goto fail_bus;
  
@@ -286,10 +283,10 @@ index 0e4ba33fb..0f19fc9b1 100644
  	if (!fwreq) {
  		ret = -ENOMEM;
 diff --git a/include/linux/bcma/bcma_driver_chipcommon.h b/include/linux/bcma/bcma_driver_chipcommon.h
-index d35b92060..c91db7460 100644
+index e3314f746bfa..2d94c30ed439 100644
 --- a/include/linux/bcma/bcma_driver_chipcommon.h
 +++ b/include/linux/bcma/bcma_driver_chipcommon.h
-@@ -270,6 +270,7 @@
+@@ -271,6 +271,7 @@
  #define  BCMA_CC_SROM_CONTROL_OP_WRDIS	0x40000000
  #define  BCMA_CC_SROM_CONTROL_OP_WREN	0x60000000
  #define  BCMA_CC_SROM_CONTROL_OTPSEL	0x00000010
@@ -298,5 +295,5 @@ index d35b92060..c91db7460 100644
  #define  BCMA_CC_SROM_CONTROL_SIZE_MASK	0x00000006
  #define  BCMA_CC_SROM_CONTROL_SIZE_1K	0x00000000
 -- 
-2.25.1
+2.36.0
 

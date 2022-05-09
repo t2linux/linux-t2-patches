@@ -1,7 +1,7 @@
-From 66c8e1424e89aebddce3f0bea7961f8848eaf9ac Mon Sep 17 00:00:00 2001
+From 10a65edaaf93223c57d5b490826d004b1a66cfbc Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Mon, 20 Dec 2021 20:00:57 +0900
-Subject: [PATCH 20/33] brcmfmac: chip: Only disable D11 cores; handle an
+Subject: [PATCH 17/27] brcmfmac: chip: Only disable D11 cores; handle an
  arbitrary number
 
 At least on BCM4387, the D11 cores are held in reset on cold startup and
@@ -14,17 +14,17 @@ Also, BCM4387 has 3 cores, up from 2. The logic for handling that is in
 brcmf_chip_ai_resetcore(), but since we aren't using that any more, just
 handle it here.
 
+Reviewed-by: Linus Walleij <linus.walleij@linaro.org>
 Signed-off-by: Hector Martin <marcan@marcan.st>
-Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
- .../wireless/broadcom/brcm80211/brcmfmac/chip.c    | 14 +++++++++-----
- 1 file changed, 9 insertions(+), 5 deletions(-)
+ .../net/wireless/broadcom/brcm80211/brcmfmac/chip.c | 13 ++++++++-----
+ 1 file changed, 8 insertions(+), 5 deletions(-)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c
-index 73ab96968..15a1211f0 100644
+index 4108108f0431..8266466283e4 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c
-@@ -1289,15 +1289,19 @@ static bool brcmf_chip_cm3_set_active(struct brcmf_chip_priv *chip)
+@@ -1290,15 +1290,18 @@ static bool brcmf_chip_cm3_set_active(struct brcmf_chip_priv *chip)
  static inline void
  brcmf_chip_cr4_set_passive(struct brcmf_chip_priv *chip)
  {
@@ -38,8 +38,7 @@ index 73ab96968..15a1211f0 100644
 -				   D11_BCMA_IOCTL_PHYCLOCKEN,
 -			     D11_BCMA_IOCTL_PHYCLOCKEN,
 -			     D11_BCMA_IOCTL_PHYCLOCKEN);
-+	/*
-+	 * Disable the cores only and let the firmware enable them.
++	/* Disable the cores only and let the firmware enable them.
 +	 * Releasing reset ourselves breaks BCM4387 in weird ways.
 +	 */
 +	for (i = 0; (core = brcmf_chip_get_d11core(&chip->pub, i)); i++)
@@ -50,5 +49,5 @@ index 73ab96968..15a1211f0 100644
  
  static bool brcmf_chip_cr4_set_active(struct brcmf_chip_priv *chip, u32 rstvec)
 -- 
-2.25.1
+2.36.0
 

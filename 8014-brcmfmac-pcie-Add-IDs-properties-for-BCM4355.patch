@@ -1,15 +1,15 @@
-From c74f1421fb8d246b22117608406d4e843853072e Mon Sep 17 00:00:00 2001
+From 8234909d956ce38bc5f35a2bb3980efcf2f0b895 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:50:15 +0900
-Subject: [PATCH 17/33] brcmfmac: pcie: Add IDs/properties for BCM4355
+Subject: [PATCH 14/27] brcmfmac: pcie: Add IDs/properties for BCM4355
 
 This chip is present on at least these Apple T2 Macs:
 
 * hawaii: MacBook Air 13" (Late 2018)
 * hawaii: MacBook Air 13" (True Tone, 2019)
 
+Reviewed-by: Linus Walleij <linus.walleij@linaro.org>
 Signed-off-by: Hector Martin <marcan@marcan.st>
-Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
  drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c   | 1 +
  drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c   | 8 ++++++++
@@ -17,10 +17,10 @@ Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
  3 files changed, 11 insertions(+)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c
-index 56a6f4168..fdff7f5fc 100644
+index 7f1d6cea2141..6ac6a4414eda 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c
-@@ -726,6 +726,7 @@ static u32 brcmf_chip_tcm_rambase(struct brcmf_chip_priv *ci)
+@@ -727,6 +727,7 @@ static u32 brcmf_chip_tcm_rambase(struct brcmf_chip_priv *ci)
  		return 0x200000;
  	case BRCM_CC_4359_CHIP_ID:
  		return (ci->pub.chiprev < 9) ? 0x180000 : 0x160000;
@@ -29,10 +29,10 @@ index 56a6f4168..fdff7f5fc 100644
  	case CY_CC_4373_CHIP_ID:
  		return 0x160000;
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-index b71952254..6d95c704f 100644
+index 1e2afca5a60b..67f79985e4b8 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-@@ -49,6 +49,7 @@ enum brcmf_pcie_state {
+@@ -50,6 +50,7 @@ enum brcmf_pcie_state {
  BRCMF_FW_DEF(43602, "brcmfmac43602-pcie");
  BRCMF_FW_DEF(4350, "brcmfmac4350-pcie");
  BRCMF_FW_DEF(4350C, "brcmfmac4350c2-pcie");
@@ -40,7 +40,7 @@ index b71952254..6d95c704f 100644
  BRCMF_FW_CLM_DEF(4356, "brcmfmac4356-pcie");
  BRCMF_FW_CLM_DEF(43570, "brcmfmac43570-pcie");
  BRCMF_FW_DEF(4358, "brcmfmac4358-pcie");
-@@ -75,6 +76,7 @@ static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
+@@ -76,6 +77,7 @@ static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
  	BRCMF_FW_ENTRY(BRCM_CC_4350_CHIP_ID, 0x000000FF, 4350C),
  	BRCMF_FW_ENTRY(BRCM_CC_4350_CHIP_ID, 0xFFFFFF00, 4350),
  	BRCMF_FW_ENTRY(BRCM_CC_43525_CHIP_ID, 0xFFFFFFF0, 4365C),
@@ -48,7 +48,7 @@ index b71952254..6d95c704f 100644
  	BRCMF_FW_ENTRY(BRCM_CC_4356_CHIP_ID, 0xFFFFFFFF, 4356),
  	BRCMF_FW_ENTRY(BRCM_CC_43567_CHIP_ID, 0xFFFFFFFF, 43570),
  	BRCMF_FW_ENTRY(BRCM_CC_43569_CHIP_ID, 0xFFFFFFFF, 43570),
-@@ -2048,6 +2050,11 @@ static int brcmf_pcie_read_otp(struct brcmf_pciedev_info *devinfo)
+@@ -2001,6 +2003,11 @@ static int brcmf_pcie_read_otp(struct brcmf_pciedev_info *devinfo)
  	int ret;
  
  	switch (devinfo->ci->chip) {
@@ -60,7 +60,7 @@ index b71952254..6d95c704f 100644
  	case BRCM_CC_4378_CHIP_ID:
  		coreid = BCMA_CORE_GCI;
  		base = 0x1120;
-@@ -2542,6 +2549,7 @@ static const struct pci_device_id brcmf_pcie_devid_table[] = {
+@@ -2475,6 +2482,7 @@ static const struct pci_device_id brcmf_pcie_devid_table[] = {
  	BRCMF_PCIE_DEVICE(BRCM_PCIE_4350_DEVICE_ID),
  	BRCMF_PCIE_DEVICE_SUB(0x4355, BRCM_PCIE_VENDOR_ID_BROADCOM, 0x4355),
  	BRCMF_PCIE_DEVICE(BRCM_PCIE_4354_RAW_DEVICE_ID),
@@ -69,10 +69,10 @@ index b71952254..6d95c704f 100644
  	BRCMF_PCIE_DEVICE(BRCM_PCIE_43567_DEVICE_ID),
  	BRCMF_PCIE_DEVICE(BRCM_PCIE_43570_DEVICE_ID),
 diff --git a/drivers/net/wireless/broadcom/brcm80211/include/brcm_hw_ids.h b/drivers/net/wireless/broadcom/brcm80211/include/brcm_hw_ids.h
-index 8f552b53f..9636ab4dd 100644
+index 43158a404652..81ada150ee30 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/include/brcm_hw_ids.h
 +++ b/drivers/net/wireless/broadcom/brcm80211/include/brcm_hw_ids.h
-@@ -36,6 +36,7 @@
+@@ -37,6 +37,7 @@
  #define BRCM_CC_4350_CHIP_ID		0x4350
  #define BRCM_CC_43525_CHIP_ID		43525
  #define BRCM_CC_4354_CHIP_ID		0x4354
@@ -80,7 +80,7 @@ index 8f552b53f..9636ab4dd 100644
  #define BRCM_CC_4356_CHIP_ID		0x4356
  #define BRCM_CC_43566_CHIP_ID		43566
  #define BRCM_CC_43567_CHIP_ID		43567
-@@ -69,6 +70,7 @@
+@@ -70,6 +71,7 @@
  #define BRCM_PCIE_4350_DEVICE_ID	0x43a3
  #define BRCM_PCIE_4354_DEVICE_ID	0x43df
  #define BRCM_PCIE_4354_RAW_DEVICE_ID	0x4354
@@ -89,5 +89,5 @@ index 8f552b53f..9636ab4dd 100644
  #define BRCM_PCIE_43567_DEVICE_ID	0x43d3
  #define BRCM_PCIE_43570_DEVICE_ID	0x43d9
 -- 
-2.25.1
+2.36.0
 

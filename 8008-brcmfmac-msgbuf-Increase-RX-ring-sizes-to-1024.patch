@@ -1,20 +1,21 @@
-From 0272ded859d0ff41757a173e72a43ba444d3cfb5 Mon Sep 17 00:00:00 2001
+From 56c005811f168e32d0f21edf76300da63137ddfd Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:39:04 +0900
-Subject: [PATCH 10/33] brcmfmac: msgbuf: Increase RX ring sizes to 1024
+Subject: [PATCH 08/27] brcmfmac: msgbuf: Increase RX ring sizes to 1024
 
-Newer chips used on Apple platforms have more than max_rxbufpost greater
-than 512, which causes warnings when brcmf_msgbuf_rxbuf_data_fill tries
-to put more in the ring than fit. Increase the ring sizes to 1024.
+Newer chips used on Apple platforms have a max_rxbufpost greater than
+512, which causes warnings when brcmf_msgbuf_rxbuf_data_fill tries to
+put more entries in the ring than will fit. Increase the ring sizes
+to 1024.
 
+Reviewed-by: Linus Walleij <linus.walleij@linaro.org>
 Signed-off-by: Hector Martin <marcan@marcan.st>
-Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
  drivers/net/wireless/broadcom/brcm80211/brcmfmac/msgbuf.h | 4 ++--
  1 file changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/msgbuf.h b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/msgbuf.h
-index 2e322edbb..6a849f4a9 100644
+index 2e322edbb907..6a849f4a94dd 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/msgbuf.h
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/msgbuf.h
 @@ -8,10 +8,10 @@
@@ -31,5 +32,5 @@ index 2e322edbb..6a849f4a9 100644
  
  #define BRCMF_H2D_MSGRING_CONTROL_SUBMIT_ITEMSIZE	40
 -- 
-2.25.1
+2.36.0
 

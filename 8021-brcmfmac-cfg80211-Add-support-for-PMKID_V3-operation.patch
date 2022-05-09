@@ -1,7 +1,7 @@
-From cbbf6b67be58bca62e3662e083a668466f0c6c7c Mon Sep 17 00:00:00 2001
+From 02dc276155c1728343ebf406ab567b56d3891f19 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Mon, 20 Dec 2021 18:16:33 +0900
-Subject: [PATCH 24/33] brcmfmac: cfg80211: Add support for PMKID_V3 operations
+Subject: [PATCH 21/27] brcmfmac: cfg80211: Add support for PMKID_V3 operations
 
 Add support for the new PMKID_V3 API, which allows performing PMKID
 mutations individually, instead of requiring the driver to keep track of
@@ -9,18 +9,18 @@ the full list. This new API is required by at least BCM4387.
 
 Note that PMKID_V2 is not implemented yet.
 
+Reviewed-by: Linus Walleij <linus.walleij@linaro.org>
 Signed-off-by: Hector Martin <marcan@marcan.st>
-Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
- .../broadcom/brcm80211/brcmfmac/cfg80211.c    | 49 ++++++++++-
+ .../broadcom/brcm80211/brcmfmac/cfg80211.c    | 52 +++++++++++-
  .../broadcom/brcm80211/brcmfmac/fwil_types.h  | 83 +++++++++++++++++++
- 2 files changed, 129 insertions(+), 3 deletions(-)
+ 2 files changed, 132 insertions(+), 3 deletions(-)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
-index af7792d62..d97a21f27 100644
+index 4d38836587cb..c001287fa293 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
-@@ -4029,6 +4029,34 @@ static s32 brcmf_cfg80211_suspend(struct wiphy *wiphy,
+@@ -4051,6 +4051,37 @@ static s32 brcmf_cfg80211_suspend(struct wiphy *wiphy,
  	return 0;
  }
  
@@ -28,34 +28,37 @@ index af7792d62..d97a21f27 100644
 +brcmf_pmksa_v3_op(struct brcmf_if *ifp, struct cfg80211_pmksa *pmksa,
 +		  bool alive)
 +{
-+	struct brcmf_pmk_op_v3_le pmk_op;
++	struct brcmf_pmk_op_v3_le *pmk_op;
 +	int length = offsetof(struct brcmf_pmk_op_v3_le, pmk);
++	int ret;
 +
-+	memset(&pmk_op, 0, sizeof(pmk_op));
-+	pmk_op.version = cpu_to_le16(BRCMF_PMKSA_VER_3);
++	pmk_op = kzalloc(sizeof(*pmk_op), GFP_KERNEL);
++	pmk_op->version = cpu_to_le16(BRCMF_PMKSA_VER_3);
 +
 +	if (!pmksa) {
 +		/* Flush operation, operate on entire list */
-+		pmk_op.count = cpu_to_le16(0);
++		pmk_op->count = cpu_to_le16(0);
 +	} else {
 +		/* Single PMK operation */
-+		pmk_op.count = cpu_to_le16(1);
++		pmk_op->count = cpu_to_le16(1);
 +		length += sizeof(struct brcmf_pmksa_v3);
-+		memcpy(pmk_op.pmk[0].bssid, pmksa->bssid, ETH_ALEN);
-+		memcpy(pmk_op.pmk[0].pmkid, pmksa->pmkid, WLAN_PMKID_LEN);
-+		pmk_op.pmk[0].pmkid_len = WLAN_PMKID_LEN;
-+		pmk_op.pmk[0].time_left = alive ? BRCMF_PMKSA_NO_EXPIRY : 0;
++		memcpy(pmk_op->pmk[0].bssid, pmksa->bssid, ETH_ALEN);
++		memcpy(pmk_op->pmk[0].pmkid, pmksa->pmkid, WLAN_PMKID_LEN);
++		pmk_op->pmk[0].pmkid_len = WLAN_PMKID_LEN;
++		pmk_op->pmk[0].time_left = alive ? BRCMF_PMKSA_NO_EXPIRY : 0;
 +	}
 +
-+	pmk_op.length = cpu_to_le16(length);
++	pmk_op->length = cpu_to_le16(length);
 +
-+	return brcmf_fil_iovar_data_set(ifp, "pmkid_info", &pmk_op, sizeof(pmk_op));
++	ret = brcmf_fil_iovar_data_set(ifp, "pmkid_info", pmk_op, sizeof(*pmk_op));
++	kfree(pmk_op);
++	return ret;
 +}
 +
  static __used s32
  brcmf_update_pmklist(struct brcmf_cfg80211_info *cfg, struct brcmf_if *ifp)
  {
-@@ -4065,6 +4093,14 @@ brcmf_cfg80211_set_pmksa(struct wiphy *wiphy, struct net_device *ndev,
+@@ -4087,6 +4118,14 @@ brcmf_cfg80211_set_pmksa(struct wiphy *wiphy, struct net_device *ndev,
  	if (!check_vif_up(ifp->vif))
  		return -EIO;
  
@@ -70,7 +73,7 @@ index af7792d62..d97a21f27 100644
  	npmk = le32_to_cpu(cfg->pmk_list.npmk);
  	for (i = 0; i < npmk; i++)
  		if (!memcmp(pmksa->bssid, pmk[i].bssid, ETH_ALEN))
-@@ -4081,9 +4117,6 @@ brcmf_cfg80211_set_pmksa(struct wiphy *wiphy, struct net_device *ndev,
+@@ -4103,9 +4142,6 @@ brcmf_cfg80211_set_pmksa(struct wiphy *wiphy, struct net_device *ndev,
  		return -EINVAL;
  	}
  
@@ -80,7 +83,7 @@ index af7792d62..d97a21f27 100644
  	err = brcmf_update_pmklist(cfg, ifp);
  
  	brcmf_dbg(TRACE, "Exit\n");
-@@ -4107,6 +4140,11 @@ brcmf_cfg80211_del_pmksa(struct wiphy *wiphy, struct net_device *ndev,
+@@ -4129,6 +4165,11 @@ brcmf_cfg80211_del_pmksa(struct wiphy *wiphy, struct net_device *ndev,
  
  	brcmf_dbg(CONN, "del_pmksa - PMK bssid = %pM\n", pmksa->bssid);
  
@@ -92,7 +95,7 @@ index af7792d62..d97a21f27 100644
  	npmk = le32_to_cpu(cfg->pmk_list.npmk);
  	for (i = 0; i < npmk; i++)
  		if (!memcmp(pmksa->bssid, pmk[i].bssid, ETH_ALEN))
-@@ -4143,6 +4181,11 @@ brcmf_cfg80211_flush_pmksa(struct wiphy *wiphy, struct net_device *ndev)
+@@ -4165,6 +4206,11 @@ brcmf_cfg80211_flush_pmksa(struct wiphy *wiphy, struct net_device *ndev)
  	if (!check_vif_up(ifp->vif))
  		return -EIO;
  
@@ -105,7 +108,7 @@ index af7792d62..d97a21f27 100644
  	err = brcmf_update_pmklist(cfg, ifp);
  
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h
-index 6b9516cca..20acdef20 100644
+index a75aabb0933b..9debd7248344 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h
 @@ -174,6 +174,10 @@
@@ -220,5 +223,5 @@ index 6b9516cca..20acdef20 100644
   * struct brcmf_pno_param_le - PNO scan configuration parameters
   *
 -- 
-2.25.1
+2.36.0
 

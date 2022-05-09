@@ -1,7 +1,7 @@
-From 4fe7b8a7ba38e6a124b0a6be20533495382629c0 Mon Sep 17 00:00:00 2001
+From f65df5731a384cb33e95080fb3c55153a64e9ff6 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:45:21 +0900
-Subject: [PATCH 08/33] brcmfmac: pcie: Perform firmware selection for Apple
+Subject: [PATCH 06/27] brcmfmac: pcie: Perform firmware selection for Apple
  platforms
 
 On Apple platforms, firmware selection uses the following elements:
@@ -14,7 +14,7 @@ On Apple platforms, firmware selection uses the following elements:
 * Module type      RASP      OTP
 * Module vendor    m         OTP
 * Module version   6.11      OTP
-* Antenna SKU      X3        DT (ARM64) or ??? (x86)
+* Antenna SKU      X3        DT (ARM64) or ACPI (x86)
 
 In macOS, these firmwares are stored using filenames in this format
 under /usr/share/firmware/wifi:
@@ -50,7 +50,7 @@ shikoku platform (MacBook Air M1 2020) simplifies to just 4 files:
 This reduces the total file count to around 170, of which 75 are
 symlinks and 95 are regular files: 7 firmware blobs, 27 CLM blobs, and
 61 NVRAM config files. We also slightly process NVRAM files to correct
-some formatting issues and add a missing default macaddr= property.
+some formatting issues.
 
 To handle this, the driver must try the following path formats when
 looking for firmware files:
@@ -62,7 +62,7 @@ looking for firmware files:
     brcm/brcmfmac4378b1-pcie.apple,shikoku-X3.txt *
     brcm/brcmfmac4378b1-pcie.apple,shikoku.txt
 
-* Not relevant for NVRAM, only for for firmware/CLM.
+* Not relevant for NVRAM, only for firmware/CLM.
 
 The chip revision nominally comes from OTP on Apple platforms, but it
 can be mapped to the PCI revision number, so we ignore the OTP revision
@@ -71,91 +71,64 @@ revisions, as the driver already does for other chips. Unfortunately,
 the mapping is not consistent between different chip types, so this has
 to be determined experimentally.
 
+Reviewed-by: Linus Walleij <linus.walleij@linaro.org>
 Signed-off-by: Hector Martin <marcan@marcan.st>
-Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
- .../broadcom/brcm80211/brcmfmac/pcie.c        | 68 +++++++++++++++++--
- 1 file changed, 63 insertions(+), 5 deletions(-)
+ .../broadcom/brcm80211/brcmfmac/pcie.c        | 41 ++++++++++++++++++-
+ 1 file changed, 39 insertions(+), 2 deletions(-)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-index 0f19fc9b1..4f14b261a 100644
+index 17d0353e9105..86807d990cc7 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-@@ -2096,11 +2096,69 @@ brcmf_pcie_prepare_fw_request(struct brcmf_pciedev_info *devinfo)
+@@ -2068,8 +2068,45 @@ brcmf_pcie_prepare_fw_request(struct brcmf_pciedev_info *devinfo)
  	fwreq->domain_nr = pci_domain_nr(devinfo->pdev->bus) + 1;
  	fwreq->bus_nr = devinfo->pdev->bus->number;
  
 -	brcmf_dbg(PCIE, "Board: %s\n", devinfo->settings->board_type);
--	fwreq->board_types = devm_kzalloc(&devinfo->pdev->dev,
--					  sizeof(const char *) * 2,
--					  GFP_KERNEL);
 -	fwreq->board_types[0] = devinfo->settings->board_type;
 +	/* Apple platforms with fancy firmware/NVRAM selection */
 +	if (devinfo->settings->board_type &&
 +	    devinfo->settings->antenna_sku &&
 +	    devinfo->otp.valid) {
-+		char *buf;
-+		int len;
++		const struct brcmf_otp_params *otp = &devinfo->otp;
++		struct device *dev = &devinfo->pdev->dev;
++		const char **bt = fwreq->board_types;
 +
 +		brcmf_dbg(PCIE, "Apple board: %s\n",
 +			  devinfo->settings->board_type);
 +
 +		/* Example: apple,shikoku-RASP-m-6.11-X3 */
-+		len = (strlen(devinfo->settings->board_type) + 1 +
-+		       strlen(devinfo->otp.module) + 1 +
-+		       strlen(devinfo->otp.vendor) + 1 +
-+		       strlen(devinfo->otp.version) + 1 +
-+		       strlen(devinfo->settings->antenna_sku) + 1);
++		bt[0] = devm_kasprintf(dev, GFP_KERNEL, "%s-%s-%s-%s-%s",
++				       devinfo->settings->board_type,
++				       otp->module, otp->vendor, otp->version,
++				       devinfo->settings->antenna_sku);
++		bt[1] = devm_kasprintf(dev, GFP_KERNEL, "%s-%s-%s-%s",
++				       devinfo->settings->board_type,
++				       otp->module, otp->vendor, otp->version);
++		bt[2] = devm_kasprintf(dev, GFP_KERNEL, "%s-%s-%s",
++				       devinfo->settings->board_type,
++				       otp->module, otp->vendor);
++		bt[3] = devm_kasprintf(dev, GFP_KERNEL, "%s-%s",
++				       devinfo->settings->board_type,
++				       otp->module);
++		bt[4] = devm_kasprintf(dev, GFP_KERNEL, "%s-%s",
++				       devinfo->settings->board_type,
++				       devinfo->settings->antenna_sku);
++		bt[5] = devinfo->settings->board_type;
 +
-+		fwreq->board_types = devm_kzalloc(&devinfo->pdev->dev,
-+						  sizeof(const char *) * 7,
-+						  GFP_KERNEL);
++		if (!bt[0] || !bt[1] || !bt[2] || !bt[3] || !bt[4]) {
++			kfree(fwreq);
++			return NULL;
++		}
 +
-+		/* apple,shikoku */
-+		fwreq->board_types[5] = devinfo->settings->board_type;
-+
-+		buf = devm_kzalloc(&devinfo->pdev->dev, len, GFP_KERNEL);
-+
-+		strlcpy(buf, devinfo->settings->board_type, len);
-+		strlcat(buf, "-", len);
-+		strlcat(buf, devinfo->settings->antenna_sku, len);
-+		/* apple,shikoku-X3 */
-+		fwreq->board_types[4] = devm_kstrdup(&devinfo->pdev->dev, buf,
-+						     GFP_KERNEL);
-+
-+		strlcpy(buf, devinfo->settings->board_type, len);
-+		strlcat(buf, "-", len);
-+		strlcat(buf, devinfo->otp.module, len);
-+		/* apple,shikoku-RASP */
-+		fwreq->board_types[3] = devm_kstrdup(&devinfo->pdev->dev, buf,
-+						     GFP_KERNEL);
-+
-+		strlcat(buf, "-", len);
-+		strlcat(buf, devinfo->otp.vendor, len);
-+		/* apple,shikoku-RASP-m */
-+		fwreq->board_types[2] = devm_kstrdup(&devinfo->pdev->dev, buf,
-+						     GFP_KERNEL);
-+
-+		strlcat(buf, "-", len);
-+		strlcat(buf, devinfo->otp.version, len);
-+		/* apple,shikoku-RASP-m-6.11 */
-+		fwreq->board_types[1] = devm_kstrdup(&devinfo->pdev->dev, buf,
-+						     GFP_KERNEL);
-+
-+		strlcat(buf, "-", len);
-+		strlcat(buf, devinfo->settings->antenna_sku, len);
-+		/* apple,shikoku-RASP-m-6.11-X3 */
-+		fwreq->board_types[0] = buf;
 +	} else {
 +		brcmf_dbg(PCIE, "Board: %s\n", devinfo->settings->board_type);
-+		fwreq->board_types = devm_kzalloc(&devinfo->pdev->dev,
-+						  sizeof(const char *) * 2,
-+						  GFP_KERNEL);
 +		fwreq->board_types[0] = devinfo->settings->board_type;
 +	}
  
  	return fwreq;
  }
 -- 
-2.25.1
+2.36.0
 
