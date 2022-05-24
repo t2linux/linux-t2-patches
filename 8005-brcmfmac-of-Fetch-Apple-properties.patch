@@ -61,7 +61,7 @@ index 8623bde5eb70..05414ac0d28e 100644
  	root = of_find_node_by_path("/");
 -	if (root) {
 +	if (root && !settings->board_type) {
- 		int i, len;
+ 		int i;
  		char *board_type;
  		const char *tmp;
 -- 
