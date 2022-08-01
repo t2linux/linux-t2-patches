@@ -20,7 +20,7 @@ index e03627a..fc121d5 100644
 +++ b/drivers/staging/Kconfig
 @@ -102,4 +102,8 @@ source "drivers/staging/qlge/Kconfig"
  
- source "drivers/staging/wfx/Kconfig"
+ source "drivers/staging/vme_user/Kconfig"
  
 +source "drivers/staging/apple-bce/Kconfig"
 +
@@ -32,9 +32,9 @@ index c7f8d8d..debad40 100644
 --- a/drivers/staging/Makefile
 +++ b/drivers/staging/Makefile
 @@ -41,3 +41,5 @@ obj-$(CONFIG_XIL_AXIS_FIFO)	+= axis-fifo/
+ obj-$(CONFIG_XIL_AXIS_FIFO)	+= axis-fifo/
  obj-$(CONFIG_FIELDBUS_DEV)     += fieldbus/
  obj-$(CONFIG_QLGE)		+= qlge/
- obj-$(CONFIG_WFX)		+= wfx/
 +obj-$(CONFIG_APPLE_BCE)		+= apple-bce/
 +obj-$(CONFIG_APPLE_IBRIDGE)	+= apple-ibridge/
 diff --git a/drivers/staging/apple-bce/Kconfig b/drivers/staging/apple-bce/Kconfig
