@@ -3,13 +3,13 @@ index 8965556bace8..5e4339064bd9 100644
 --- a/MAINTAINERS
 +++ b/MAINTAINERS
 @@ -1845,6 +1845,7 @@ F:	Documentation/devicetree/bindings/pinctrl/apple,pinctrl.yaml
- F:	Documentation/devicetree/bindings/power/apple*
- F:	Documentation/devicetree/bindings/watchdog/apple,wdt.yaml
+ F:	Documentation/devicetree/bindings/interrupt-controller/apple,aic.yaml
+ F:	Documentation/devicetree/bindings/pinctrl/apple,pinctrl.yaml
  F:	arch/arm64/boot/dts/apple/
 +F:	drivers/bluetooth/hci_bcm4377.c
- F:	drivers/clk/clk-apple-nco.c
- F:	drivers/i2c/busses/i2c-pasemi-core.c
- F:	drivers/i2c/busses/i2c-pasemi-platform.c
+ F:	drivers/irqchip/irq-apple-aic.c
+ F:	include/dt-bindings/interrupt-controller/apple-aic.h
+ F:	include/dt-bindings/pinctrl/apple.h
 diff --git a/drivers/bluetooth/Kconfig b/drivers/bluetooth/Kconfig
 index e30707405455..47f7baf20bb8 100644
 --- a/drivers/bluetooth/Kconfig
