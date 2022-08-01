@@ -68,8 +68,8 @@ index a88c4a9310f3..15e37b109ae7 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.h
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.h
 @@ -51,6 +51,8 @@ struct brcmf_mp_device {
- 	struct brcmfmac_pd_cc *country_codes;
  	const char	*board_type;
+ 	unsigned char	mac[ETH_ALEN];
  	const char	*antenna_sku;
 +	const void	*cal_blob;
 +	int		cal_size;
