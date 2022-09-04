@@ -1,0 +1,72 @@
+From cc48defd162c9228a6ce1aedea90868fa825a254 Mon Sep 17 00:00:00 2001
+From: Redecorating <redecorating@protonmail.com>
+Date: Fri, 8 Jul 2022 18:45:08 +1000
+Subject: [PATCH 1/1] vhci: drop_endpoint: check for null vdev
+
+prevents nullptr on module unload.
+
+BUG: unable to handle page fault for address: 0000000000001500
+\#PF: supervisor read access in kernel mode
+\#PF: error_code(0x0000) - not-present page
+PGD 0 P4D 0
+Oops: 0000 [#1] PREEMPT SMP PTI
+CPU: 1 PID: 2171 Comm: rmmod Tainted: G     U     OE     5.18.7-arch1-1-t2 #1 1fe04e8c20509e7958729d88520f97e5abcf1475
+Hardware name: Apple Inc. MacBookPro16,1/Mac-E1008331FDC96864, BIOS 1715.60.5.0.0 (iBridge: 19.16.10647.0.0,0) 11/16/2021
+RIP: 0010:bce_vhci_drop_endpoint+0xec/0x143 [apple_bce_vhci]
+Code: dc d4 eb 6e 48 c7 c7 71 28 d8 c0 e8 70 a6 dc d4 8a 55 02 8b 74 24 04 49 8d bc 24 d0 00 00 00 81 e2 8f 00 00 00 e8 9c fe ff ff <8b> b3 00 15 00 00 48 c7 c7 7c 28 d8 c0 e8 44 a6 dc d4 44 89 f1 48
+RSP: 0018:ffffae65411d3d20 EFLAGS: 00010286
+RAX: 0000000000000000 RBX: 0000000000000000 RCX: 0000000000008041
+RDX: 0000000000000000 RSI: 0000000000000041 RDI: ffff968d708e1908
+RBP: ffff968d411e57e0 R08: 00000000000325f0 R09: 0000000000000000
+R10: 0000000000000001 R11: 0000000000000001 R12: ffff968d708e1800
+R13: ffff968d7da16b28 R14: 0000000000000011 R15: 0000000000000011
+FS:  00007fd141620740(0000) GS:ffff9690aea40000(0000) knlGS:0000000000000000
+CS:  0010 DS: 0000 ES: 0000 CR0: 0000000080050033
+CR2: 0000000000001500 CR3: 0000000204968002 CR4: 00000000003706e0
+Call Trace:
+ <TASK>
+ usb_hcd_alloc_bandwidth+0x1dd/0x360
+ usb_disable_device_endpoints+0x70/0xc0
+ usb_disconnect+0xe3/0x2d0
+ usb_disconnect+0xc8/0x2d0
+ usb_remove_hcd+0xd8/0x187
+ bce_vhci_destroy+0x16/0x40 [apple_bce_vhci ac46d6ed402cfcfbc87e02be0b0382b488ad5ea7]
+ bce_vhci_module_exit+0x10/0xff [apple_bce_vhci ac46d6ed402cfcfbc87e02be0b0382b488ad5ea7]
+ __do_sys_delete_module+0x1a3/0x290
+ do_syscall_64+0x5f/0x90
+ ? exc_page_fault+0x74/0x170
+ entry_SYSCALL_64_after_hwframe+0x44/0xae
+RIP: 0033:0x7fd1417378ab
+Code: 73 01 c3 48 8b 0d ed a4 0e 00 f7 d8 64 89 01 48 83 c8 ff c3 66 2e 0f 1f 84 00 00 00 00 00 90 f3 0f 1e fa b8 b0 00 00 00 0f 05 <48> 3d 01 f0 ff ff 73 01 c3 48 8b 0d bd a4 0e 00 f7 d8 64 89 01 48
+RSP: 002b:00007ffd3c7ede88 EFLAGS: 00000206 ORIG_RAX: 00000000000000b0
+RAX: ffffffffffffffda RBX: 00005569166297a0 RCX: 00007fd1417378ab
+RDX: 000000000000000a RSI: 0000000000000800 RDI: 0000556916629808
+RBP: 0000000000000000 R08: 0000000000000000 R09: 0000000000000000
+R10: 00007fd1417c6ac0 R11: 0000000000000206 R12: 00007ffd3c7ee0e0
+R13: 00005569166292a0 R14: 00007ffd3c7ee766 R15: 00005569166297a0
+ </TASK>
+Modules linked in: apple_mfi_fastcharge apple_bce_vhci(OE-) apple_bce(OE) uhid nft_redir nft_objref nf_conntrack_netbios_ns nf_conntrack_broadcast rfcomm snd_seq_dummy snd_hrtimer snd_seq snd_seq_dev
+ iTCO_vendor_support mtd mei_pxp mei_hdcp 8250_dw snd_hwdep btrtl i915 applesmc kvm btbcm gpu_sched snd_pcm drm_buddy i2c_i801 btintel irqbypass spi_intel_pci drm_ttm_helper cfg80211 rapl intel_lpss_
+CR2: 0000000000001500
+---[ end trace 0000000000000000 ]---
+---
+ drivers/staging/apple-bce/vhci/vhci.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/staging/apple-bce/vhci/vhci.c b/drivers/staging/apple-bce/vhci/vhci.c
+index 98bb51d..6a9f9fc 100644
+--- a/drivers/staging/apple-bce/vhci/vhci.c
++++ b/drivers/staging/apple-bce/vhci/vhci.c
+@@ -496,7 +496,8 @@ static int bce_vhci_drop_endpoint(struct usb_hcd *hcd, struct usb_device *udev,
+     }
+ 
+     bce_vhci_cmd_endpoint_destroy(&vhci->cq, devid, (u8) (endp->desc.bEndpointAddress & 0x8Fu));
+-    vhci->devices[devid]->tq_mask &= ~BIT(endp_index);
++    if (vdev)
++        vdev->tq_mask &= ~BIT(endp_index);
+     bce_vhci_destroy_transfer_queue(vhci, q);
+     return 0;
+ }
+-- 
+2.37.2
+

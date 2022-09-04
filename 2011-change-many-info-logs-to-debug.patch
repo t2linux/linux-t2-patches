@@ -1,0 +1,153 @@
+From 7cd7875724bc9e02c1f5cd8283af35be54b10a42 Mon Sep 17 00:00:00 2001
+From: Redecorating <redecorating@protonmail.com>
+Date: Mon, 29 Aug 2022 22:36:52 +1000
+Subject: [PATCH 1/1] change many info logs to debug
+
+reduces spam in the journal, which saves disk space (or if you set a
+limit on journal size, it means less of that limited space will be
+filled with these debug messages)
+---
+ drivers/staging/apple-bce/audio/audio.c |  2 +-
+ drivers/staging/apple-bce/audio/pcm.c   | 14 +++++++-------
+ drivers/staging/apple-bce/vhci/vhci.c   | 12 ++++++------
+ 3 files changed, 14 insertions(+), 14 deletions(-)
+
+diff --git a/drivers/staging/apple-bce/audio/audio.c b/drivers/staging/apple-bce/audio/audio.c
+index 14aa3a0..5708dfb 100644
+--- a/drivers/staging/apple-bce/audio/audio.c
++++ b/drivers/staging/apple-bce/audio/audio.c
+@@ -600,7 +600,7 @@ void aaudio_handle_cmd_timestamp(struct aaudio_device *a, struct aaudio_msg *msg
+     struct aaudio_subdevice *sdev;
+     u64 devid, timestamp, update_seed;
+     aaudio_msg_read_update_timestamp(msg, &devid, &timestamp, &update_seed);
+-    dev_info(a->dev, "Received timestamp update for dev=%llx ts=%llx seed=%llx\n", devid, timestamp, update_seed);
++    dev_dbg(a->dev, "Received timestamp update for dev=%llx ts=%llx seed=%llx\n", devid, timestamp, update_seed);
+ 
+     sdev = aaudio_find_dev_by_dev_id(a, devid);
+     aaudio_handle_timestamp(sdev, time_os, timestamp);
+diff --git a/drivers/staging/apple-bce/audio/pcm.c b/drivers/staging/apple-bce/audio/pcm.c
+index faf80b5..1026e10 100644
+--- a/drivers/staging/apple-bce/audio/pcm.c
++++ b/drivers/staging/apple-bce/audio/pcm.c
+@@ -109,7 +109,7 @@ static struct aaudio_stream *aaudio_pcm_stream(struct snd_pcm_substream *substre
+ 
+ static int aaudio_pcm_open(struct snd_pcm_substream *substream)
+ {
+-    pr_info("aaudio_pcm_open\n");
++    pr_debug("aaudio_pcm_open\n");
+     substream->runtime->hw = *aaudio_pcm_stream(substream)->alsa_hw_desc;
+ 
+     return 0;
+@@ -117,7 +117,7 @@ static int aaudio_pcm_open(struct snd_pcm_substream *substream)
+ 
+ static int aaudio_pcm_close(struct snd_pcm_substream *substream)
+ {
+-    pr_info("aaudio_pcm_close\n");
++    pr_debug("aaudio_pcm_close\n");
+     return 0;
+ }
+ 
+@@ -129,7 +129,7 @@ static int aaudio_pcm_prepare(struct snd_pcm_substream *substream)
+ static int aaudio_pcm_hw_params(struct snd_pcm_substream *substream, struct snd_pcm_hw_params *hw_params)
+ {
+     struct aaudio_stream *astream = aaudio_pcm_stream(substream);
+-    pr_info("aaudio_pcm_hw_params\n");
++    pr_debug("aaudio_pcm_hw_params\n");
+ 
+     if (!astream->buffer_cnt || !astream->buffers)
+         return -EINVAL;
+@@ -142,7 +142,7 @@ static int aaudio_pcm_hw_params(struct snd_pcm_substream *substream, struct snd_
+ 
+ static int aaudio_pcm_hw_free(struct snd_pcm_substream *substream)
+ {
+-    pr_info("aaudio_pcm_hw_free\n");
++    pr_debug("aaudio_pcm_hw_free\n");
+     return 0;
+ }
+ 
+@@ -163,7 +163,7 @@ static void aaudio_pcm_start(struct snd_pcm_substream *substream)
+         buf = kmalloc(s, GFP_KERNEL);
+         memcpy_fromio(buf, substream->runtime->dma_area, s);
+         time_end = ktime_get();
+-        pr_info("aaudio: Backed up the buffer in %lluns [%li]\n", ktime_to_ns(time_end - time_start),
++        pr_debug("aaudio: Backed up the buffer in %lluns [%li]\n", ktime_to_ns(time_end - time_start),
+                 substream->runtime->control->appl_ptr);
+     }
+ 
+@@ -175,14 +175,14 @@ static void aaudio_pcm_start(struct snd_pcm_substream *substream)
+         memcpy_toio(substream->runtime->dma_area, buf, s);
+ 
+     time_end = ktime_get();
+-    pr_info("aaudio: Started the audio device in %lluns\n", ktime_to_ns(time_end - time_start));
++    pr_debug("aaudio: Started the audio device in %lluns\n", ktime_to_ns(time_end - time_start));
+ }
+ 
+ static int aaudio_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
+ {
+     struct aaudio_subdevice *sdev = snd_pcm_substream_chip(substream);
+     struct aaudio_stream *stream = aaudio_pcm_stream(substream);
+-    pr_info("aaudio_pcm_trigger %x\n", cmd);
++    pr_debug("aaudio_pcm_trigger %x\n", cmd);
+ 
+     /* We only supports triggers on the #0 buffer */
+     if (substream->number != 0)
+diff --git a/drivers/staging/apple-bce/vhci/vhci.c b/drivers/staging/apple-bce/vhci/vhci.c
+index fa8c791..2e6cec5 100644
+--- a/drivers/staging/apple-bce/vhci/vhci.c
++++ b/drivers/staging/apple-bce/vhci/vhci.c
+@@ -170,7 +170,7 @@ static int bce_vhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue, u1
+         if (port_status & 0x40000)
+             ps->wPortChange |= USB_PORT_STAT_C_CONNECTION;
+ 
+-        pr_info("bce-vhci: Translated status %x to %x:%x\n", port_status, ps->wPortStatus, ps->wPortChange);
++        pr_debug("bce-vhci: Translated status %x to %x:%x\n", port_status, ps->wPortStatus, ps->wPortChange);
+         return 0;
+     } else if (typeReq == SetPortFeature) {
+         if (wValue == USB_PORT_FEAT_POWER) {
+@@ -185,7 +185,7 @@ static int bce_vhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue, u1
+         }
+         if (wValue == USB_PORT_FEAT_SUSPEND) {
+             /* TODO: Am I supposed to also suspend the endpoints? */
+-            pr_info("bce-vhci: Suspending port %i\n", wIndex);
++            pr_debug("bce-vhci: Suspending port %i\n", wIndex);
+             return bce_vhci_cmd_port_suspend(&vhci->cq, (u8) wIndex);
+         }
+     } else if (typeReq == ClearPortFeature) {
+@@ -203,7 +203,7 @@ static int bce_vhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue, u1
+             return 0;
+         }
+         if (wValue == USB_PORT_FEAT_SUSPEND) {
+-            pr_info("bce-vhci: Resuming port %i\n", wIndex);
++            pr_debug("bce-vhci: Resuming port %i\n", wIndex);
+             return bce_vhci_cmd_port_resume(&vhci->cq, (u8) wIndex);
+         }
+     }
+@@ -415,14 +415,14 @@ static int bce_vhci_urb_enqueue(struct usb_hcd *hcd, struct urb *urb, gfp_t mem_
+ static int bce_vhci_urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
+ {
+     struct bce_vhci_transfer_queue *q = urb->ep->hcpriv;
+-    pr_info("bce_vhci_urb_dequeue %x\n", urb->ep->desc.bEndpointAddress);
++    pr_debug("bce_vhci_urb_dequeue %x\n", urb->ep->desc.bEndpointAddress);
+     return bce_vhci_urb_request_cancel(q, urb, status);
+ }
+ 
+ static void bce_vhci_endpoint_reset(struct usb_hcd *hcd, struct usb_host_endpoint *ep)
+ {
+     struct bce_vhci_transfer_queue *q = ep->hcpriv;
+-    pr_info("bce_vhci_endpoint_reset\n");
++    pr_debug("bce_vhci_endpoint_reset\n");
+     if (q)
+         bce_vhci_transfer_queue_request_reset(q);
+ }
+@@ -440,7 +440,7 @@ static int bce_vhci_add_endpoint(struct usb_hcd *hcd, struct usb_device *udev, s
+     struct bce_vhci *vhci = bce_vhci_from_hcd(hcd);
+     bce_vhci_device_t devid = vhci->port_to_device[udev->portnum];
+     struct bce_vhci_device *vdev = vhci->devices[devid];
+-    pr_info("bce_vhci_add_endpoint %x/%x:%x\n", udev->portnum, devid, endp_index);
++    pr_debug("bce_vhci_add_endpoint %x/%x:%x\n", udev->portnum, devid, endp_index);
+ 
+     if (udev->bus->root_hub == udev) /* The USB hub */
+         return 0;
+-- 
+2.37.2
+
