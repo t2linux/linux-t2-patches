@@ -1,14 +1,13 @@
-From 1b75b72332cb0fd2735d7246054a57b2dc93c015 Mon Sep 17 00:00:00 2001
+From 28d876289e6c7fe64a6fcdbc377035a99edbae44 Mon Sep 17 00:00:00 2001
 From: Aditya Garg <gargaditya08@live.com>
-Date: Sat, 14 May 2022 11:58:24 +0530
-Subject: [PATCH 1/2] Add apple-bce driver
+Date: Wed, 21 Sep 2022 23:12:21 +0530
+Subject: [PATCH] Add apple-bce driver
 
 ---
  drivers/staging/apple-bce/Makefile            |  28 +
- drivers/staging/apple-bce/README.md           |  11 +
  drivers/staging/apple-bce/apple_bce.c         | 438 ++++++++++
  drivers/staging/apple-bce/apple_bce.h         |  38 +
- drivers/staging/apple-bce/audio/audio.c       | 693 ++++++++++++++++
+ drivers/staging/apple-bce/audio/audio.c       | 706 ++++++++++++++++
  drivers/staging/apple-bce/audio/audio.h       | 123 +++
  drivers/staging/apple-bce/audio/description.h |  42 +
  drivers/staging/apple-bce/audio/pcm.c         | 308 +++++++
@@ -30,9 +29,8 @@ Subject: [PATCH 1/2] Add apple-bce driver
  drivers/staging/apple-bce/vhci/transfer.h     |  78 ++
  drivers/staging/apple-bce/vhci/vhci.c         | 755 ++++++++++++++++++
  drivers/staging/apple-bce/vhci/vhci.h         |  48 ++
- 26 files changed, 5658 insertions(+)
+ 25 files changed, 5660 insertions(+)
  create mode 100644 drivers/staging/apple-bce/Makefile
- create mode 100644 drivers/staging/apple-bce/README.md
  create mode 100644 drivers/staging/apple-bce/apple_bce.c
  create mode 100644 drivers/staging/apple-bce/apple_bce.h
  create mode 100644 drivers/staging/apple-bce/audio/audio.c
@@ -92,23 +90,6 @@ index 000000000..a6a656f06
 +
 +install:
 +	$(MAKE) -C $(KDIR) M=$(PWD) modules_install
-diff --git a/drivers/staging/apple-bce/README.md b/drivers/staging/apple-bce/README.md
-new file mode 100644
-index 000000000..ab1054dea
---- /dev/null
-+++ b/drivers/staging/apple-bce/README.md
-@@ -0,0 +1,11 @@
-+# MacBook Bridge/T2 Linux Driver
-+A driver for MacBook models 2018 and newer, implementing the VHCI (required for mouse/keyboard/etc.) and audio functionality.
-+
-+The project is divided into 3 main components:
-+- BCE (Buffer Copy Engine) - this is what the files in the root directory are for. This estabilishes a basic communication channel with the T2. VHCI and Audio both require this component.
-+- VHCI - this is a virtual USB host controller; keyboard, mouse and other system components are provided by this component (other drivers use this host controller to provide more functionality, however USB drivers are not in this project's scope).
-+- Audio - a driver for the T2 audio interface, currently only audio output is supported.
-+
-+Please note that the `master` branch does not currently support system suspend and resume.
-+
-+If you want to support me, you can do so by donating to me on PayPal: https://paypal.me/mcmrarm
 diff --git a/drivers/staging/apple-bce/apple_bce.c b/drivers/staging/apple-bce/apple_bce.c
 new file mode 100644
 index 000000000..4f733a0fa
@@ -601,10 +582,10 @@ index 000000000..f13ab8d57
 \ No newline at end of file
 diff --git a/drivers/staging/apple-bce/audio/audio.c b/drivers/staging/apple-bce/audio/audio.c
 new file mode 100644
-index 000000000..14aa3a062
+index 000000000..2e0f75f2d
 --- /dev/null
 +++ b/drivers/staging/apple-bce/audio/audio.c
-@@ -0,0 +1,693 @@
+@@ -0,0 +1,706 @@
 +#include <linux/pci.h>
 +#include <linux/spinlock.h>
 +#include <linux/module.h>
@@ -630,6 +611,7 @@ index 000000000..14aa3a062
 +static int aaudio_probe(struct pci_dev *dev, const struct pci_device_id *id)
 +{
 +    struct aaudio_device *aaudio = NULL;
++    struct aaudio_subdevice *sdev = NULL;
 +    int status = 0;
 +    u32 cfg;
 +
@@ -697,7 +679,7 @@ index 000000000..14aa3a062
 +        dev_err(&dev->dev, "aaudio: Failed to create ALSA card\n");
 +        goto fail;
 +    }
-+    strcpy(aaudio->card->driver, "AppleT2");
++
 +    strcpy(aaudio->card->shortname, "Apple T2 Audio");
 +    strcpy(aaudio->card->longname, "Apple T2 Audio");
 +    strcpy(aaudio->card->mixername, "Apple T2 Audio");
@@ -708,10 +690,12 @@ index 000000000..14aa3a062
 +        dev_err(&dev->dev, "aaudio: Failed to initialize over BCE\n");
 +        goto fail_snd;
 +    }
++
 +    if (aaudio_init_bs(aaudio)) {
 +        dev_err(&dev->dev, "aaudio: Failed to initialize BufferStruct\n");
 +        goto fail_snd;
 +    }
++
 +    if ((status = aaudio_cmd_set_remote_access(aaudio, AAUDIO_REMOTE_ACCESS_ON))) {
 +        dev_err(&dev->dev, "Failed to set remote access\n");
 +        return status;
@@ -720,6 +704,16 @@ index 000000000..14aa3a062
 +    if (snd_card_register(aaudio->card)) {
 +        dev_err(&dev->dev, "aaudio: Failed to register ALSA sound device\n");
 +        goto fail_snd;
++    }
++
++    list_for_each_entry(sdev, &aaudio->subdevice_list, list) {
++        struct aaudio_buffer_struct_device *dev = &aaudio->bs->devices[sdev->buf_id];
++
++        if (sdev->out_stream_cnt == 1 && !strcmp(dev->name, "Speaker")) {
++            struct snd_pcm_hardware *hw = sdev->out_streams[0].alsa_hw_desc;
++
++            snprintf(aaudio->card->driver, sizeof(aaudio->card->driver) / sizeof(char), "AppleT2x%d", hw->channels_min);
++        }
 +    }
 +
 +    return 0;
@@ -1207,7 +1201,7 @@ index 000000000..14aa3a062
 +    struct aaudio_subdevice *sdev;
 +    u64 devid, timestamp, update_seed;
 +    aaudio_msg_read_update_timestamp(msg, &devid, &timestamp, &update_seed);
-+    dev_info(a->dev, "Received timestamp update for dev=%llx ts=%llx seed=%llx\n", devid, timestamp, update_seed);
++    dev_dbg(a->dev, "Received timestamp update for dev=%llx ts=%llx seed=%llx\n", devid, timestamp, update_seed);
 +
 +    sdev = aaudio_find_dev_by_dev_id(a, devid);
 +    aaudio_handle_timestamp(sdev, time_os, timestamp);
@@ -1298,7 +1292,6 @@ index 000000000..14aa3a062
 +MODULE_PARM_DESC(index, "Index value for Apple Internal Audio soundcard.");
 +module_param_named(id, aaudio_alsa_id, charp, 0444);
 +MODULE_PARM_DESC(id, "ID string for Apple Internal Audio soundcard.");
-\ No newline at end of file
 diff --git a/drivers/staging/apple-bce/audio/audio.h b/drivers/staging/apple-bce/audio/audio.h
 new file mode 100644
 index 000000000..693006e93
@@ -1478,7 +1471,7 @@ index 000000000..dfef3ab68
 +#endif //AAUDIO_DESCRIPTION_H
 diff --git a/drivers/staging/apple-bce/audio/pcm.c b/drivers/staging/apple-bce/audio/pcm.c
 new file mode 100644
-index 000000000..faf80b53f
+index 000000000..1026e10a9
 --- /dev/null
 +++ b/drivers/staging/apple-bce/audio/pcm.c
 @@ -0,0 +1,308 @@
@@ -1593,7 +1586,7 @@ index 000000000..faf80b53f
 +
 +static int aaudio_pcm_open(struct snd_pcm_substream *substream)
 +{
-+    pr_info("aaudio_pcm_open\n");
++    pr_debug("aaudio_pcm_open\n");
 +    substream->runtime->hw = *aaudio_pcm_stream(substream)->alsa_hw_desc;
 +
 +    return 0;
@@ -1601,7 +1594,7 @@ index 000000000..faf80b53f
 +
 +static int aaudio_pcm_close(struct snd_pcm_substream *substream)
 +{
-+    pr_info("aaudio_pcm_close\n");
++    pr_debug("aaudio_pcm_close\n");
 +    return 0;
 +}
 +
@@ -1613,7 +1606,7 @@ index 000000000..faf80b53f
 +static int aaudio_pcm_hw_params(struct snd_pcm_substream *substream, struct snd_pcm_hw_params *hw_params)
 +{
 +    struct aaudio_stream *astream = aaudio_pcm_stream(substream);
-+    pr_info("aaudio_pcm_hw_params\n");
++    pr_debug("aaudio_pcm_hw_params\n");
 +
 +    if (!astream->buffer_cnt || !astream->buffers)
 +        return -EINVAL;
@@ -1626,7 +1619,7 @@ index 000000000..faf80b53f
 +
 +static int aaudio_pcm_hw_free(struct snd_pcm_substream *substream)
 +{
-+    pr_info("aaudio_pcm_hw_free\n");
++    pr_debug("aaudio_pcm_hw_free\n");
 +    return 0;
 +}
 +
@@ -1647,7 +1640,7 @@ index 000000000..faf80b53f
 +        buf = kmalloc(s, GFP_KERNEL);
 +        memcpy_fromio(buf, substream->runtime->dma_area, s);
 +        time_end = ktime_get();
-+        pr_info("aaudio: Backed up the buffer in %lluns [%li]\n", ktime_to_ns(time_end - time_start),
++        pr_debug("aaudio: Backed up the buffer in %lluns [%li]\n", ktime_to_ns(time_end - time_start),
 +                substream->runtime->control->appl_ptr);
 +    }
 +
@@ -1659,14 +1652,14 @@ index 000000000..faf80b53f
 +        memcpy_toio(substream->runtime->dma_area, buf, s);
 +
 +    time_end = ktime_get();
-+    pr_info("aaudio: Started the audio device in %lluns\n", ktime_to_ns(time_end - time_start));
++    pr_debug("aaudio: Started the audio device in %lluns\n", ktime_to_ns(time_end - time_start));
 +}
 +
 +static int aaudio_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 +{
 +    struct aaudio_subdevice *sdev = snd_pcm_substream_chip(substream);
 +    struct aaudio_stream *stream = aaudio_pcm_stream(substream);
-+    pr_info("aaudio_pcm_trigger %x\n", cmd);
++    pr_debug("aaudio_pcm_trigger %x\n", cmd);
 +
 +    /* We only supports triggers on the #0 buffer */
 +    if (substream->number != 0)
@@ -5066,7 +5059,7 @@ index 000000000..e46e00ad8
 +#endif //BCEDRIVER_TRANSFER_H
 diff --git a/drivers/staging/apple-bce/vhci/vhci.c b/drivers/staging/apple-bce/vhci/vhci.c
 new file mode 100644
-index 000000000..fa8c79152
+index 000000000..ae6abcf76
 --- /dev/null
 +++ b/drivers/staging/apple-bce/vhci/vhci.c
 @@ -0,0 +1,755 @@
@@ -5242,7 +5235,7 @@ index 000000000..fa8c79152
 +        if (port_status & 0x40000)
 +            ps->wPortChange |= USB_PORT_STAT_C_CONNECTION;
 +
-+        pr_info("bce-vhci: Translated status %x to %x:%x\n", port_status, ps->wPortStatus, ps->wPortChange);
++        pr_debug("bce-vhci: Translated status %x to %x:%x\n", port_status, ps->wPortStatus, ps->wPortChange);
 +        return 0;
 +    } else if (typeReq == SetPortFeature) {
 +        if (wValue == USB_PORT_FEAT_POWER) {
@@ -5257,7 +5250,7 @@ index 000000000..fa8c79152
 +        }
 +        if (wValue == USB_PORT_FEAT_SUSPEND) {
 +            /* TODO: Am I supposed to also suspend the endpoints? */
-+            pr_info("bce-vhci: Suspending port %i\n", wIndex);
++            pr_debug("bce-vhci: Suspending port %i\n", wIndex);
 +            return bce_vhci_cmd_port_suspend(&vhci->cq, (u8) wIndex);
 +        }
 +    } else if (typeReq == ClearPortFeature) {
@@ -5275,7 +5268,7 @@ index 000000000..fa8c79152
 +            return 0;
 +        }
 +        if (wValue == USB_PORT_FEAT_SUSPEND) {
-+            pr_info("bce-vhci: Resuming port %i\n", wIndex);
++            pr_debug("bce-vhci: Resuming port %i\n", wIndex);
 +            return bce_vhci_cmd_port_resume(&vhci->cq, (u8) wIndex);
 +        }
 +    }
@@ -5363,7 +5356,7 @@ index 000000000..fa8c79152
 +            }
 +        }
 +        vhci->devices[devid] = NULL;
-+        vhci->port_to_device[devid] = 0;
++        vhci->port_to_device[index] = 0;
 +        bce_vhci_cmd_device_destroy(&vhci->cq, devid);
 +    }
 +    status = bce_vhci_cmd_port_reset(&vhci->cq, (u8) index, timeout);
@@ -5487,14 +5480,14 @@ index 000000000..fa8c79152
 +static int bce_vhci_urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 +{
 +    struct bce_vhci_transfer_queue *q = urb->ep->hcpriv;
-+    pr_info("bce_vhci_urb_dequeue %x\n", urb->ep->desc.bEndpointAddress);
++    pr_debug("bce_vhci_urb_dequeue %x\n", urb->ep->desc.bEndpointAddress);
 +    return bce_vhci_urb_request_cancel(q, urb, status);
 +}
 +
 +static void bce_vhci_endpoint_reset(struct usb_hcd *hcd, struct usb_host_endpoint *ep)
 +{
 +    struct bce_vhci_transfer_queue *q = ep->hcpriv;
-+    pr_info("bce_vhci_endpoint_reset\n");
++    pr_debug("bce_vhci_endpoint_reset\n");
 +    if (q)
 +        bce_vhci_transfer_queue_request_reset(q);
 +}
@@ -5512,7 +5505,7 @@ index 000000000..fa8c79152
 +    struct bce_vhci *vhci = bce_vhci_from_hcd(hcd);
 +    bce_vhci_device_t devid = vhci->port_to_device[udev->portnum];
 +    struct bce_vhci_device *vdev = vhci->devices[devid];
-+    pr_info("bce_vhci_add_endpoint %x/%x:%x\n", udev->portnum, devid, endp_index);
++    pr_debug("bce_vhci_add_endpoint %x/%x:%x\n", udev->portnum, devid, endp_index);
 +
 +    if (udev->bus->root_hub == udev) /* The USB hub */
 +        return 0;
