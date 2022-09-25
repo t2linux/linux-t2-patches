@@ -1,7 +1,7 @@
-From 4c653710ac8054c8e9691ebc9cf302d584b2b542 Mon Sep 17 00:00:00 2001
+From 2680cfe2fd7e3f829c2d82cda38d04a9d269ea7f Mon Sep 17 00:00:00 2001
 From: Kerem Karabay <kekrby@gmail.com>
-Date: Sat, 10 Sep 2022 10:44:40 +0300
-Subject: [PATCH 2/2] HID: apple: enable APPLE_ISO_TILDE_QUIRK for the
+Date: Sat, 24 Sep 2022 11:45:53 +0300
+Subject: [PATCH v2 2/2] HID: apple: enable APPLE_ISO_TILDE_QUIRK for the
  keyboards of Macs with the T2 chip
 
 The iso_layout parameter must be manually set to get the driver to
@@ -19,10 +19,10 @@ Signed-off-by: Kerem Karabay <kekrby@gmail.com>
  1 file changed, 8 insertions(+), 8 deletions(-)
 
 diff --git a/drivers/hid/hid-apple.c b/drivers/hid/hid-apple.c
-index 066e8a85daa5..df994baf547d 100644
+index e86bbf85b87e..c671ce94671c 100644
 --- a/drivers/hid/hid-apple.c
 +++ b/drivers/hid/hid-apple.c
-@@ -1000,21 +1000,21 @@ static const struct hid_device_id apple_devices[] = {
+@@ -997,21 +997,21 @@ static const struct hid_device_id apple_devices[] = {
  	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_WELLSPRING9_JIS),
  		.driver_data = APPLE_HAS_FN | APPLE_RDESC_JIS },
  	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_WELLSPRINGT2_J140K),
