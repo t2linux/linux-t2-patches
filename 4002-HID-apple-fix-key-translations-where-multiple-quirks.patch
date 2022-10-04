@@ -96,7 +96,7 @@ index 6970797cdc56..e86bbf85b87e 100644
 -	}
 -
  	if (fnmode == 3) {
- 		real_fnmode = (asc->quirks & APPLE_IS_KEYCHRON) ? 2 : 1;
+ 		real_fnmode = (asc->quirks & APPLE_IS_NON_APPLE) ? 2 : 1;
  	} else {
  		real_fnmode = fnmode;
  	}
