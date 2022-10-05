@@ -8,8 +8,8 @@ index 8965556bace8..5e4339064bd9 100644
  F:	arch/arm64/boot/dts/apple/
 +F:	drivers/bluetooth/hci_bcm4377.c
  F:	drivers/clk/clk-apple-nco.c
+ F:	drivers/dma/apple-admac.c
  F:	drivers/i2c/busses/i2c-pasemi-core.c
- F:	drivers/i2c/busses/i2c-pasemi-platform.c
 diff --git a/drivers/bluetooth/Kconfig b/drivers/bluetooth/Kconfig
 index e30707405455..47f7baf20bb8 100644
 --- a/drivers/bluetooth/Kconfig
