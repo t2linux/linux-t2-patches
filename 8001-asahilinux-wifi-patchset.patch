@@ -80,9 +80,9 @@ index c11f23b20c4c9..8b4147c64355c 100644
 +      NVRAM. This would normally be filled in by the bootloader from platform
 +      configuration data.
 +
- required:
-   - compatible
-   - reg
+   brcm,ccode-map-trivial:
+     description: |
+       Use a trivial mapping of ISO3166 country codes to brcmfmac firmware
 
 From 0b9f65e8942b0a6533bff09033df2ef5b251f277 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
