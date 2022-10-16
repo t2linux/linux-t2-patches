@@ -50,7 +50,7 @@ new file mode 100644
 index 000000000000..e5db0ac8a81b
 --- /dev/null
 +++ b/drivers/bluetooth/hci_bcm4377.c
-@@ -0,0 +1,2466 @@
+@@ -0,0 +1,2467 @@
 +// SPDX-License-Identifier: GPL-2.0-only OR MIT
 +/*
 + * Bluetooth HCI driver for Broadcom 4377/4378/4387 devices attached via PCIe
@@ -1271,6 +1271,7 @@ index 000000000000..e5db0ac8a81b
 +
 +static int bcm4377_send_ptb(struct bcm4377_data *bcm4377,
 +			    const struct firmware *fw)
++return 0;
 +{
 +	struct sk_buff *skb;
 +	int ret = 0;
