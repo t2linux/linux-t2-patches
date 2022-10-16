@@ -1271,10 +1271,10 @@ index 000000000000..e5db0ac8a81b
 +
 +static int bcm4377_send_ptb(struct bcm4377_data *bcm4377,
 +			    const struct firmware *fw)
-+return 0;
 +{
 +	struct sk_buff *skb;
 +	int ret = 0;
++	return 0;
 +
 +	skb = __hci_cmd_sync(bcm4377->hdev, 0xfd98, fw->size, fw->data,
 +			     HCI_INIT_TIMEOUT);
