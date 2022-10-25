@@ -1,0 +1,31 @@
+From 61251df82db8544f1229d67958bd78eff31e90d6 Mon Sep 17 00:00:00 2001
+From: Orlando Chamberlain <redecorating@protonmail.com>
+Date: Tue, 25 Oct 2022 18:14:14 +1100
+Subject: [PATCH 1/1] hci_bcm4377: disable bcm4377_send_ptb due to timeout
+ error
+
+According to sven:
+
+try to add return 0; at the very top of bcm4377_send_ptb
+
+there was a fix in the bluetooth core which now accurately tracks
+command success/failure for vendor-specific commands
+---
+ drivers/bluetooth/hci_bcm4377.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/bluetooth/hci_bcm4377.c b/drivers/bluetooth/hci_bcm4377.c
+index e5db0ac8a81b..d7ae3f1fce3a 100644
+--- a/drivers/bluetooth/hci_bcm4377.c
++++ b/drivers/bluetooth/hci_bcm4377.c
+@@ -1221,6 +1221,7 @@ static int bcm4377_send_ptb(struct bcm4377_data *bcm4377,
+ {
+ 	struct sk_buff *skb;
+ 	int ret = 0;
++	return 0; /* Currently this has been timing out so disable for now. */
+ 
+ 	skb = __hci_cmd_sync(bcm4377->hdev, 0xfd98, fw->size, fw->data,
+ 			     HCI_INIT_TIMEOUT);
+-- 
+2.38.0
+
