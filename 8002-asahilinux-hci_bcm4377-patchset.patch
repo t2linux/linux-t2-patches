@@ -1,8 +1,255 @@
+From 11b903651415332224e0b7efd386b16c424c454f Mon Sep 17 00:00:00 2001
+From: Sven Peter <sven@svenpeter.dev>
+Date: Thu, 27 Oct 2022 17:08:19 +0200
+Subject: [PATCH 4/7] Bluetooth: hci_event: Ignore reserved bits in LE Extended
+ Adv Report
+
+Broadcom controllers present on Apple Silicon devices use the upper
+8 bits of the event type in the LE Extended Advertising Report for
+the channel on which the frame has been received.
+These bits are reserved according to the Bluetooth spec anyway such that
+we can just drop them to ensure that the advertising results are parsed
+correctly.
+
+The following excerpt from a btmon trace shows a report received on
+channel 37 by these controllers:
+
+> HCI Event: LE Meta Event (0x3e) plen 55
+      LE Extended Advertising Report (0x0d)
+        Num reports: 1
+        Entry 0
+          Event type: 0x2513
+            Props: 0x0013
+              Connectable
+              Scannable
+              Use legacy advertising PDUs
+            Data status: Complete
+            Reserved (0x2500)
+          Legacy PDU Type: Reserved (0x2513)
+          Address type: Public (0x00)
+          Address: XX:XX:XX:XX:XX:XX (Shenzhen Jingxun Software [...])
+          Primary PHY: LE 1M
+          Secondary PHY: No packets
+          SID: no ADI field (0xff)
+          TX power: 127 dBm
+          RSSI: -76 dBm (0xb4)
+          Periodic advertising interval: 0.00 msec (0x0000)
+          Direct address type: Public (0x00)
+          Direct address: 00:00:00:00:00:00 (OUI 00-00-00)
+          Data length: 0x1d
+          [...]
+        Flags: 0x18
+          Simultaneous LE and BR/EDR (Controller)
+          Simultaneous LE and BR/EDR (Host)
+        Company: Harman International Industries, Inc. (87)
+          Data: [...]
+        Service Data (UUID 0xfddf):
+        Name (complete): JBL Flip 5
+
+Signed-off-by: Sven Peter <sven@svenpeter.dev>
+---
+ include/net/bluetooth/hci.h | 1 +
+ net/bluetooth/hci_event.c   | 2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/include/net/bluetooth/hci.h b/include/net/bluetooth/hci.h
+index e004ba04a9ae..f4aa7b78a844 100644
+--- a/include/net/bluetooth/hci.h
++++ b/include/net/bluetooth/hci.h
+@@ -2580,6 +2580,7 @@ struct hci_ev_le_conn_complete {
+ #define LE_EXT_ADV_DIRECT_IND		0x0004
+ #define LE_EXT_ADV_SCAN_RSP		0x0008
+ #define LE_EXT_ADV_LEGACY_PDU		0x0010
++#define LE_EXT_ADV_EVT_TYPE_MASK	0x007f
+ 
+ #define ADDR_LE_DEV_PUBLIC		0x00
+ #define ADDR_LE_DEV_RANDOM		0x01
+diff --git a/net/bluetooth/hci_event.c b/net/bluetooth/hci_event.c
+index faca701bce2a..ade2628aae0d 100644
+--- a/net/bluetooth/hci_event.c
++++ b/net/bluetooth/hci_event.c
+@@ -6494,7 +6494,7 @@ static void hci_le_ext_adv_report_evt(struct hci_dev *hdev, void *data,
+ 					info->length))
+ 			break;
+ 
+-		evt_type = __le16_to_cpu(info->type);
++		evt_type = __le16_to_cpu(info->type) & LE_EXT_ADV_EVT_TYPE_MASK;
+ 		legacy_evt_type = ext_evt_type_to_legacy(hdev, evt_type);
+ 		if (legacy_evt_type != LE_ADV_INVALID) {
+ 			process_adv_report(hdev, legacy_evt_type, &info->bdaddr,
+-- 
+2.38.0
+
+From 0bab5cc74a5756cd0d9f37d0277f98d7a14a3d7b Mon Sep 17 00:00:00 2001
+From: Sven Peter <sven@svenpeter.dev>
+Date: Thu, 27 Oct 2022 17:08:20 +0200
+Subject: [PATCH 5/7] Bluetooth: Add quirk to disable extended scanning
+
+Broadcom 4377 controllers found in Apple x86 Macs with the T2 chip
+claim to support extended scanning when querying supported states,
+
+< HCI Command: LE Read Supported St.. (0x08|0x001c) plen 0
+> HCI Event: Command Complete (0x0e) plen 12
+      LE Read Supported States (0x08|0x001c) ncmd 1
+        Status: Success (0x00)
+        States: 0x000003ffffffffff
+[...]
+          LE Set Extended Scan Parameters (Octet 37 - Bit 5)
+          LE Set Extended Scan Enable (Octet 37 - Bit 6)
+[...]
+
+, but then fail to actually implement the extended scanning:
+
+< HCI Command: LE Set Extended Sca.. (0x08|0x0041) plen 8
+        Own address type: Random (0x01)
+        Filter policy: Accept all advertisement (0x00)
+        PHYs: 0x01
+        Entry 0: LE 1M
+          Type: Active (0x01)
+          Interval: 11.250 msec (0x0012)
+          Window: 11.250 msec (0x0012)
+> HCI Event: Command Complete (0x0e) plen 4
+      LE Set Extended Scan Parameters (0x08|0x0041) ncmd 1
+        Status: Unknown HCI Command (0x01)
+
+Signed-off-by: Sven Peter <sven@svenpeter.dev>
+---
+ include/net/bluetooth/hci.h      | 10 ++++++++++
+ include/net/bluetooth/hci_core.h |  4 +++-
+ 2 files changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/include/net/bluetooth/hci.h b/include/net/bluetooth/hci.h
+index f4aa7b78a844..8cd89948f961 100644
+--- a/include/net/bluetooth/hci.h
++++ b/include/net/bluetooth/hci.h
+@@ -263,6 +263,16 @@ enum {
+ 	 * during the hdev->setup vendor callback.
+ 	 */
+ 	HCI_QUIRK_BROKEN_ENHANCED_SETUP_SYNC_CONN,
++
++	/*
++	 * When this quirk is set, the HCI_OP_LE_SET_EXT_SCAN_ENABLE command is
++	 * disabled. This is required for some Broadcom controllers which
++	 * erroneously claim to support extended scanning.
++	 *
++	 * This quirk can be set before hci_register_dev is called or
++	 * during the hdev->setup vendor callback.
++	 */
++	HCI_QUIRK_BROKEN_EXT_SCAN,
+ };
+ 
+ /* HCI device flags */
+diff --git a/include/net/bluetooth/hci_core.h b/include/net/bluetooth/hci_core.h
+index c54bc71254af..3cd00be0fcd2 100644
+--- a/include/net/bluetooth/hci_core.h
++++ b/include/net/bluetooth/hci_core.h
+@@ -1689,7 +1689,9 @@ void hci_conn_del_sysfs(struct hci_conn *conn);
+ 
+ /* Use ext scanning if set ext scan param and ext scan enable is supported */
+ #define use_ext_scan(dev) (((dev)->commands[37] & 0x20) && \
+-			   ((dev)->commands[37] & 0x40))
++			   ((dev)->commands[37] & 0x40) && \
++			   !test_bit(HCI_QUIRK_BROKEN_EXT_SCAN, &(dev)->quirks))
++
+ /* Use ext create connection if command is supported */
+ #define use_ext_conn(dev) ((dev)->commands[37] & 0x80)
+ 
+-- 
+2.38.0
+
+From ef73b7a8bf4b661de4d342537064029ffc208b7e Mon Sep 17 00:00:00 2001
+From: Sven Peter <sven@svenpeter.dev>
+Date: Thu, 27 Oct 2022 17:08:21 +0200
+Subject: [PATCH 6/7] Bluetooth: Add quirk to disable MWS Transport
+ Configuration
+
+Broadcom 4378/4387 controllers found in Apple Silicon Macs claim to
+support getting MWS Transport Layer Configuration,
+
+< HCI Command: Read Local Supported... (0x04|0x0002) plen 0
+> HCI Event: Command Complete (0x0e) plen 68
+      Read Local Supported Commands (0x04|0x0002) ncmd 1
+        Status: Success (0x00)
+[...]
+          Get MWS Transport Layer Configuration (Octet 30 - Bit 3)]
+[...]
+
+, but then don't actually allow the required command:
+
+> HCI Event: Command Complete (0x0e) plen 15
+      Get MWS Transport Layer Configuration (0x05|0x000c) ncmd 1
+        Status: Command Disallowed (0x0c)
+        Number of transports: 0
+        Baud rate list: 0 entries
+        00 00 00 00 00 00 00 00 00 00
+
+Signed-off-by: Sven Peter <sven@svenpeter.dev>
+---
+ include/net/bluetooth/hci.h | 10 ++++++++++
+ net/bluetooth/hci_sync.c    |  2 ++
+ 2 files changed, 12 insertions(+)
+
+diff --git a/include/net/bluetooth/hci.h b/include/net/bluetooth/hci.h
+index 8cd89948f961..110d6df1299b 100644
+--- a/include/net/bluetooth/hci.h
++++ b/include/net/bluetooth/hci.h
+@@ -273,6 +273,16 @@ enum {
+ 	 * during the hdev->setup vendor callback.
+ 	 */
+ 	HCI_QUIRK_BROKEN_EXT_SCAN,
++
++	/*
++	 * When this quirk is set, the HCI_OP_GET_MWS_TRANSPORT_CONFIG command is
++	 * disabled. This is required for some Broadcom controllers which
++	 * erroneously claim to support MWS Transport Layer Configuration.
++	 *
++	 * This quirk can be set before hci_register_dev is called or
++	 * during the hdev->setup vendor callback.
++	 */
++	HCI_QUIRK_BROKEN_MWS_TRANSPORT_CONFIG,
+ };
+ 
+ /* HCI device flags */
+diff --git a/net/bluetooth/hci_sync.c b/net/bluetooth/hci_sync.c
+index 76c3107c9f91..91788d356748 100644
+--- a/net/bluetooth/hci_sync.c
++++ b/net/bluetooth/hci_sync.c
+@@ -4260,6 +4260,8 @@ static int hci_get_mws_transport_config_sync(struct hci_dev *hdev)
+ {
+ 	if (!(hdev->commands[30] & 0x08))
+ 		return 0;
++	if (test_bit(HCI_QUIRK_BROKEN_MWS_TRANSPORT_CONFIG, &hdev->quirks))
++		return 0;
+ 
+ 	return __hci_cmd_sync_status(hdev, HCI_OP_GET_MWS_TRANSPORT_CONFIG,
+ 				     0, NULL, HCI_CMD_TIMEOUT);
+-- 
+2.38.0
+
+From f8a43896f03b18821f978baab29c6d2a4bd750af Mon Sep 17 00:00:00 2001
+From: Sven Peter <sven@svenpeter.dev>
+Date: Thu, 27 Oct 2022 17:08:22 +0200
+Subject: [PATCH 7/7] Bluetooth: hci_bcm4377: Add new driver for BCM4377 PCIe
+ boards
+
+Broadcom BCM4377/4378/4387 are dual WiFi/Bluetooth boards found in Apple
+machines. This driver adds support for the Bluetooth function which
+exposes a shared memory IPC protocol over PCIe to tunnel HCI traffic.
+
+Signed-off-by: Sven Peter <sven@svenpeter.dev>
+---
+ MAINTAINERS                     |    1 +
+ drivers/bluetooth/Kconfig       |   12 +
+ drivers/bluetooth/Makefile      |    1 +
+ drivers/bluetooth/hci_bcm4377.c | 2514 +++++++++++++++++++++++++++++++
+ 4 files changed, 2528 insertions(+)
+ create mode 100644 drivers/bluetooth/hci_bcm4377.c
+
 diff --git a/MAINTAINERS b/MAINTAINERS
-index 8965556bace8..5e4339064bd9 100644
+index 1f87bfaa1557..0c20464d956b 100644
 --- a/MAINTAINERS
 +++ b/MAINTAINERS
-@@ -1845,6 +1845,7 @@ F:	Documentation/devicetree/bindings/pinctrl/apple,pinctrl.yaml
+@@ -1911,6 +1911,7 @@ F:	Documentation/devicetree/bindings/pinctrl/apple,pinctrl.yaml
  F:	Documentation/devicetree/bindings/power/apple*
  F:	Documentation/devicetree/bindings/watchdog/apple,wdt.yaml
  F:	arch/arm64/boot/dts/apple/
@@ -11,7 +258,7 @@ index 8965556bace8..5e4339064bd9 100644
  F:	drivers/dma/apple-admac.c
  F:	drivers/i2c/busses/i2c-pasemi-core.c
 diff --git a/drivers/bluetooth/Kconfig b/drivers/bluetooth/Kconfig
-index e30707405455..47f7baf20bb8 100644
+index e30707405455..71732e51516f 100644
 --- a/drivers/bluetooth/Kconfig
 +++ b/drivers/bluetooth/Kconfig
 @@ -274,6 +274,18 @@ config BT_HCIBCM203X
@@ -24,7 +271,7 @@ index e30707405455..47f7baf20bb8 100644
 +	depends on PCI
 +	select FW_LOADER
 +	help
-+	  Support for Broadcom BCM4377/4378/4387 bluetooth chipsets attached via
++	  Support for Broadcom BCM4377/4378/4387 Bluetooth chipsets attached via
 +	  PCIe. These are usually found in Apple machines.
 +
 +	  Say Y here to compile support for HCI BCM4377 family devices into the
@@ -47,10 +294,10 @@ index 3321a8aea4a0..e0b261f24fc9 100644
  obj-$(CONFIG_BT_HCIDTL1)	+= dtl1_cs.o
 diff --git a/drivers/bluetooth/hci_bcm4377.c b/drivers/bluetooth/hci_bcm4377.c
 new file mode 100644
-index 000000000000..e5db0ac8a81b
+index 000000000000..74f44562ac33
 --- /dev/null
 +++ b/drivers/bluetooth/hci_bcm4377.c
-@@ -0,0 +1,2466 @@
+@@ -0,0 +1,2514 @@
 +// SPDX-License-Identifier: GPL-2.0-only OR MIT
 +/*
 + * Bluetooth HCI driver for Broadcom 4377/4378/4387 devices attached via PCIe
@@ -62,6 +309,7 @@ index 000000000000..e5db0ac8a81b
 +#include <linux/bitfield.h>
 +#include <linux/completion.h>
 +#include <linux/dma-mapping.h>
++#include <linux/dmi.h>
 +#include <linux/firmware.h>
 +#include <linux/module.h>
 +#include <linux/msi.h>
@@ -110,9 +358,10 @@ index 000000000000..e5db0ac8a81b
 +#define BCM4377_BAR0_FW_DOORBELL 0x140
 +#define BCM4377_BAR0_RTI_CONTROL 0x144
 +
-+#define BCM4377_BAR0_SLEEP_CONTROL	    0x150
-+#define BCM4377_BAR0_SLEEP_CONTROL_AWAKE    2
-+#define BCM4377_BAR0_SLEEP_CONTROL_QUIESCED 3
++#define BCM4377_BAR0_SLEEP_CONTROL	      0x150
++#define BCM4377_BAR0_SLEEP_CONTROL_UNQUIESCE  0
++#define BCM4377_BAR0_SLEEP_CONTROL_AWAKE      2
++#define BCM4377_BAR0_SLEEP_CONTROL_QUIESCE    3
 +
 +#define BCM4377_BAR0_DOORBELL	    0x174
 +#define BCM4377_BAR0_DOORBELL_VALUE GENMASK(31, 16)
@@ -544,10 +793,8 @@ index 000000000000..e5db0ac8a81b
 + * disable_aspm: Set to true if ASPM must be disabled due to hardware errata
 + * broken_ext_scan: Set to true if the chip erroneously claims to support
 + *                  extended scanning
-+ * fixup_le_ext_adv_report_evt_type: Set to true if the upper byte of evt_type
-+ *                                   field of the LE Advanced Report has to be
-+ *                                   cleared
-+ * board_type: Default board type, used for non-DT platforms
++ * broken_mws_transport_config: Set to true if the chip erroneously claims to
++ *                              support MWS Transport Configuration
 + * send_calibration: Optional callback to send calibration data
 + * send_ptb: Callback to send "PTB" regulatory/calibration data
 + */
@@ -564,9 +811,7 @@ index 000000000000..e5db0ac8a81b
 +	unsigned long clear_pciecfg_subsystem_ctrl_bit19 : 1;
 +	unsigned long disable_aspm : 1;
 +	unsigned long broken_ext_scan : 1;
-+	unsigned long fixup_le_ext_adv_report_evt_type : 1;
-+
-+	const char *board_type;
++	unsigned long broken_mws_transport_config : 1;
 +
 +	int (*send_calibration)(struct bcm4377_data *bcm4377);
 +	int (*send_ptb)(struct bcm4377_data *bcm4377,
@@ -574,6 +819,7 @@ index 000000000000..e5db0ac8a81b
 +};
 +
 +static const struct bcm4377_hw bcm4377_hw_variants[];
++static const struct dmi_system_id bcm4377_dmi_board_table[];
 +
 +/*
 + * Private struct associated with each device containing global state
@@ -592,7 +838,7 @@ index 000000000000..e5db0ac8a81b
 + * taurus_beamforming_cal_size: "Taurus" beamforming calibration blob size
 + * stepping: Chip stepping read from OTP; used for firmware selection
 + * vendor: Antenna vendor read from OTP; used for firmware selection
-+ * board_type: Board type read from FDT; used for firmware selection
++ * board_type: Board type from FDT or DMI match; used for firmware selection
 + * event: Event for changed bootstage or rti_status; used for booting firmware
 + * ctx: "Converged IPC" context
 + * ctx_dma: "Converged IPC" context DMA address
@@ -896,6 +1142,9 @@ index 000000000000..e5db0ac8a81b
 +		bcm4377->bootstage = bootstage;
 +		bcm4377->rti_status = rti_status;
 +	}
++
++	if (rti_status > 2)
++		dev_err(&bcm4377->pdev->dev, "RTI status is %d\n", rti_status);
 +
 +	bcm4377_poll_completion_ring(bcm4377, &bcm4377->control_ack_ring);
 +	bcm4377_poll_completion_ring(bcm4377, &bcm4377->hci_acl_event_ring);
@@ -1273,18 +1522,19 @@ index 000000000000..e5db0ac8a81b
 +			    const struct firmware *fw)
 +{
 +	struct sk_buff *skb;
-+	int ret = 0;
 +
 +	skb = __hci_cmd_sync(bcm4377->hdev, 0xfd98, fw->size, fw->data,
 +			     HCI_INIT_TIMEOUT);
-+	if (IS_ERR(skb)) {
-+		ret = PTR_ERR(skb);
-+		dev_err(&bcm4377->pdev->dev, "sending ptb failed (%d)", ret);
-+		return ret;
-+	}
-+
-+	kfree_skb(skb);
-+	return ret;
++	/*
++	 * This command seems to always fail on more recent firmware versions
++	 * (even in traces taken from the macOS driver). It's unclear why this
++	 * happens but because the PTB file contains calibration and/or
++	 * regulatory data and may be required on older firmware we still try to
++	 * send it here just in case and just ignore if it fails.
++	 */
++	if (!IS_ERR(skb))
++		kfree_skb(skb);
++	return 0;
 +}
 +
 +static int bcm4378_send_ptb_chunk(struct bcm4377_data *bcm4377,
@@ -1650,7 +1900,7 @@ index 000000000000..e5db0ac8a81b
 +
 +	bcm4377->ctx->version = cpu_to_le16(1);
 +	bcm4377->ctx->size = cpu_to_le16(sizeof(*bcm4377->ctx));
-+	bcm4377->ctx->enabled_caps = cpu_to_le16(2);
++	bcm4377->ctx->enabled_caps = cpu_to_le32(2);
 +
 +	/*
 +	 * The BT device will write 0x20 bytes of data to this buffer but
@@ -2128,9 +2378,13 @@ index 000000000000..e5db0ac8a81b
 +
 +static int bcm4377_parse_otp(struct bcm4377_data *bcm4377)
 +{
-+	u8 otp[BCM4377_OTP_SIZE];
++	u8 *otp;
 +	int i;
 +	int ret = -ENOENT;
++
++	otp = kzalloc(BCM4377_OTP_SIZE, GFP_KERNEL);
++	if (!otp)
++		return -ENOMEM;
 +
 +	for (i = 0; i < BCM4377_OTP_SIZE; ++i)
 +		otp[i] = ioread8(bcm4377->bar0 + bcm4377->hw->otp_offset + i);
@@ -2166,6 +2420,7 @@ index 000000000000..e5db0ac8a81b
 +		i += 2 + length;
 +	}
 +
++	kfree(otp);
 +	return ret;
 +}
 +
@@ -2216,6 +2471,21 @@ index 000000000000..e5db0ac8a81b
 +
 +	return pci_write_config_dword(bcm4377->pdev,
 +				      BCM4377_PCIECFG_SUBSYSTEM_CTRL, ctrl);
++}
++
++static int bcm4377_probe_dmi(struct bcm4377_data *bcm4377)
++{
++	const struct dmi_system_id *board_type_dmi_id;
++
++	board_type_dmi_id = dmi_first_match(bcm4377_dmi_board_table);
++	if (board_type_dmi_id && board_type_dmi_id->driver_data) {
++		bcm4377->board_type = board_type_dmi_id->driver_data;
++		dev_dbg(&bcm4377->pdev->dev,
++			"found board type via DMI match: %s\n",
++			bcm4377->board_type);
++	}
++
++	return 0;
 +}
 +
 +static int bcm4377_probe_of(struct bcm4377_data *bcm4377)
@@ -2307,14 +2577,19 @@ index 000000000000..e5db0ac8a81b
 +	if (ret)
 +		return ret;
 +
-+	bcm4377->board_type = bcm4377->hw->board_type;
++	ret = bcm4377_probe_dmi(bcm4377);
++	if (ret)
++		return ret;
 +	ret = bcm4377_probe_of(bcm4377);
 +	if (ret)
 +		return ret;
 +	if (!bcm4377->board_type) {
 +		dev_err(&pdev->dev, "unable to determine board type\n");
-+		return ret;
++		return -ENODEV;
 +	}
++
++	if (bcm4377->hw->disable_aspm)
++		bcm4377_disable_aspm(bcm4377);
 +
 +	ret = pci_reset_function_locked(pdev);
 +	if (ret)
@@ -2330,9 +2605,6 @@ index 000000000000..e5db0ac8a81b
 +	 * Let's double that to be safe.
 +	 */
 +	msleep(100);
-+
-+	if (bcm4377->hw->disable_aspm)
-+		bcm4377_disable_aspm(bcm4377);
 +
 +	ret = pci_enable_device(pdev);
 +	if (ret)
@@ -2396,11 +2668,10 @@ index 000000000000..e5db0ac8a81b
 +	hdev->setup = bcm4377_hci_setup;
 +
 +	set_bit(HCI_QUIRK_USE_BDADDR_PROPERTY, &hdev->quirks);
++	if (bcm4377->hw->broken_mws_transport_config)
++		set_bit(HCI_QUIRK_BROKEN_MWS_TRANSPORT_CONFIG, &hdev->quirks);
 +	if (bcm4377->hw->broken_ext_scan)
 +		set_bit(HCI_QUIRK_BROKEN_EXT_SCAN, &hdev->quirks);
-+	if (bcm4377->hw->fixup_le_ext_adv_report_evt_type)
-+		set_bit(HCI_QUIRK_FIXUP_LE_EXT_ADV_REPORT_EVT_TYPE,
-+			&hdev->quirks);
 +
 +	pci_set_drvdata(pdev, bcm4377);
 +	hci_set_drvdata(hdev, bcm4377);
@@ -2430,7 +2701,7 @@ index 000000000000..e5db0ac8a81b
 +	if (ret)
 +		return ret;
 +
-+	iowrite32(BCM4377_BAR0_SLEEP_CONTROL_QUIESCED,
++	iowrite32(BCM4377_BAR0_SLEEP_CONTROL_QUIESCE,
 +		  bcm4377->bar0 + BCM4377_BAR0_SLEEP_CONTROL);
 +
 +	return 0;
@@ -2440,11 +2711,36 @@ index 000000000000..e5db0ac8a81b
 +{
 +	struct bcm4377_data *bcm4377 = pci_get_drvdata(pdev);
 +
-+	iowrite32(BCM4377_BAR0_SLEEP_CONTROL_AWAKE,
++	iowrite32(BCM4377_BAR0_SLEEP_CONTROL_UNQUIESCE,
 +		  bcm4377->bar0 + BCM4377_BAR0_SLEEP_CONTROL);
 +
 +	return hci_resume_dev(bcm4377->hdev);
 +}
++
++static const struct dmi_system_id bcm4377_dmi_board_table[] = {
++	{
++		.matches = {
++			DMI_MATCH(DMI_BOARD_VENDOR, "Apple Inc."),
++			DMI_MATCH(DMI_PRODUCT_NAME, "MacBookAir9,1"),
++		},
++		.driver_data = "apple,formosa",
++	},
++	{
++		.matches = {
++			DMI_MATCH(DMI_BOARD_VENDOR, "Apple Inc."),
++			DMI_MATCH(DMI_PRODUCT_NAME, "MacBookPro15,4"),
++		},
++		.driver_data = "apple,formosa",
++	},
++	{
++		.matches = {
++			DMI_MATCH(DMI_BOARD_VENDOR, "Apple Inc."),
++			DMI_MATCH(DMI_PRODUCT_NAME, "MacBookPro16,3"),
++		},
++		.driver_data = "apple,formosa",
++	},
++	{}
++};
 +
 +static const struct bcm4377_hw bcm4377_hw_variants[] = {
 +	[BCM4377] = {
@@ -2452,7 +2748,6 @@ index 000000000000..e5db0ac8a81b
 +		.otp_offset = 0x4120,
 +		.bar0_window1 = 0x1800b000,
 +		.bar0_window2 = 0x1810c000,
-+		.board_type = "apple,formosa",
 +		.disable_aspm = true,
 +		.broken_ext_scan = true,
 +		.send_ptb = bcm4377_send_ptb,
@@ -2465,7 +2760,7 @@ index 000000000000..e5db0ac8a81b
 +		.bar0_window2 = 0x1810a000,
 +		.bar0_core2_window2 = 0x18107000,
 +		.has_bar0_core2_window2 = true,
-+		.fixup_le_ext_adv_report_evt_type = true,
++		.broken_mws_transport_config = true,
 +		.send_calibration = bcm4378_send_calibration,
 +		.send_ptb = bcm4378_send_ptb,
 +	},
@@ -2478,7 +2773,7 @@ index 000000000000..e5db0ac8a81b
 +		.bar0_core2_window2 = 0x18106000,
 +		.has_bar0_core2_window2 = true,
 +		.clear_pciecfg_subsystem_ctrl_bit19 = true,
-+		.fixup_le_ext_adv_report_evt_type = true,
++		.broken_mws_transport_config = true,
 +		.send_calibration = bcm4387_send_calibration,
 +		.send_ptb = bcm4378_send_ptb,
 +	},
@@ -2509,7 +2804,7 @@ index 000000000000..e5db0ac8a81b
 +module_pci_driver(bcm4377_pci_driver);
 +
 +MODULE_AUTHOR("Sven Peter <sven@svenpeter.dev>");
-+MODULE_DESCRIPTION("Bluetooth support for Broadcom 4377/4378/4387 PCIe devices");
++MODULE_DESCRIPTION("Bluetooth support for Broadcom 4377/4378/4387 devices");
 +MODULE_LICENSE("Dual MIT/GPL");
 +MODULE_FIRMWARE("brcm/brcmbt4377*.bin");
 +MODULE_FIRMWARE("brcm/brcmbt4377*.ptb");
@@ -2517,3 +2812,6 @@ index 000000000000..e5db0ac8a81b
 +MODULE_FIRMWARE("brcm/brcmbt4378*.ptb");
 +MODULE_FIRMWARE("brcm/brcmbt4387*.bin");
 +MODULE_FIRMWARE("brcm/brcmbt4387*.ptb");
+-- 
+2.38.0
+
