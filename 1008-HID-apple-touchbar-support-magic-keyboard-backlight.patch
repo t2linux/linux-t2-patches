@@ -1,0 +1,233 @@
+From c36014bd8cbf435a3668dbe257cb3d4293968074 Mon Sep 17 00:00:00 2001
+From: Orlando Chamberlain <redecorating@protonmail.com>
+Date: Sun, 6 Nov 2022 19:23:56 +0300
+Subject: [PATCH 5/6] HID: apple-touchbar: support magic keyboard backlight
+
+MacBookPro16,1/2/3/4 have the magic keyboard, with the keyboard
+backlight controlled via the Touch Bar Backlight USB device.
+
+We check that the internal keyboard's USB product ID matches that of
+models with the magic keyboard, and then we create a sysfs led class
+dev that controls the backlight.
+
+NOTE: This commit hasn't been signed off yet
+---
+ drivers/hid/apple-touchbar.c | 167 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 167 insertions(+)
+
+diff --git a/drivers/hid/apple-touchbar.c b/drivers/hid/apple-touchbar.c
+index 87cb9ebafb61..e2cf41b35363 100644
+--- a/drivers/hid/apple-touchbar.c
++++ b/drivers/hid/apple-touchbar.c
+@@ -78,6 +78,8 @@
+ 
+ #define APPLETB_FEATURE_IS_T1	BIT(0)
+ 
++#define APPLE_MAGIC_KBD_BL_MAX	60
++
+ static int appletb_tb_def_idle_timeout = 5 * 60;
+ module_param_named(idle_timeout, appletb_tb_def_idle_timeout, int, 0444);
+ MODULE_PARM_DESC(idle_timeout, "Default touch bar idle timeout:\n"
+@@ -136,6 +138,12 @@ static const struct attribute_group appletb_attr_group = {
+ 	.attrs = appletb_attrs,
+ };
+ 
++struct apple_magic_backlight {
++	struct led_classdev cdev;
++	struct usb_device *dev;
++	bool powered;
++};
++
+ struct appletb_device {
+ 	bool			active;
+ 	struct device		*log_dev;
+@@ -175,6 +183,8 @@ struct appletb_device {
+ 	int			fn_mode;
+ 
+ 	bool			is_t1;
++
++	struct apple_magic_backlight kbd_backlight;
+ };
+ 
+ struct appletb_key_translation {
+@@ -197,6 +207,30 @@ static const struct appletb_key_translation appletb_fn_codes[] = {
+ 	{ KEY_F12, KEY_VOLUMEUP },
+ };
+ 
++struct apple_magic_keyboard_backlight_brightness_report {
++	u8 report_id;	/* 0x01 */
++	u8 mode;	/* If 0x00, brightness can turn off backlight */
++	u8 brightness;
++	u8 override_1;	/* If these are non-zero, backlight is overridden to max brightness */
++	u8 override_2;
++	u8 max;		/* Lower is brighter, only takes effect when turning backlight
++			 * on from off, can be unreliable
++			 */
++	u8 rate;
++	u8 magic_1;	/* If these are non-zero, we are ignored. */
++	u8 magic_2;
++};
++
++struct apple_magic_keyboard_backlight_power_report {
++	u8 report_id;	/* 0x03 */
++	u8 power;
++	u8 max;		/* Lower is brighter, only takes effect when turning backlight
++			 * on from off, can be unreliable
++			 */
++	u8 rate;
++	u8 magic_1;	/* If these are non-zero, we are ignored. */
++	u8 magic_2;
++};
+ static struct appletb_device *appletb_dev;
+ 
+ static int appletb_send_usb_ctrl(struct appletb_iface_info *iface_info,
+@@ -317,6 +351,132 @@ static int appletb_send_hid_report(struct appletb_iface_info *iface_info,
+ 	return rc;
+ }
+ 
++static int apple_magic_keyboard_backlight_power_set(struct apple_magic_backlight *backlight,
++						     char power, char rate)
++{
++	int tries = 0;
++	int rc;
++	struct apple_magic_keyboard_backlight_power_report *rep;
++
++	rep = kmalloc(sizeof(*rep), GFP_KERNEL);
++	if (rep == NULL)
++		return -ENOMEM;
++
++	backlight->powered = power ? true : false;
++
++	rep->report_id = 0x03;
++	rep->power = power;
++	rep->max = 0x5e; /* Windows uses 0x5e when turning on, and 0xf4 when
++			  * turning off. When it's off it doesn't matter, so
++			  * use 0x5e
++			  */
++	rep->rate = rate;
++
++	do {
++		/*
++		 * FIXME: use appletb_send_hid_report, don't hard code all of this
++		 * Need to get apple_tb_send_hid_report to use wIndex=0x01
++		 */
++		rc = usb_control_msg(backlight->dev,
++			usb_sndctrlpipe(backlight->dev, 0),
++			HID_REQ_SET_REPORT, USB_DIR_OUT |
++			USB_TYPE_CLASS | USB_RECIP_INTERFACE,
++			0x0303, 0x01, rep, sizeof(*rep),
++			2000);
++		if (rc != -EPIPE)
++			break;
++
++		usleep_range(1000 << tries, 3000 << tries);
++	} while (++tries < 5);
++
++	kfree(rep);
++	return (rc > 0) ? 0 : rc;
++}
++
++static int apple_magic_keyboard_backlight_brightness_set(struct apple_magic_backlight *backlight,
++							  char brightness, char rate)
++{
++	int tries = 0;
++	int rc;
++	struct apple_magic_keyboard_backlight_brightness_report *rep;
++
++	rep = kmalloc(sizeof(*rep), GFP_KERNEL);
++	if (rep == NULL)
++		return -ENOMEM;
++
++	rep->report_id = 0x01;
++	rep->mode = brightness;
++	rep->brightness = brightness;
++	rep->max = 0x5e;
++	rep->rate = rate;
++
++	do {
++		/*
++		 * FIXME: use appletb_send_hid_report, don't hard code all of this
++		 * Need to get apple_tb_send_hid_report to use wIndex=0x01
++		 */
++		rc = usb_control_msg(backlight->dev,
++			usb_sndctrlpipe(backlight->dev, 0),
++			HID_REQ_SET_REPORT, USB_DIR_OUT |
++			USB_TYPE_CLASS | USB_RECIP_INTERFACE,
++			0x0301, 0x01, rep, sizeof(*rep),
++			2000);
++		if (rc != -EPIPE)
++			break;
++
++		usleep_range(1000 << tries, 3000 << tries);
++	} while (++tries < 5);
++
++	kfree(rep);
++	return (rc > 0) ? 0 : rc;
++}
++
++static int apple_magic_keyboard_backlight_set(struct apple_magic_backlight *backlight,
++					       char brightness, char rate)
++{
++	int rc;
++
++	if (!brightness)
++		return apple_magic_keyboard_backlight_power_set(backlight, 0, rate);
++
++	rc = apple_magic_keyboard_backlight_brightness_set(backlight, brightness, rate);
++	if (rc)
++		return rc;
++
++	if (!backlight->powered && brightness)
++		rc = apple_magic_keyboard_backlight_power_set(backlight, 1, rate);
++
++	return (rc > 0) ? 0 : rc;
++}
++
++static int apple_magic_keyboard_backlight_led_set(struct led_classdev *led_cdev,
++		enum led_brightness brightness)
++{
++	struct apple_magic_backlight *backlight = container_of(led_cdev,
++			struct apple_magic_backlight, cdev);
++
++	return apple_magic_keyboard_backlight_set(backlight, brightness, 1);
++}
++
++static int apple_magic_keyboard_backlight_init(struct appletb_device *tb_dev)
++{
++	int ret;
++
++	tb_dev->kbd_backlight.dev = interface_to_usbdev(tb_dev->disp_iface.usb_iface);
++	tb_dev->kbd_backlight.cdev.name = "apple::kbd_backlight";
++	tb_dev->kbd_backlight.cdev.max_brightness = APPLE_MAGIC_KBD_BL_MAX;
++	tb_dev->kbd_backlight.cdev.brightness_set_blocking = apple_magic_keyboard_backlight_led_set;
++
++	ret = apple_magic_keyboard_backlight_set(&tb_dev->kbd_backlight, 0, 0);
++	if (ret) {
++		dev_err(tb_dev->log_dev,
++			    "Failed to initialise Magic Keyboard Backlight (%d)\n", ret);
++		return ret;
++	}
++
++	return devm_led_classdev_register(tb_dev->log_dev, &tb_dev->kbd_backlight.cdev);
++}
++
+ static int appletb_set_tb_disp(struct appletb_device *tb_dev,
+ 			       unsigned char disp)
+ {
+@@ -881,6 +1041,13 @@ static int appletb_inp_connect(struct input_handler *handler,
+ 	if (id->driver_info == APPLETB_DEVID_KEYBOARD) {
+ 		handle = &tb_dev->kbd_handle;
+ 		handle->name = "tbkbd";
++		switch (dev->id.product) {
++		case 0x0340u: /* MacBookPro16,1/4 */
++		case 0x027eu: /* MacBookPro16,2 */
++		case 0x027fu: /* MacBookPro16,3 */
++			apple_magic_keyboard_backlight_init(tb_dev);
++			break;
++		}
+ 	} else if (id->driver_info == APPLETB_DEVID_TOUCHPAD) {
+ 		handle = &tb_dev->tpd_handle;
+ 		handle->name = "tbtpad";
+-- 
+2.38.1
+
