@@ -289,12 +289,13 @@ index 000000000..4f733a0fa
 +static irqreturn_t bce_handle_dma_irq(int irq, void *dev)
 +{
 +    int i;
++    unsigned long flags;
 +    struct apple_bce_device *bce = pci_get_drvdata(dev);
-+    spin_lock(&bce->queues_lock);
++    spin_lock_irqsave(&bce->queues_lock, flags);
 +    for (i = 0; i < BCE_MAX_QUEUE_COUNT; i++)
 +        if (bce->queues[i] && bce->queues[i]->type == BCE_QUEUE_CQ)
 +            bce_handle_cq_completions(bce, (struct bce_queue_cq *) bce->queues[i]);
-+    spin_unlock(&bce->queues_lock);
++    spin_unlock_irqrestore(&bce->queues_lock, flags);
 +    return IRQ_HANDLED;
 +}
 +
@@ -1255,7 +1256,7 @@ index 000000000..2e0f75f2d
 +        result = PTR_ERR(aaudio_class);
 +        goto fail_class;
 +    }
-+    
++
 +    result = pci_register_driver(&aaudio_pci_driver);
 +    if (result)
 +        goto fail_drv;
@@ -5872,6 +5873,5 @@ index 000000000..90641d1ba
 +void bce_vhci_destroy(struct bce_vhci *vhci);
 +
 +#endif //BCE_VHCI_H
--- 
+--
 2.34.1
-
