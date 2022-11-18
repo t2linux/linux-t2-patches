@@ -825,7 +825,7 @@ index 79b498f816fe..62211b590a61 100644
 -	return sysfs_emit(sysfsbuf, "%d\n", key_at_index);
 +	struct applesmc_device *smc = dev_get_drvdata(dev);
 +
-+	return sysfs_emit(sysfsbuf, PAGE_SIZE, "%d\n", smc->key_at_index);
++	return sysfs_emit(sysfsbuf, "%d\n", smc->key_at_index);
  }
  
  static ssize_t applesmc_key_at_index_store(struct device *dev,
