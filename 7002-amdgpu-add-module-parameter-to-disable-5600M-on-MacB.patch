@@ -1,0 +1,58 @@
+From 60907e3c4d8f844dfed57ff6dd7c8486574aeff2 Mon Sep 17 00:00:00 2001
+From: Orlando Chamberlain <redecorating@protonmail.com>
+Date: Mon, 5 Dec 2022 15:14:30 +1100
+Subject: [PATCH 1/1] amdgpu: add module parameter to disable 5600M on
+ MacBookPro16,4
+
+Prevent amdgpu from probing the Radeon Pro 5600M on the MacBookPro16,4, so that it doesn't fail in psp_v11_0_bootloader_load_sysdrv and give the user a frozen internal display.
+
+Parameter is called "disable_5600M_on_mbp164"
+
+Not-signed-off: because we haven't tried to/asked upstream how to make
+psp_v11_0_bootloader_load_sysdrv work.
+---
+ drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c | 21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+)
+
+diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
+index 1a27f262adde..07b7dff97294 100644
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
+@@ -2013,6 +2013,24 @@ static void amdgpu_get_secondary_funcs(struct amdgpu_device *adev)
+ 	}
+ }
+ 
++static bool disable_5600M_on_mbp164 = true;
++module_param(disable_5600M_on_mbp164, bool, 0);
++MODULE_PARM_DESC(disable_5600M_on_mbp164,
++		"Prevent amdgpu from probing the Radeon Pro 5600M on the MacBookPro16,4, so that it doesn't fail in psp_v11_0_bootloader_load_sysdrv and give the user a frozen internal display. (false = probe not prevented, true = probe prevented (default))");
++
++#define DEVICE_5600M 0x7360
++#define SUBDEV_mbp164 0x021e
++
++static int match_5600M_on_mbp164(struct pci_dev *pdev) {
++	if (pdev->vendor == 0x1002 && pdev->device == DEVICE_5600M &&
++	 pdev->subsystem_vendor == PCI_VENDOR_ID_APPLE &&
++	 pdev->subsystem_device == SUBDEV_mbp164) {
++		dev_notice(&pdev->dev, "amdgpu: Radeon Pro 5600M GPU on Macbook Pro 16,4 isn't working, skipping probe of this device. If you want amdgpu to try anyway, use the disable_5600M_on_mbp164 module parameter.\n");
++		return -ENOTSUPP;
++	}
++	return 0;
++}
++
+ static int amdgpu_pci_probe(struct pci_dev *pdev,
+ 			    const struct pci_device_id *ent)
+ {
+@@ -2022,6 +2040,9 @@ static int amdgpu_pci_probe(struct pci_dev *pdev,
+ 	int ret, retry = 0, i;
+ 	bool supports_atomic = false;
+ 
++	if (disable_5600M_on_mbp164 && match_5600M_on_mbp164(pdev))
++		return -ENOTSUPP;
++
+	/* skip devices which are owned by radeon */
+	for (i = 0; i < ARRAY_SIZE(amdgpu_unsupported_pciidlist); i++) {
+		if (amdgpu_unsupported_pciidlist[i] == pdev->device)
+-- 
+2.38.1
+
