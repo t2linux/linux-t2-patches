@@ -1,1729 +1,7 @@
-From b164ab4fad80cd38e81d4ac42ddc94714a177761 Mon Sep 17 00:00:00 2001
-From: Hector Martin <marcan@marcan.st>
-Date: Sun, 26 Dec 2021 22:04:09 +0900
-Subject: [PATCH 01/28] dt-bindings: net: bcm4329-fmac: Add Apple properties &
- chips
-
-This binding is currently used for SDIO devices, but these chips are
-also used as PCIe devices on DT platforms and may be represented in the
-DT. Re-use the existing binding and add chip compatibles used by Apple
-T2 and M1 platforms (the T2 ones are not known to be used in DT
-platforms, but we might as well document them).
-
-Then, add properties required for firmware selection and calibration on
-M1 machines.
-
-Reviewed-by: Linus Walleij <linus.walleij@linaro.org>
-Signed-off-by: Hector Martin <marcan@marcan.st>
----
- .../net/wireless/brcm,bcm4329-fmac.yaml       | 37 +++++++++++++++++--
- 1 file changed, 34 insertions(+), 3 deletions(-)
-
-diff --git a/Documentation/devicetree/bindings/net/wireless/brcm,bcm4329-fmac.yaml b/Documentation/devicetree/bindings/net/wireless/brcm,bcm4329-fmac.yaml
-index c11f23b20c4c9..8b4147c64355c 100644
---- a/Documentation/devicetree/bindings/net/wireless/brcm,bcm4329-fmac.yaml
-+++ b/Documentation/devicetree/bindings/net/wireless/brcm,bcm4329-fmac.yaml
-@@ -4,7 +4,7 @@
- $id: http://devicetree.org/schemas/net/wireless/brcm,bcm4329-fmac.yaml#
- $schema: http://devicetree.org/meta-schemas/core.yaml#
- 
--title: Broadcom BCM4329 family fullmac wireless SDIO devices
-+title: Broadcom BCM4329 family fullmac wireless SDIO/PCIE devices
- 
- maintainers:
-   - Arend van Spriel <arend@broadcom.com>
-@@ -42,10 +42,16 @@ properties:
-               - cypress,cyw43012-fmac
-           - const: brcm,bcm4329-fmac
-       - const: brcm,bcm4329-fmac
-+      - enum:
-+          - pci14e4,43dc  # BCM4355
-+          - pci14e4,4464  # BCM4364
-+          - pci14e4,4488  # BCM4377
-+          - pci14e4,4425  # BCM4378
-+          - pci14e4,4433  # BCM4387
- 
-   reg:
--    description: SDIO function number for the device, for most cases
--      this will be 1.
-+    description: SDIO function number for the device (for most cases
-+      this will be 1) or PCI device identifier.
- 
-   interrupts:
-     maxItems: 1
-@@ -75,6 +81,31 @@ properties:
-     items:
-       pattern: '^[A-Z][A-Z]-[A-Z][0-9A-Z]-[0-9]+$'
- 
-+  brcm,cal-blob:
-+    $ref: /schemas/types.yaml#/definitions/uint8-array
-+    description: A per-device calibration blob for the Wi-Fi radio. This
-+      should be filled in by the bootloader from platform configuration
-+      data, if necessary, and will be uploaded to the device if present.
-+
-+  brcm,board-type:
-+    $ref: /schemas/types.yaml#/definitions/string
-+    description: Overrides the board type, which is normally the compatible of
-+      the root node. This can be used to decouple the overall system board or
-+      device name from the board type for WiFi purposes, which is used to
-+      construct firmware and NVRAM configuration filenames, allowing for
-+      multiple devices that share the same module or characteristics for the
-+      WiFi subsystem to share the same firmware/NVRAM files. On Apple platforms,
-+      this should be the Apple module-instance codename prefixed by "apple,",
-+      e.g. "apple,honshu".
-+
-+  apple,antenna-sku:
-+    $ref: /schemas/types.yaml#/definitions/string
-+    description: Antenna SKU used to identify a specific antenna configuration
-+      on Apple platforms. This is use to build firmware filenames, to allow
-+      platforms with different antenna configs to have different firmware and/or
-+      NVRAM. This would normally be filled in by the bootloader from platform
-+      configuration data.
-+
-   brcm,ccode-map-trivial:
-     description: |
-       Use a trivial mapping of ISO3166 country codes to brcmfmac firmware
-
-From 0b9f65e8942b0a6533bff09033df2ef5b251f277 Mon Sep 17 00:00:00 2001
-From: Hector Martin <marcan@marcan.st>
-Date: Sat, 18 Dec 2021 20:52:04 +0900
-Subject: [PATCH 02/28] brcmfmac: firmware: Handle per-board clm_blob files
-
-Teach brcm_alt_fw_paths to correctly split off variable length
-extensions, and enable alt firmware lookups for the CLM blob firmware
-requests.
-
-Apple platforms have per-board CLM blob files.
-
-Acked-by: Linus Walleij <linus.walleij@linaro.org>
-Reviewed-by: Arend van Spriel <arend.vanspriel@broadcom.com>
-Signed-off-by: Hector Martin <marcan@marcan.st>
----
- .../broadcom/brcm80211/brcmfmac/firmware.c    | 33 +++++++++++--------
- 1 file changed, 20 insertions(+), 13 deletions(-)
-
-diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.c
-index dcbe55b56e437..deacd39b3f7b2 100644
---- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.c
-+++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.c
-@@ -596,22 +596,29 @@ static int brcmf_fw_complete_request(const struct firmware *fw,
- 
- static char *brcm_alt_fw_path(const char *path, const char *board_type)
- {
--	char alt_path[BRCMF_FW_NAME_LEN];
--	char suffix[5];
-+	char base[BRCMF_FW_NAME_LEN];
-+	const char *suffix;
-+	char *ret;
- 
--	strscpy(alt_path, path, BRCMF_FW_NAME_LEN);
--	/* At least one character + suffix */
--	if (strlen(alt_path) < 5)
-+	if (!board_type)
- 		return NULL;
- 
--	/* strip .txt or .bin at the end */
--	strscpy(suffix, alt_path + strlen(alt_path) - 4, 5);
--	alt_path[strlen(alt_path) - 4] = 0;
--	strlcat(alt_path, ".", BRCMF_FW_NAME_LEN);
--	strlcat(alt_path, board_type, BRCMF_FW_NAME_LEN);
--	strlcat(alt_path, suffix, BRCMF_FW_NAME_LEN);
-+	suffix = strrchr(path, '.');
-+	if (!suffix || suffix == path)
-+		return NULL;
-+
-+	/* strip extension at the end */
-+	strscpy(base, path, BRCMF_FW_NAME_LEN);
-+	base[suffix - path] = 0;
-+
-+	ret = kasprintf(GFP_KERNEL, "%s.%s%s", base, board_type, suffix);
-+	if (!ret)
-+		brcmf_err("out of memory allocating firmware path for '%s'\n",
-+			  path);
-+
-+	brcmf_dbg(TRACE, "FW alt path: %s\n", ret);
- 
--	return kstrdup(alt_path, GFP_KERNEL);
-+	return ret;
- }
- 
- static int brcmf_fw_request_firmware(const struct firmware **fw,
-@@ -621,7 +628,7 @@ static int brcmf_fw_request_firmware(const struct firmware **fw,
- 	int ret;
- 
- 	/* Files can be board-specific, first try a board-specific path */
--	if (cur->type == BRCMF_FW_TYPE_NVRAM && fwctx->req->board_type) {
-+	if (fwctx->req->board_type) {
- 		char *alt_path;
- 
- 		alt_path = brcm_alt_fw_path(cur->path, fwctx->req->board_type);
-
-From 56e4704f1f8f279f5c0c09947e32dcf6f393afe4 Mon Sep 17 00:00:00 2001
-From: Hector Martin <marcan@marcan.st>
-Date: Tue, 21 Dec 2021 17:13:49 +0900
-Subject: [PATCH 03/28] brcmfmac: pcie/sdio/usb: Get CLM blob via standard
- firmware mechanism
-
-Now that the firmware fetcher can handle per-board CLM files, load the
-CLM blob alongside the other firmware files and change the bus API to
-just return the existing blob, instead of fetching the filename.
-
-This enables per-board CLM blobs, which are required on Apple platforms.
-
-Acked-by: Linus Walleij <linus.walleij@linaro.org>
-Reviewed-by: Arend van Spriel <arend.vanspriel@broadcom.com>
-Signed-off-by: Hector Martin <marcan@marcan.st>
----
- .../broadcom/brcm80211/brcmfmac/bus.h         | 19 ++++++---
- .../broadcom/brcm80211/brcmfmac/common.c      | 12 +-----
- .../broadcom/brcm80211/brcmfmac/pcie.c        | 39 ++++++++++++-------
- .../broadcom/brcm80211/brcmfmac/sdio.c        | 36 ++++++++++-------
- .../broadcom/brcm80211/brcmfmac/sdio.h        |  2 +
- .../broadcom/brcm80211/brcmfmac/usb.c         | 23 +++--------
- 6 files changed, 69 insertions(+), 62 deletions(-)
-
-diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/bus.h b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/bus.h
-index 3f5da3bb6aa59..b13af8f631f31 100644
---- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/bus.h
-+++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/bus.h
-@@ -7,6 +7,8 @@
- #define BRCMFMAC_BUS_H
- 
- #include "debug.h"
-+#include <linux/kernel.h>
-+#include <linux/firmware.h>
- 
- /* IDs of the 6 default common rings of msgbuf protocol */
- #define BRCMF_H2D_MSGRING_CONTROL_SUBMIT	0
-@@ -34,6 +36,11 @@ enum brcmf_bus_protocol_type {
- 	BRCMF_PROTO_MSGBUF
- };
- 
-+/* Firmware blobs that may be available */
-+enum brcmf_blob_type {
-+	BRCMF_BLOB_CLM,
-+};
-+
- struct brcmf_mp_device;
- 
- struct brcmf_bus_dcmd {
-@@ -60,7 +67,7 @@ struct brcmf_bus_dcmd {
-  * @wowl_config: specify if dongle is configured for wowl when going to suspend
-  * @get_ramsize: obtain size of device memory.
-  * @get_memdump: obtain device memory dump in provided buffer.
-- * @get_fwname: obtain firmware name.
-+ * @get_blob: obtain a firmware blob.
-  *
-  * This structure provides an abstract interface towards the
-  * bus specific driver. For control messages to common driver
-@@ -77,8 +84,8 @@ struct brcmf_bus_ops {
- 	void (*wowl_config)(struct device *dev, bool enabled);
- 	size_t (*get_ramsize)(struct device *dev);
- 	int (*get_memdump)(struct device *dev, void *data, size_t len);
--	int (*get_fwname)(struct device *dev, const char *ext,
--			  unsigned char *fw_name);
-+	int (*get_blob)(struct device *dev, const struct firmware **fw,
-+			enum brcmf_blob_type type);
- 	void (*debugfs_create)(struct device *dev);
- 	int (*reset)(struct device *dev);
- };
-@@ -220,10 +227,10 @@ int brcmf_bus_get_memdump(struct brcmf_bus *bus, void *data, size_t len)
- }
- 
- static inline
--int brcmf_bus_get_fwname(struct brcmf_bus *bus, const char *ext,
--			 unsigned char *fw_name)
-+int brcmf_bus_get_blob(struct brcmf_bus *bus, const struct firmware **fw,
-+		       enum brcmf_blob_type type)
- {
--	return bus->ops->get_fwname(bus->dev, ext, fw_name);
-+	return bus->ops->get_blob(bus->dev, fw, type);
- }
- 
- static inline
-diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.c
-index e3758bd86acf0..b8ed851129b4d 100644
---- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.c
-+++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.c
-@@ -123,7 +123,6 @@ static int brcmf_c_process_clm_blob(struct brcmf_if *ifp)
- 	struct brcmf_bus *bus = drvr->bus_if;
- 	struct brcmf_dload_data_le *chunk_buf;
- 	const struct firmware *clm = NULL;
--	u8 clm_name[BRCMF_FW_NAME_LEN];
- 	u32 chunk_len;
- 	u32 datalen;
- 	u32 cumulative_len;
-@@ -133,15 +132,8 @@ static int brcmf_c_process_clm_blob(struct brcmf_if *ifp)
- 
- 	brcmf_dbg(TRACE, "Enter\n");
- 
--	memset(clm_name, 0, sizeof(clm_name));
--	err = brcmf_bus_get_fwname(bus, ".clm_blob", clm_name);
--	if (err) {
--		bphy_err(drvr, "get CLM blob file name failed (%d)\n", err);
--		return err;
--	}
--
--	err = firmware_request_nowarn(&clm, clm_name, bus->dev);
--	if (err) {
-+	err = brcmf_bus_get_blob(bus, &clm, BRCMF_BLOB_CLM);
-+	if (err || !clm) {
- 		brcmf_info("no clm_blob available (err=%d), device may have limited channels available\n",
- 			   err);
- 		return 0;
-diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-index 97f0f13dfe505..ec73d2620ec9b 100644
---- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-+++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-@@ -66,6 +66,7 @@ MODULE_FIRMWARE(BRCMF_FW_DEFAULT_PATH "brcmfmac*-pcie.*.txt");
- 
- /* per-board firmware binaries */
- MODULE_FIRMWARE(BRCMF_FW_DEFAULT_PATH "brcmfmac*-pcie.*.bin");
-+MODULE_FIRMWARE(BRCMF_FW_DEFAULT_PATH "brcmfmac*-pcie.*.clm_blob");
- 
- static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
- 	BRCMF_FW_ENTRY(BRCM_CC_43602_CHIP_ID, 0xFFFFFFFF, 43602),
-@@ -261,6 +262,8 @@ struct brcmf_pciedev_info {
- 	struct pci_dev *pdev;
- 	char fw_name[BRCMF_FW_NAME_LEN];
- 	char nvram_name[BRCMF_FW_NAME_LEN];
-+	char clm_name[BRCMF_FW_NAME_LEN];
-+	const struct firmware *clm_fw;
- 	void __iomem *regs;
- 	void __iomem *tcm;
- 	u32 ram_base;
-@@ -1382,23 +1385,25 @@ static int brcmf_pcie_get_memdump(struct device *dev, void *data, size_t len)
- 	return 0;
- }
- 
--static
--int brcmf_pcie_get_fwname(struct device *dev, const char *ext, u8 *fw_name)
-+static int brcmf_pcie_get_blob(struct device *dev, const struct firmware **fw,
-+			       enum brcmf_blob_type type)
- {
- 	struct brcmf_bus *bus_if = dev_get_drvdata(dev);
--	struct brcmf_fw_request *fwreq;
--	struct brcmf_fw_name fwnames[] = {
--		{ ext, fw_name },
--	};
-+	struct brcmf_pciedev *buspub = bus_if->bus_priv.pcie;
-+	struct brcmf_pciedev_info *devinfo = buspub->devinfo;
- 
--	fwreq = brcmf_fw_alloc_request(bus_if->chip, bus_if->chiprev,
--				       brcmf_pcie_fwnames,
--				       ARRAY_SIZE(brcmf_pcie_fwnames),
--				       fwnames, ARRAY_SIZE(fwnames));
--	if (!fwreq)
--		return -ENOMEM;
-+	switch (type) {
-+	case BRCMF_BLOB_CLM:
-+		*fw = devinfo->clm_fw;
-+		devinfo->clm_fw = NULL;
-+		break;
-+	default:
-+		return -ENOENT;
-+	}
-+
-+	if (!*fw)
-+		return -ENOENT;
- 
--	kfree(fwreq);
- 	return 0;
- }
- 
-@@ -1445,7 +1450,7 @@ static const struct brcmf_bus_ops brcmf_pcie_bus_ops = {
- 	.wowl_config = brcmf_pcie_wowl_config,
- 	.get_ramsize = brcmf_pcie_get_ramsize,
- 	.get_memdump = brcmf_pcie_get_memdump,
--	.get_fwname = brcmf_pcie_get_fwname,
-+	.get_blob = brcmf_pcie_get_blob,
- 	.reset = brcmf_pcie_reset,
- };
- 
-@@ -1731,6 +1736,7 @@ static const struct brcmf_buscore_ops brcmf_pcie_buscore_ops = {
- 
- #define BRCMF_PCIE_FW_CODE	0
- #define BRCMF_PCIE_FW_NVRAM	1
-+#define BRCMF_PCIE_FW_CLM	2
- 
- static void brcmf_pcie_setup(struct device *dev, int ret,
- 			     struct brcmf_fw_request *fwreq)
-@@ -1755,6 +1761,7 @@ static void brcmf_pcie_setup(struct device *dev, int ret,
- 	fw = fwreq->items[BRCMF_PCIE_FW_CODE].binary;
- 	nvram = fwreq->items[BRCMF_PCIE_FW_NVRAM].nv_data.data;
- 	nvram_len = fwreq->items[BRCMF_PCIE_FW_NVRAM].nv_data.len;
-+	devinfo->clm_fw = fwreq->items[BRCMF_PCIE_FW_CLM].binary;
- 	kfree(fwreq);
- 
- 	ret = brcmf_chip_get_raminfo(devinfo->ci);
-@@ -1830,6 +1837,7 @@ brcmf_pcie_prepare_fw_request(struct brcmf_pciedev_info *devinfo)
- 	struct brcmf_fw_name fwnames[] = {
- 		{ ".bin", devinfo->fw_name },
- 		{ ".txt", devinfo->nvram_name },
-+		{ ".clm_blob", devinfo->clm_name },
- 	};
- 
- 	fwreq = brcmf_fw_alloc_request(devinfo->ci->chip, devinfo->ci->chiprev,
-@@ -1842,6 +1850,8 @@ brcmf_pcie_prepare_fw_request(struct brcmf_pciedev_info *devinfo)
- 	fwreq->items[BRCMF_PCIE_FW_CODE].type = BRCMF_FW_TYPE_BINARY;
- 	fwreq->items[BRCMF_PCIE_FW_NVRAM].type = BRCMF_FW_TYPE_NVRAM;
- 	fwreq->items[BRCMF_PCIE_FW_NVRAM].flags = BRCMF_FW_REQF_OPTIONAL;
-+	fwreq->items[BRCMF_PCIE_FW_CLM].type = BRCMF_FW_TYPE_BINARY;
-+	fwreq->items[BRCMF_PCIE_FW_CLM].flags = BRCMF_FW_REQF_OPTIONAL;
- 	fwreq->board_type = devinfo->settings->board_type;
- 	/* NVRAM reserves PCI domain 0 for Broadcom's SDK faked bus */
- 	fwreq->domain_nr = pci_domain_nr(devinfo->pdev->bus) + 1;
-@@ -1981,6 +1991,7 @@ brcmf_pcie_remove(struct pci_dev *pdev)
- 	brcmf_pcie_release_ringbuffers(devinfo);
- 	brcmf_pcie_reset_device(devinfo);
- 	brcmf_pcie_release_resource(devinfo);
-+	release_firmware(devinfo->clm_fw);
- 
- 	if (devinfo->ci)
- 		brcmf_chip_detach(devinfo->ci);
-diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/sdio.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/sdio.c
-index 212fbbe1cd7ec..27dc8ed29ac88 100644
---- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/sdio.c
-+++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/sdio.c
-@@ -4130,23 +4130,24 @@ brcmf_sdio_watchdog(struct timer_list *t)
- 	}
- }
- 
--static
--int brcmf_sdio_get_fwname(struct device *dev, const char *ext, u8 *fw_name)
-+static int brcmf_sdio_get_blob(struct device *dev, const struct firmware **fw,
-+			       enum brcmf_blob_type type)
- {
- 	struct brcmf_bus *bus_if = dev_get_drvdata(dev);
--	struct brcmf_fw_request *fwreq;
--	struct brcmf_fw_name fwnames[] = {
--		{ ext, fw_name },
--	};
-+	struct brcmf_sdio_dev *sdiodev = bus_if->bus_priv.sdio;
- 
--	fwreq = brcmf_fw_alloc_request(bus_if->chip, bus_if->chiprev,
--				       brcmf_sdio_fwnames,
--				       ARRAY_SIZE(brcmf_sdio_fwnames),
--				       fwnames, ARRAY_SIZE(fwnames));
--	if (!fwreq)
--		return -ENOMEM;
-+	switch (type) {
-+	case BRCMF_BLOB_CLM:
-+		*fw = sdiodev->clm_fw;
-+		sdiodev->clm_fw = NULL;
-+		break;
-+	default:
-+		return -ENOENT;
-+	}
-+
-+	if (!*fw)
-+		return -ENOENT;
- 
--	kfree(fwreq);
- 	return 0;
- }
- 
-@@ -4189,13 +4190,14 @@ static const struct brcmf_bus_ops brcmf_sdio_bus_ops = {
- 	.wowl_config = brcmf_sdio_wowl_config,
- 	.get_ramsize = brcmf_sdio_bus_get_ramsize,
- 	.get_memdump = brcmf_sdio_bus_get_memdump,
--	.get_fwname = brcmf_sdio_get_fwname,
-+	.get_blob = brcmf_sdio_get_blob,
- 	.debugfs_create = brcmf_sdio_debugfs_create,
- 	.reset = brcmf_sdio_bus_reset
- };
- 
- #define BRCMF_SDIO_FW_CODE	0
- #define BRCMF_SDIO_FW_NVRAM	1
-+#define BRCMF_SDIO_FW_CLM	2
- 
- static void brcmf_sdio_firmware_callback(struct device *dev, int err,
- 					 struct brcmf_fw_request *fwreq)
-@@ -4218,6 +4220,7 @@ static void brcmf_sdio_firmware_callback(struct device *dev, int err,
- 	code = fwreq->items[BRCMF_SDIO_FW_CODE].binary;
- 	nvram = fwreq->items[BRCMF_SDIO_FW_NVRAM].nv_data.data;
- 	nvram_len = fwreq->items[BRCMF_SDIO_FW_NVRAM].nv_data.len;
-+	sdiod->clm_fw = fwreq->items[BRCMF_SDIO_FW_CLM].binary;
- 	kfree(fwreq);
- 
- 	/* try to download image and nvram to the dongle */
-@@ -4416,6 +4419,7 @@ brcmf_sdio_prepare_fw_request(struct brcmf_sdio *bus)
- 	struct brcmf_fw_name fwnames[] = {
- 		{ ".bin", bus->sdiodev->fw_name },
- 		{ ".txt", bus->sdiodev->nvram_name },
-+		{ ".clm_blob", bus->sdiodev->clm_name },
- 	};
- 
- 	fwreq = brcmf_fw_alloc_request(bus->ci->chip, bus->ci->chiprev,
-@@ -4427,6 +4431,8 @@ brcmf_sdio_prepare_fw_request(struct brcmf_sdio *bus)
- 
- 	fwreq->items[BRCMF_SDIO_FW_CODE].type = BRCMF_FW_TYPE_BINARY;
- 	fwreq->items[BRCMF_SDIO_FW_NVRAM].type = BRCMF_FW_TYPE_NVRAM;
-+	fwreq->items[BRCMF_SDIO_FW_CLM].type = BRCMF_FW_TYPE_BINARY;
-+	fwreq->items[BRCMF_SDIO_FW_CLM].flags = BRCMF_FW_REQF_OPTIONAL;
- 	fwreq->board_type = bus->sdiodev->settings->board_type;
- 
- 	return fwreq;
-@@ -4583,6 +4589,8 @@ void brcmf_sdio_remove(struct brcmf_sdio *bus)
- 		if (bus->sdiodev->settings)
- 			brcmf_release_module_param(bus->sdiodev->settings);
- 
-+		release_firmware(bus->sdiodev->clm_fw);
-+		bus->sdiodev->clm_fw = NULL;
- 		kfree(bus->rxbuf);
- 		kfree(bus->hdrbuf);
- 		kfree(bus);
-diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/sdio.h b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/sdio.h
-index 15d2c02fa3ec8..7b74c295e4c97 100644
---- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/sdio.h
-+++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/sdio.h
-@@ -186,9 +186,11 @@ struct brcmf_sdio_dev {
- 	struct sg_table sgtable;
- 	char fw_name[BRCMF_FW_NAME_LEN];
- 	char nvram_name[BRCMF_FW_NAME_LEN];
-+	char clm_name[BRCMF_FW_NAME_LEN];
- 	bool wowl_enabled;
- 	enum brcmf_sdiod_state state;
- 	struct brcmf_sdiod_freezer *freezer;
-+	const struct firmware *clm_fw;
- };
- 
- /* sdio core registers */
-diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/usb.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/usb.c
-index 9fb68c2dc7e39..85e18fb9c497a 100644
---- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/usb.c
-+++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/usb.c
-@@ -1154,24 +1154,11 @@ struct brcmf_usbdev *brcmf_usb_attach(struct brcmf_usbdev_info *devinfo,
- 	return NULL;
- }
- 
--static
--int brcmf_usb_get_fwname(struct device *dev, const char *ext, u8 *fw_name)
-+static int brcmf_usb_get_blob(struct device *dev, const struct firmware **fw,
-+			      enum brcmf_blob_type type)
- {
--	struct brcmf_bus *bus = dev_get_drvdata(dev);
--	struct brcmf_fw_request *fwreq;
--	struct brcmf_fw_name fwnames[] = {
--		{ ext, fw_name },
--	};
--
--	fwreq = brcmf_fw_alloc_request(bus->chip, bus->chiprev,
--				       brcmf_usb_fwnames,
--				       ARRAY_SIZE(brcmf_usb_fwnames),
--				       fwnames, ARRAY_SIZE(fwnames));
--	if (!fwreq)
--		return -ENOMEM;
--
--	kfree(fwreq);
--	return 0;
-+	/* No blobs for USB devices... */
-+	return -ENOENT;
- }
- 
- static const struct brcmf_bus_ops brcmf_usb_bus_ops = {
-@@ -1180,7 +1167,7 @@ static const struct brcmf_bus_ops brcmf_usb_bus_ops = {
- 	.txdata = brcmf_usb_tx,
- 	.txctl = brcmf_usb_tx_ctlpkt,
- 	.rxctl = brcmf_usb_rx_ctlpkt,
--	.get_fwname = brcmf_usb_get_fwname,
-+	.get_blob = brcmf_usb_get_blob,
- };
- 
- #define BRCMF_USB_FW_CODE	0
-
-From df9e8eb6e614ca687f1c4518839e6f238d09c29c Mon Sep 17 00:00:00 2001
-From: Hector Martin <marcan@marcan.st>
-Date: Fri, 7 Jan 2022 11:14:44 +0900
-Subject: [PATCH 04/28] brcmfmac: firmware: Support passing in multiple
- board_types
-
-Apple platforms have firmware and config files identified with multiple
-dimensions. We want to be able to find the most specific firmware
-available for any given platform, progressively trying more general
-firmwares.
-
-To do this, first add support for passing in multiple board_types,
-which will be tried in sequence.
-
-Since this will cause more log spam due to missing firmwares, also
-switch the secondary firmware fecthes to use the _nowarn variant, which
-will not log if the firmware is not found.
-
-Signed-off-by: Hector Martin <marcan@marcan.st>
----
- .../broadcom/brcm80211/brcmfmac/firmware.c    | 53 +++++++++++++++----
- .../broadcom/brcm80211/brcmfmac/firmware.h    |  4 +-
- .../broadcom/brcm80211/brcmfmac/pcie.c        |  4 +-
- .../broadcom/brcm80211/brcmfmac/sdio.c        |  2 +-
- 4 files changed, 49 insertions(+), 14 deletions(-)
-
-diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.c
-index deacd39b3f7b2..d04a59cf4a1ec 100644
---- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.c
-+++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.c
-@@ -430,6 +430,7 @@ struct brcmf_fw {
- 	struct device *dev;
- 	struct brcmf_fw_request *req;
- 	u32 curpos;
-+	unsigned int board_index;
- 	void (*done)(struct device *dev, int err, struct brcmf_fw_request *req);
- };
- 
-@@ -625,17 +626,21 @@ static int brcmf_fw_request_firmware(const struct firmware **fw,
- 				     struct brcmf_fw *fwctx)
- {
- 	struct brcmf_fw_item *cur = &fwctx->req->items[fwctx->curpos];
-+	unsigned int i;
- 	int ret;
- 
--	/* Files can be board-specific, first try a board-specific path */
--	if (fwctx->req->board_type) {
-+	/* Files can be board-specific, first try board-specific paths */
-+	for (i = 0; i < ARRAY_SIZE(fwctx->req->board_types); i++) {
- 		char *alt_path;
- 
--		alt_path = brcm_alt_fw_path(cur->path, fwctx->req->board_type);
-+		if (!fwctx->req->board_types[i])
-+			goto fallback;
-+		alt_path = brcm_alt_fw_path(cur->path,
-+					    fwctx->req->board_types[i]);
- 		if (!alt_path)
- 			goto fallback;
- 
--		ret = request_firmware(fw, alt_path, fwctx->dev);
-+		ret = firmware_request_nowarn(fw, alt_path, fwctx->dev);
- 		kfree(alt_path);
- 		if (ret == 0)
- 			return ret;
-@@ -669,15 +674,40 @@ static void brcmf_fw_request_done_alt_path(const struct firmware *fw, void *ctx)
- {
- 	struct brcmf_fw *fwctx = ctx;
- 	struct brcmf_fw_item *first = &fwctx->req->items[0];
-+	const char *board_type, *alt_path;
- 	int ret = 0;
- 
--	/* Fall back to canonical path if board firmware not found */
--	if (!fw)
--		ret = request_firmware_nowait(THIS_MODULE, true, first->path,
-+	if (fw) {
-+		brcmf_fw_request_done(fw, ctx);
-+		return;
-+	}
-+
-+	/* Try next board firmware */
-+	if (fwctx->board_index < ARRAY_SIZE(fwctx->req->board_types)) {
-+		board_type = fwctx->req->board_types[fwctx->board_index++];
-+		if (!board_type)
-+			goto fallback;
-+		alt_path = brcm_alt_fw_path(first->path, board_type);
-+		if (!alt_path)
-+			goto fallback;
-+
-+		ret = request_firmware_nowait(THIS_MODULE, true, alt_path,
- 					      fwctx->dev, GFP_KERNEL, fwctx,
--					      brcmf_fw_request_done);
-+					      brcmf_fw_request_done_alt_path);
-+		kfree(alt_path);
- 
--	if (fw || ret < 0)
-+		if (ret < 0)
-+			brcmf_fw_request_done(fw, ctx);
-+		return;
-+	}
-+
-+fallback:
-+	/* Fall back to canonical path if board firmware not found */
-+	ret = request_firmware_nowait(THIS_MODULE, true, first->path,
-+				      fwctx->dev, GFP_KERNEL, fwctx,
-+				      brcmf_fw_request_done);
-+
-+	if (ret < 0)
- 		brcmf_fw_request_done(fw, ctx);
- }
- 
-@@ -721,10 +751,11 @@ int brcmf_fw_get_firmwares(struct device *dev, struct brcmf_fw_request *req,
- 	fwctx->done = fw_cb;
- 
- 	/* First try alternative board-specific path if any */
--	if (fwctx->req->board_type)
-+	if (fwctx->req->board_types[0])
- 		alt_path = brcm_alt_fw_path(first->path,
--					    fwctx->req->board_type);
-+					    fwctx->req->board_types[0]);
- 	if (alt_path) {
-+		fwctx->board_index++;
- 		ret = request_firmware_nowait(THIS_MODULE, true, alt_path,
- 					      fwctx->dev, GFP_KERNEL, fwctx,
- 					      brcmf_fw_request_done_alt_path);
-diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.h b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.h
-index e290dec9c53d7..1266cbaee0729 100644
---- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.h
-+++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.h
-@@ -11,6 +11,8 @@
- 
- #define BRCMF_FW_DEFAULT_PATH		"brcm/"
- 
-+#define BRCMF_FW_MAX_BOARD_TYPES	8
-+
- /**
-  * struct brcmf_firmware_mapping - Used to map chipid/revmask to firmware
-  *	filename and nvram filename. Each bus type implementation should create
-@@ -66,7 +68,7 @@ struct brcmf_fw_request {
- 	u16 domain_nr;
- 	u16 bus_nr;
- 	u32 n_items;
--	const char *board_type;
-+	const char *board_types[BRCMF_FW_MAX_BOARD_TYPES];
- 	struct brcmf_fw_item items[];
- };
- 
-diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-index ec73d2620ec9b..2a74c9d8d46a6 100644
---- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-+++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-@@ -1852,11 +1852,13 @@ brcmf_pcie_prepare_fw_request(struct brcmf_pciedev_info *devinfo)
- 	fwreq->items[BRCMF_PCIE_FW_NVRAM].flags = BRCMF_FW_REQF_OPTIONAL;
- 	fwreq->items[BRCMF_PCIE_FW_CLM].type = BRCMF_FW_TYPE_BINARY;
- 	fwreq->items[BRCMF_PCIE_FW_CLM].flags = BRCMF_FW_REQF_OPTIONAL;
--	fwreq->board_type = devinfo->settings->board_type;
- 	/* NVRAM reserves PCI domain 0 for Broadcom's SDK faked bus */
- 	fwreq->domain_nr = pci_domain_nr(devinfo->pdev->bus) + 1;
- 	fwreq->bus_nr = devinfo->pdev->bus->number;
- 
-+	brcmf_dbg(PCIE, "Board: %s\n", devinfo->settings->board_type);
-+	fwreq->board_types[0] = devinfo->settings->board_type;
-+
- 	return fwreq;
- }
- 
-diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/sdio.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/sdio.c
-index 27dc8ed29ac88..2b71991f7d9b3 100644
---- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/sdio.c
-+++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/sdio.c
-@@ -4433,7 +4433,7 @@ brcmf_sdio_prepare_fw_request(struct brcmf_sdio *bus)
- 	fwreq->items[BRCMF_SDIO_FW_NVRAM].type = BRCMF_FW_TYPE_NVRAM;
- 	fwreq->items[BRCMF_SDIO_FW_CLM].type = BRCMF_FW_TYPE_BINARY;
- 	fwreq->items[BRCMF_SDIO_FW_CLM].flags = BRCMF_FW_REQF_OPTIONAL;
--	fwreq->board_type = bus->sdiodev->settings->board_type;
-+	fwreq->board_types[0] = bus->sdiodev->settings->board_type;
- 
- 	return fwreq;
- }
-
-From 666a7ecb960d2c088202f5836b9256b18c088809 Mon Sep 17 00:00:00 2001
-From: Hector Martin <marcan@marcan.st>
-Date: Tue, 21 Dec 2021 17:26:34 +0900
-Subject: [PATCH 05/28] brcmfmac: pcie: Read Apple OTP information
-
-On Apple platforms, the One Time Programmable ROM in the Broadcom chips
-contains information about the specific board design (module, vendor,
-version) that is required to select the correct NVRAM file. Parse this
-OTP ROM and extract the required strings.
-
-Note that the user OTP offset/size is per-chip. This patch does not add
-any chips yet.
-
-Reviewed-by: Arend van Spriel <arend.vanspriel@broadcom.com>
-Signed-off-by: Hector Martin <marcan@marcan.st>
----
- .../broadcom/brcm80211/brcmfmac/pcie.c        | 218 ++++++++++++++++++
- include/linux/bcma/bcma_driver_chipcommon.h   |   1 +
- 2 files changed, 219 insertions(+)
-
-diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-index 2a74c9d8d46a6..17d0353e91052 100644
---- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-+++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-@@ -256,6 +256,15 @@ struct brcmf_pcie_core_info {
- 	u32 wrapbase;
- };
- 
-+#define BRCMF_OTP_MAX_PARAM_LEN 16
-+
-+struct brcmf_otp_params {
-+	char module[BRCMF_OTP_MAX_PARAM_LEN];
-+	char vendor[BRCMF_OTP_MAX_PARAM_LEN];
-+	char version[BRCMF_OTP_MAX_PARAM_LEN];
-+	bool valid;
-+};
-+
- struct brcmf_pciedev_info {
- 	enum brcmf_pcie_state state;
- 	bool in_irq;
-@@ -283,6 +292,7 @@ struct brcmf_pciedev_info {
- 	void (*write_ptr)(struct brcmf_pciedev_info *devinfo, u32 mem_offset,
- 			  u16 value);
- 	struct brcmf_mp_device *settings;
-+	struct brcmf_otp_params otp;
- };
- 
- struct brcmf_pcie_ringbuf {
-@@ -354,6 +364,14 @@ static void brcmf_pcie_setup(struct device *dev, int ret,
- static struct brcmf_fw_request *
- brcmf_pcie_prepare_fw_request(struct brcmf_pciedev_info *devinfo);
- 
-+static u16
-+brcmf_pcie_read_reg16(struct brcmf_pciedev_info *devinfo, u32 reg_offset)
-+{
-+	void __iomem *address = devinfo->regs + reg_offset;
-+
-+	return ioread16(address);
-+}
-+
- static u32
- brcmf_pcie_read_reg32(struct brcmf_pciedev_info *devinfo, u32 reg_offset)
- {
-@@ -499,6 +517,8 @@ brcmf_pcie_copy_dev_tomem(struct brcmf_pciedev_info *devinfo, u32 mem_offset,
- }
- 
- 
-+#define READCC32(devinfo, reg) brcmf_pcie_read_reg32(devinfo, \
-+		CHIPCREGOFFS(reg))
- #define WRITECC32(devinfo, reg, value) brcmf_pcie_write_reg32(devinfo, \
- 		CHIPCREGOFFS(reg), value)
- 
-@@ -1734,6 +1754,198 @@ static const struct brcmf_buscore_ops brcmf_pcie_buscore_ops = {
- 	.write32 = brcmf_pcie_buscore_write32,
- };
- 
-+#define BRCMF_OTP_SYS_VENDOR	0x15
-+#define BRCMF_OTP_BRCM_CIS	0x80
-+
-+#define BRCMF_OTP_VENDOR_HDR	0x00000008
-+
-+static int
-+brcmf_pcie_parse_otp_sys_vendor(struct brcmf_pciedev_info *devinfo,
-+				u8 *data, size_t size)
-+{
-+	int idx = 4;
-+	const char *chip_params;
-+	const char *board_params;
-+	const char *p;
-+
-+	/* 4-byte header and two empty strings */
-+	if (size < 6)
-+		return -EINVAL;
-+
-+	if (get_unaligned_le32(data) != BRCMF_OTP_VENDOR_HDR)
-+		return -EINVAL;
-+
-+	chip_params = &data[idx];
-+
-+	/* Skip first string, including terminator */
-+	idx += strnlen(chip_params, size - idx) + 1;
-+	if (idx >= size)
-+		return -EINVAL;
-+
-+	board_params = &data[idx];
-+
-+	/* Skip to terminator of second string */
-+	idx += strnlen(board_params, size - idx);
-+	if (idx >= size)
-+		return -EINVAL;
-+
-+	/* At this point both strings are guaranteed NUL-terminated */
-+	brcmf_dbg(PCIE, "OTP: chip_params='%s' board_params='%s'\n",
-+		  chip_params, board_params);
-+
-+	p = skip_spaces(board_params);
-+	while (*p) {
-+		char tag = *p++;
-+		const char *end;
-+		size_t len;
-+
-+		if (*p++ != '=') /* implicit NUL check */
-+			return -EINVAL;
-+
-+		/* *p might be NUL here, if so end == p and len == 0 */
-+		end = strchrnul(p, ' ');
-+		len = end - p;
-+
-+		/* leave 1 byte for NUL in destination string */
-+		if (len > (BRCMF_OTP_MAX_PARAM_LEN - 1))
-+			return -EINVAL;
-+
-+		/* Copy len characters plus a NUL terminator */
-+		switch (tag) {
-+		case 'M':
-+			strscpy(devinfo->otp.module, p, len + 1);
-+			break;
-+		case 'V':
-+			strscpy(devinfo->otp.vendor, p, len + 1);
-+			break;
-+		case 'm':
-+			strscpy(devinfo->otp.version, p, len + 1);
-+			break;
-+		}
-+
-+		/* Skip to next arg, if any */
-+		p = skip_spaces(end);
-+	}
-+
-+	brcmf_dbg(PCIE, "OTP: module=%s vendor=%s version=%s\n",
-+		  devinfo->otp.module, devinfo->otp.vendor,
-+		  devinfo->otp.version);
-+
-+	if (!devinfo->otp.module[0] ||
-+	    !devinfo->otp.vendor[0] ||
-+	    !devinfo->otp.version[0])
-+		return -EINVAL;
-+
-+	devinfo->otp.valid = true;
-+	return 0;
-+}
-+
-+static int
-+brcmf_pcie_parse_otp(struct brcmf_pciedev_info *devinfo, u8 *otp, size_t size)
-+{
-+	int p = 0;
-+	int ret = -EINVAL;
-+
-+	brcmf_dbg(PCIE, "parse_otp size=%ld\n", size);
-+
-+	while (p < (size - 1)) {
-+		u8 type = otp[p];
-+		u8 length = otp[p + 1];
-+
-+		if (type == 0)
-+			break;
-+
-+		if ((p + 2 + length) > size)
-+			break;
-+
-+		switch (type) {
-+		case BRCMF_OTP_SYS_VENDOR:
-+			brcmf_dbg(PCIE, "OTP @ 0x%x (%d): SYS_VENDOR\n",
-+				  p, length);
-+			ret = brcmf_pcie_parse_otp_sys_vendor(devinfo,
-+							      &otp[p + 2],
-+							      length);
-+			break;
-+		case BRCMF_OTP_BRCM_CIS:
-+			brcmf_dbg(PCIE, "OTP @ 0x%x (%d): BRCM_CIS\n",
-+				  p, length);
-+			break;
-+		default:
-+			brcmf_dbg(PCIE, "OTP @ 0x%x (%d): Unknown type 0x%x\n",
-+				  p, length, type);
-+			break;
-+		}
-+
-+		p += 2 + length;
-+	}
-+
-+	return ret;
-+}
-+
-+static int brcmf_pcie_read_otp(struct brcmf_pciedev_info *devinfo)
-+{
-+	const struct pci_dev *pdev = devinfo->pdev;
-+	struct brcmf_bus *bus = dev_get_drvdata(&pdev->dev);
-+	u32 coreid, base, words, idx, sromctl;
-+	u16 *otp;
-+	struct brcmf_core *core;
-+	int ret;
-+
-+	switch (devinfo->ci->chip) {
-+	default:
-+		/* OTP not supported on this chip */
-+		return 0;
-+	}
-+
-+	core = brcmf_chip_get_core(devinfo->ci, coreid);
-+	if (!core) {
-+		brcmf_err(bus, "No OTP core\n");
-+		return -ENODEV;
-+	}
-+
-+	if (coreid == BCMA_CORE_CHIPCOMMON) {
-+		/* Chips with OTP accessed via ChipCommon need additional
-+		 * handling to access the OTP
-+		 */
-+		brcmf_pcie_select_core(devinfo, coreid);
-+		sromctl = READCC32(devinfo, sromcontrol);
-+
-+		if (!(sromctl & BCMA_CC_SROM_CONTROL_OTP_PRESENT)) {
-+			/* Chip lacks OTP, try without it... */
-+			brcmf_err(bus,
-+				  "OTP unavailable, using default firmware\n");
-+			return 0;
-+		}
-+
-+		/* Map OTP to shadow area */
-+		WRITECC32(devinfo, sromcontrol,
-+			  sromctl | BCMA_CC_SROM_CONTROL_OTPSEL);
-+	}
-+
-+	otp = kcalloc(words, sizeof(u16), GFP_KERNEL);
-+	if (!otp)
-+		return -ENOMEM;
-+
-+	/* Map bus window to SROM/OTP shadow area in core */
-+	base = brcmf_pcie_buscore_prep_addr(devinfo->pdev, base + core->base);
-+
-+	brcmf_dbg(PCIE, "OTP data:\n");
-+	for (idx = 0; idx < words; idx++) {
-+		otp[idx] = brcmf_pcie_read_reg16(devinfo, base + 2 * idx);
-+		brcmf_dbg(PCIE, "[%8x] 0x%04x\n", base + 2 * idx, otp[idx]);
-+	}
-+
-+	if (coreid == BCMA_CORE_CHIPCOMMON) {
-+		brcmf_pcie_select_core(devinfo, coreid);
-+		WRITECC32(devinfo, sromcontrol, sromctl);
-+	}
-+
-+	ret = brcmf_pcie_parse_otp(devinfo, (u8 *)otp, 2 * words);
-+	kfree(otp);
-+
-+	return ret;
-+}
-+
- #define BRCMF_PCIE_FW_CODE	0
- #define BRCMF_PCIE_FW_NVRAM	1
- #define BRCMF_PCIE_FW_CLM	2
-@@ -1930,6 +2142,12 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
- 	if (ret)
- 		goto fail_bus;
- 
-+	ret = brcmf_pcie_read_otp(devinfo);
-+	if (ret) {
-+		brcmf_err(bus, "failed to parse OTP\n");
-+		goto fail_brcmf;
-+	}
-+
- 	fwreq = brcmf_pcie_prepare_fw_request(devinfo);
- 	if (!fwreq) {
- 		ret = -ENOMEM;
-diff --git a/include/linux/bcma/bcma_driver_chipcommon.h b/include/linux/bcma/bcma_driver_chipcommon.h
-index e3314f746bfa0..2d94c30ed4397 100644
---- a/include/linux/bcma/bcma_driver_chipcommon.h
-+++ b/include/linux/bcma/bcma_driver_chipcommon.h
-@@ -271,6 +271,7 @@
- #define  BCMA_CC_SROM_CONTROL_OP_WRDIS	0x40000000
- #define  BCMA_CC_SROM_CONTROL_OP_WREN	0x60000000
- #define  BCMA_CC_SROM_CONTROL_OTPSEL	0x00000010
-+#define  BCMA_CC_SROM_CONTROL_OTP_PRESENT	0x00000020
- #define  BCMA_CC_SROM_CONTROL_LOCK	0x00000008
- #define  BCMA_CC_SROM_CONTROL_SIZE_MASK	0x00000006
- #define  BCMA_CC_SROM_CONTROL_SIZE_1K	0x00000000
-
-From 73ce89cbc237ff0755f98f39763daabd0dcfd812 Mon Sep 17 00:00:00 2001
-From: Hector Martin <marcan@marcan.st>
-Date: Tue, 21 Dec 2021 17:27:19 +0900
-Subject: [PATCH] brcmfmac: of: Fetch Apple properties
-
-On Apple ARM64 platforms, firmware selection requires two properties
-that come from system firmware: the module-instance (aka "island", a
-codename representing a given hardware platform) and the antenna-sku.
-We map Apple's module codenames to board_types in the form
-"apple,<module-instance>".
-
-The mapped board_type is added to the DTS file in that form, while the
-antenna-sku is forwarded by our bootloader from the Apple Device Tree
-into the FDT. Grab them from the DT so firmware selection can use
-them.
-
-Reviewed-by: Linus Walleij <linus.walleij@linaro.org>
-Signed-off-by: Hector Martin <marcan@marcan.st>
----
- .../wireless/broadcom/brcm80211/brcmfmac/common.h    |  1 +
- .../net/wireless/broadcom/brcm80211/brcmfmac/of.c    | 12 +++++++++++-
- 2 files changed, 12 insertions(+), 1 deletion(-)
-
-diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.h b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.h
-index 6c5a22a32a96c8..aa25abffcc7dbc 100644
---- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.h
-+++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.h
-@@ -53,6 +53,7 @@ struct brcmf_mp_device {
- 	struct brcmfmac_pd_cc *country_codes;
- 	const char	*board_type;
- 	unsigned char	mac[ETH_ALEN];
-+	const char	*antenna_sku;
- 	union {
- 		struct brcmfmac_sdio_pd sdio;
- 	} bus;
-diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/of.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/of.c
-index 79388d49c25602..a83699de01ec3c 100644
---- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/of.c
-+++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/of.c
-@@ -70,14 +70,24 @@ void brcmf_of_probe(struct device *dev, enum brcmf_bus_type bus_type,
- {
- 	struct brcmfmac_sdio_pd *sdio = &settings->bus.sdio;
- 	struct device_node *root, *np = dev->of_node;
-+	const char *prop;
- 	int irq;
- 	int err;
- 	u32 irqf;
- 	u32 val;
- 
-+	/* Apple ARM64 platforms have their own idea of board type, passed in
-+	 * via the device tree. They also have an antenna SKU parameter
-+	 */
-+	if (!of_property_read_string(np, "brcm,board-type", &prop))
-+		settings->board_type = prop;
-+
-+	if (!of_property_read_string(np, "apple,antenna-sku", &prop))
-+		settings->antenna_sku = prop;
-+
- 	/* Set board-type to the first string of the machine compatible prop */
- 	root = of_find_node_by_path("/");
--	if (root) {
-+	if (root && !settings->board_type) {
- 		char *board_type;
- 		const char *tmp;
- 
-
-From 473edc3a084821b3114d76808857faffbbeb46f2 Mon Sep 17 00:00:00 2001
-From: Hector Martin <marcan@marcan.st>
-Date: Tue, 21 Dec 2021 17:45:21 +0900
-Subject: [PATCH 07/28] brcmfmac: pcie: Perform firmware selection for Apple
- platforms
-
-On Apple platforms, firmware selection uses the following elements:
-
-  Property         Example   Source
-  ==============   =======   ========================
-* Chip name        4378      Device ID
-* Chip revision    B1        OTP
-* Platform         shikoku   DT (ARM64) or ACPI (x86)
-* Module type      RASP      OTP
-* Module vendor    m         OTP
-* Module version   6.11      OTP
-* Antenna SKU      X3        DT (ARM64) or ACPI (x86)
-
-In macOS, these firmwares are stored using filenames in this format
-under /usr/share/firmware/wifi:
-
-    C-4378__s-B1/P-shikoku-X3_M-RASP_V-m__m-6.11.txt
-
-To prepare firmwares for Linux, we rename these to a scheme following
-the existing brcmfmac convention:
-
-    brcmfmac<chip><lower(rev)>-pcie.apple,<platform>-<mod_type>-\
-	<mod_vendor>-<mod_version>-<antenna_sku>.txt
-
-The NVRAM uses all the components, while the firmware and CLM blob only
-use the chip/revision/platform/antenna_sku:
-
-    brcmfmac<chip><lower(rev)>-pcie.apple,<platform>-<antenna_sku>.bin
-
-e.g.
-
-    brcm/brcmfmac4378b1-pcie.apple,shikoku-RASP-m-6.11-X3.txt
-    brcm/brcmfmac4378b1-pcie.apple,shikoku-X3.bin
-
-In addition, since there are over 1000 files in total, many of which are
-symlinks or outright duplicates, we deduplicate and prune the firmware
-tree to reduce firmware filenames to fewer dimensions. For example, the
-shikoku platform (MacBook Air M1 2020) simplifies to just 4 files:
-
-    brcm/brcmfmac4378b1-pcie.apple,shikoku.clm_blob
-    brcm/brcmfmac4378b1-pcie.apple,shikoku.bin
-    brcm/brcmfmac4378b1-pcie.apple,shikoku-RASP-m.txt
-    brcm/brcmfmac4378b1-pcie.apple,shikoku-RASP-u.txt
-
-This reduces the total file count to around 170, of which 75 are
-symlinks and 95 are regular files: 7 firmware blobs, 27 CLM blobs, and
-61 NVRAM config files. We also slightly process NVRAM files to correct
-some formatting issues.
-
-To handle this, the driver must try the following path formats when
-looking for firmware files:
-
-    brcm/brcmfmac4378b1-pcie.apple,shikoku-RASP-m-6.11-X3.txt
-    brcm/brcmfmac4378b1-pcie.apple,shikoku-RASP-m-6.11.txt
-    brcm/brcmfmac4378b1-pcie.apple,shikoku-RASP-m.txt
-    brcm/brcmfmac4378b1-pcie.apple,shikoku-RASP.txt
-    brcm/brcmfmac4378b1-pcie.apple,shikoku-X3.txt *
-    brcm/brcmfmac4378b1-pcie.apple,shikoku.txt
-
-* Not relevant for NVRAM, only for firmware/CLM.
-
-The chip revision nominally comes from OTP on Apple platforms, but it
-can be mapped to the PCI revision number, so we ignore the OTP revision
-and continue to use the existing PCI revision mechanism to identify chip
-revisions, as the driver already does for other chips. Unfortunately,
-the mapping is not consistent between different chip types, so this has
-to be determined experimentally.
-
-Reviewed-by: Linus Walleij <linus.walleij@linaro.org>
-Signed-off-by: Hector Martin <marcan@marcan.st>
----
- .../broadcom/brcm80211/brcmfmac/pcie.c        | 41 ++++++++++++++++++-
- 1 file changed, 39 insertions(+), 2 deletions(-)
-
-diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-index 17d0353e91052..86807d990cc77 100644
---- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-+++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-@@ -2068,8 +2068,45 @@ brcmf_pcie_prepare_fw_request(struct brcmf_pciedev_info *devinfo)
- 	fwreq->domain_nr = pci_domain_nr(devinfo->pdev->bus) + 1;
- 	fwreq->bus_nr = devinfo->pdev->bus->number;
- 
--	brcmf_dbg(PCIE, "Board: %s\n", devinfo->settings->board_type);
--	fwreq->board_types[0] = devinfo->settings->board_type;
-+	/* Apple platforms with fancy firmware/NVRAM selection */
-+	if (devinfo->settings->board_type &&
-+	    devinfo->settings->antenna_sku &&
-+	    devinfo->otp.valid) {
-+		const struct brcmf_otp_params *otp = &devinfo->otp;
-+		struct device *dev = &devinfo->pdev->dev;
-+		const char **bt = fwreq->board_types;
-+
-+		brcmf_dbg(PCIE, "Apple board: %s\n",
-+			  devinfo->settings->board_type);
-+
-+		/* Example: apple,shikoku-RASP-m-6.11-X3 */
-+		bt[0] = devm_kasprintf(dev, GFP_KERNEL, "%s-%s-%s-%s-%s",
-+				       devinfo->settings->board_type,
-+				       otp->module, otp->vendor, otp->version,
-+				       devinfo->settings->antenna_sku);
-+		bt[1] = devm_kasprintf(dev, GFP_KERNEL, "%s-%s-%s-%s",
-+				       devinfo->settings->board_type,
-+				       otp->module, otp->vendor, otp->version);
-+		bt[2] = devm_kasprintf(dev, GFP_KERNEL, "%s-%s-%s",
-+				       devinfo->settings->board_type,
-+				       otp->module, otp->vendor);
-+		bt[3] = devm_kasprintf(dev, GFP_KERNEL, "%s-%s",
-+				       devinfo->settings->board_type,
-+				       otp->module);
-+		bt[4] = devm_kasprintf(dev, GFP_KERNEL, "%s-%s",
-+				       devinfo->settings->board_type,
-+				       devinfo->settings->antenna_sku);
-+		bt[5] = devinfo->settings->board_type;
-+
-+		if (!bt[0] || !bt[1] || !bt[2] || !bt[3] || !bt[4]) {
-+			kfree(fwreq);
-+			return NULL;
-+		}
-+
-+	} else {
-+		brcmf_dbg(PCIE, "Board: %s\n", devinfo->settings->board_type);
-+		fwreq->board_types[0] = devinfo->settings->board_type;
-+	}
- 
- 	return fwreq;
- }
-
-From 1552273058430cced22f4505c16d56fc362bfa7e Mon Sep 17 00:00:00 2001
-From: Hector Martin <marcan@marcan.st>
-Date: Thu, 23 Dec 2021 22:32:08 +0900
-Subject: [PATCH 08/28] brcmfmac: firmware: Allow platform to override macaddr
-
-On Device Tree platforms, it is customary to be able to set the MAC
-address via the Device Tree, as it is often stored in system firmware.
-This is particularly relevant for Apple ARM64 platforms, where this
-information comes from system configuration and passed through by the
-bootloader into the DT.
-
-Implement support for this by fetching the platform MAC address and
-adding or replacing the macaddr= property in nvram. This becomes the
-dongle's default MAC address.
-
-On platforms with an SROM MAC address, this overrides it. On platforms
-without one, such as Apple ARM64 devices, this is required for the
-firmware to boot (it will fail if it does not have a valid MAC at all).
-
-Reviewed-by: Linus Walleij <linus.walleij@linaro.org>
-Signed-off-by: Hector Martin <marcan@marcan.st>
----
- .../broadcom/brcm80211/brcmfmac/firmware.c    | 28 +++++++++++++++++--
- 1 file changed, 26 insertions(+), 2 deletions(-)
-
-diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.c
-index d04a59cf4a1ec..fbfc9458d2404 100644
---- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.c
-+++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/firmware.c
-@@ -21,6 +21,8 @@
- #define BRCMF_FW_NVRAM_DEVPATH_LEN		19	/* devpath0=pcie/1/4/ */
- #define BRCMF_FW_NVRAM_PCIEDEV_LEN		10	/* pcie/1/4/ + \0 */
- #define BRCMF_FW_DEFAULT_BOARDREV		"boardrev=0xff"
-+#define BRCMF_FW_MACADDR_FMT			"macaddr=%pM"
-+#define BRCMF_FW_MACADDR_LEN			(7 + ETH_ALEN * 3)
- 
- enum nvram_parser_state {
- 	IDLE,
-@@ -57,6 +59,7 @@ struct nvram_parser {
- 	bool multi_dev_v1;
- 	bool multi_dev_v2;
- 	bool boardrev_found;
-+	bool strip_mac;
- };
- 
- /*
-@@ -121,6 +124,10 @@ static enum nvram_parser_state brcmf_nvram_handle_key(struct nvram_parser *nvp)
- 			nvp->multi_dev_v2 = true;
- 		if (strncmp(&nvp->data[nvp->entry], "boardrev", 8) == 0)
- 			nvp->boardrev_found = true;
-+		/* strip macaddr if platform MAC overrides */
-+		if (nvp->strip_mac &&
-+		    strncmp(&nvp->data[nvp->entry], "macaddr", 7) == 0)
-+			st = COMMENT;
- 	} else if (!is_nvram_char(c) || c == ' ') {
- 		brcmf_dbg(INFO, "warning: ln=%d:col=%d: '=' expected, skip invalid key entry\n",
- 			  nvp->line, nvp->column);
-@@ -209,6 +216,7 @@ static int brcmf_init_nvram_parser(struct nvram_parser *nvp,
- 		size = data_len;
- 	/* Add space for properties we may add */
- 	size += strlen(BRCMF_FW_DEFAULT_BOARDREV) + 1;
-+	size += BRCMF_FW_MACADDR_LEN + 1;
- 	/* Alloc for extra 0 byte + roundup by 4 + length field */
- 	size += 1 + 3 + sizeof(u32);
- 	nvp->nvram = kzalloc(size, GFP_KERNEL);
-@@ -368,22 +376,34 @@ static void brcmf_fw_add_defaults(struct nvram_parser *nvp)
- 	nvp->nvram_len++;
- }
- 
-+static void brcmf_fw_add_macaddr(struct nvram_parser *nvp, u8 *mac)
-+{
-+	BUG_ON(snprintf(&nvp->nvram[nvp->nvram_len], BRCMF_FW_MACADDR_LEN + 1,
-+			BRCMF_FW_MACADDR_FMT, mac) != BRCMF_FW_MACADDR_LEN);
-+	nvp->nvram_len += BRCMF_FW_MACADDR_LEN + 1;
-+}
-+
- /* brcmf_nvram_strip :Takes a buffer of "<var>=<value>\n" lines read from a fil
-  * and ending in a NUL. Removes carriage returns, empty lines, comment lines,
-  * and converts newlines to NULs. Shortens buffer as needed and pads with NULs.
-  * End of buffer is completed with token identifying length of buffer.
-  */
- static void *brcmf_fw_nvram_strip(const u8 *data, size_t data_len,
--				  u32 *new_length, u16 domain_nr, u16 bus_nr)
-+				  u32 *new_length, u16 domain_nr, u16 bus_nr,
-+				  struct device *dev)
- {
- 	struct nvram_parser nvp;
- 	u32 pad;
- 	u32 token;
- 	__le32 token_le;
-+	u8 mac[ETH_ALEN];
- 
- 	if (brcmf_init_nvram_parser(&nvp, data, data_len) < 0)
- 		return NULL;
- 
-+	if (eth_platform_get_mac_address(dev, mac) == 0)
-+		nvp.strip_mac = true;
-+
- 	while (nvp.pos < data_len) {
- 		nvp.state = nv_parser_states[nvp.state](&nvp);
- 		if (nvp.state == END)
-@@ -404,6 +424,9 @@ static void *brcmf_fw_nvram_strip(const u8 *data, size_t data_len,
- 
- 	brcmf_fw_add_defaults(&nvp);
- 
-+	if (nvp.strip_mac)
-+		brcmf_fw_add_macaddr(&nvp, mac);
-+
- 	pad = nvp.nvram_len;
- 	*new_length = roundup(nvp.nvram_len + 1, 4);
- 	while (pad != *new_length) {
-@@ -547,7 +570,8 @@ static int brcmf_fw_request_nvram_done(const struct firmware *fw, void *ctx)
- 	if (data)
- 		nvram = brcmf_fw_nvram_strip(data, data_len, &nvram_length,
- 					     fwctx->req->domain_nr,
--					     fwctx->req->bus_nr);
-+					     fwctx->req->bus_nr,
-+					     fwctx->dev);
- 
- 	if (free_bcm47xx_nvram)
- 		bcm47xx_nvram_release_contents(data);
-
-From da00bc9bdc7c6e6e0f28b99664f848a557955a7c Mon Sep 17 00:00:00 2001
-From: Hector Martin <marcan@marcan.st>
-Date: Tue, 21 Dec 2021 17:39:04 +0900
-Subject: [PATCH 09/28] brcmfmac: msgbuf: Increase RX ring sizes to 1024
-
-Newer chips used on Apple platforms have a max_rxbufpost greater than
-512, which causes warnings when brcmf_msgbuf_rxbuf_data_fill tries to
-put more entries in the ring than will fit. Increase the ring sizes
-to 1024.
-
-Reviewed-by: Linus Walleij <linus.walleij@linaro.org>
-Signed-off-by: Hector Martin <marcan@marcan.st>
----
- drivers/net/wireless/broadcom/brcm80211/brcmfmac/msgbuf.h | 4 ++--
- 1 file changed, 2 insertions(+), 2 deletions(-)
-
-diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/msgbuf.h b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/msgbuf.h
-index 2e322edbb9070..6a849f4a94dd7 100644
---- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/msgbuf.h
-+++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/msgbuf.h
-@@ -8,10 +8,10 @@
- #ifdef CONFIG_BRCMFMAC_PROTO_MSGBUF
- 
- #define BRCMF_H2D_MSGRING_CONTROL_SUBMIT_MAX_ITEM	64
--#define BRCMF_H2D_MSGRING_RXPOST_SUBMIT_MAX_ITEM	512
-+#define BRCMF_H2D_MSGRING_RXPOST_SUBMIT_MAX_ITEM	1024
- #define BRCMF_D2H_MSGRING_CONTROL_COMPLETE_MAX_ITEM	64
- #define BRCMF_D2H_MSGRING_TX_COMPLETE_MAX_ITEM		1024
--#define BRCMF_D2H_MSGRING_RX_COMPLETE_MAX_ITEM		512
-+#define BRCMF_D2H_MSGRING_RX_COMPLETE_MAX_ITEM		1024
- #define BRCMF_H2D_TXFLOWRING_MAX_ITEM			512
- 
- #define BRCMF_H2D_MSGRING_CONTROL_SUBMIT_ITEMSIZE	40
-
-From 7a3976d27406ca847b566b81a5a0ce8263bb128b Mon Sep 17 00:00:00 2001
-From: Hector Martin <marcan@marcan.st>
-Date: Tue, 21 Dec 2021 17:25:35 +0900
-Subject: [PATCH 10/28] brcmfmac: pcie: Support PCIe core revisions >= 64
-
-These newer PCIe core revisions include new sets of registers that must
-be used instead of the legacy ones. Introduce a brcmf_pcie_reginfo to
-hold the specific register offsets and values to use for a given
-platform, and change all the register accesses to indirect through it.
-
-Reviewed-by: Linus Walleij <linus.walleij@linaro.org>
-Signed-off-by: Hector Martin <marcan@marcan.st>
----
- .../broadcom/brcm80211/brcmfmac/pcie.c        | 125 +++++++++++++++---
- 1 file changed, 105 insertions(+), 20 deletions(-)
-
-diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-index 86807d990cc77..a2ef3de834f60 100644
---- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-+++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-@@ -119,6 +119,12 @@ static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
- #define BRCMF_PCIE_PCIE2REG_H2D_MAILBOX_0	0x140
- #define BRCMF_PCIE_PCIE2REG_H2D_MAILBOX_1	0x144
- 
-+#define BRCMF_PCIE_64_PCIE2REG_INTMASK		0xC14
-+#define BRCMF_PCIE_64_PCIE2REG_MAILBOXINT	0xC30
-+#define BRCMF_PCIE_64_PCIE2REG_MAILBOXMASK	0xC34
-+#define BRCMF_PCIE_64_PCIE2REG_H2D_MAILBOX_0	0xA20
-+#define BRCMF_PCIE_64_PCIE2REG_H2D_MAILBOX_1	0xA24
-+
- #define BRCMF_PCIE2_INTA			0x01
- #define BRCMF_PCIE2_INTB			0x02
- 
-@@ -138,6 +144,8 @@ static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
- #define	BRCMF_PCIE_MB_INT_D2H3_DB0		0x400000
- #define	BRCMF_PCIE_MB_INT_D2H3_DB1		0x800000
- 
-+#define BRCMF_PCIE_MB_INT_FN0			(BRCMF_PCIE_MB_INT_FN0_0 | \
-+						 BRCMF_PCIE_MB_INT_FN0_1)
- #define BRCMF_PCIE_MB_INT_D2H_DB		(BRCMF_PCIE_MB_INT_D2H0_DB0 | \
- 						 BRCMF_PCIE_MB_INT_D2H0_DB1 | \
- 						 BRCMF_PCIE_MB_INT_D2H1_DB0 | \
-@@ -147,6 +155,40 @@ static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
- 						 BRCMF_PCIE_MB_INT_D2H3_DB0 | \
- 						 BRCMF_PCIE_MB_INT_D2H3_DB1)
- 
-+#define	BRCMF_PCIE_64_MB_INT_D2H0_DB0		0x1
-+#define	BRCMF_PCIE_64_MB_INT_D2H0_DB1		0x2
-+#define	BRCMF_PCIE_64_MB_INT_D2H1_DB0		0x4
-+#define	BRCMF_PCIE_64_MB_INT_D2H1_DB1		0x8
-+#define	BRCMF_PCIE_64_MB_INT_D2H2_DB0		0x10
-+#define	BRCMF_PCIE_64_MB_INT_D2H2_DB1		0x20
-+#define	BRCMF_PCIE_64_MB_INT_D2H3_DB0		0x40
-+#define	BRCMF_PCIE_64_MB_INT_D2H3_DB1		0x80
-+#define	BRCMF_PCIE_64_MB_INT_D2H4_DB0		0x100
-+#define	BRCMF_PCIE_64_MB_INT_D2H4_DB1		0x200
-+#define	BRCMF_PCIE_64_MB_INT_D2H5_DB0		0x400
-+#define	BRCMF_PCIE_64_MB_INT_D2H5_DB1		0x800
-+#define	BRCMF_PCIE_64_MB_INT_D2H6_DB0		0x1000
-+#define	BRCMF_PCIE_64_MB_INT_D2H6_DB1		0x2000
-+#define	BRCMF_PCIE_64_MB_INT_D2H7_DB0		0x4000
-+#define	BRCMF_PCIE_64_MB_INT_D2H7_DB1		0x8000
-+
-+#define BRCMF_PCIE_64_MB_INT_D2H_DB		(BRCMF_PCIE_64_MB_INT_D2H0_DB0 | \
-+						 BRCMF_PCIE_64_MB_INT_D2H0_DB1 | \
-+						 BRCMF_PCIE_64_MB_INT_D2H1_DB0 | \
-+						 BRCMF_PCIE_64_MB_INT_D2H1_DB1 | \
-+						 BRCMF_PCIE_64_MB_INT_D2H2_DB0 | \
-+						 BRCMF_PCIE_64_MB_INT_D2H2_DB1 | \
-+						 BRCMF_PCIE_64_MB_INT_D2H3_DB0 | \
-+						 BRCMF_PCIE_64_MB_INT_D2H3_DB1 | \
-+						 BRCMF_PCIE_64_MB_INT_D2H4_DB0 | \
-+						 BRCMF_PCIE_64_MB_INT_D2H4_DB1 | \
-+						 BRCMF_PCIE_64_MB_INT_D2H5_DB0 | \
-+						 BRCMF_PCIE_64_MB_INT_D2H5_DB1 | \
-+						 BRCMF_PCIE_64_MB_INT_D2H6_DB0 | \
-+						 BRCMF_PCIE_64_MB_INT_D2H6_DB1 | \
-+						 BRCMF_PCIE_64_MB_INT_D2H7_DB0 | \
-+						 BRCMF_PCIE_64_MB_INT_D2H7_DB1)
-+
- #define BRCMF_PCIE_SHARED_VERSION_7		7
- #define BRCMF_PCIE_MIN_SHARED_VERSION		5
- #define BRCMF_PCIE_MAX_SHARED_VERSION		BRCMF_PCIE_SHARED_VERSION_7
-@@ -273,6 +315,7 @@ struct brcmf_pciedev_info {
- 	char nvram_name[BRCMF_FW_NAME_LEN];
- 	char clm_name[BRCMF_FW_NAME_LEN];
- 	const struct firmware *clm_fw;
-+	const struct brcmf_pcie_reginfo *reginfo;
- 	void __iomem *regs;
- 	void __iomem *tcm;
- 	u32 ram_base;
-@@ -359,6 +402,36 @@ static const u32 brcmf_ring_itemsize[BRCMF_NROF_COMMON_MSGRINGS] = {
- 	BRCMF_D2H_MSGRING_RX_COMPLETE_ITEMSIZE
- };
- 
-+struct brcmf_pcie_reginfo {
-+	u32 intmask;
-+	u32 mailboxint;
-+	u32 mailboxmask;
-+	u32 h2d_mailbox_0;
-+	u32 h2d_mailbox_1;
-+	u32 int_d2h_db;
-+	u32 int_fn0;
-+};
-+
-+static const struct brcmf_pcie_reginfo brcmf_reginfo_default = {
-+	.intmask = BRCMF_PCIE_PCIE2REG_INTMASK,
-+	.mailboxint = BRCMF_PCIE_PCIE2REG_MAILBOXINT,
-+	.mailboxmask = BRCMF_PCIE_PCIE2REG_MAILBOXMASK,
-+	.h2d_mailbox_0 = BRCMF_PCIE_PCIE2REG_H2D_MAILBOX_0,
-+	.h2d_mailbox_1 = BRCMF_PCIE_PCIE2REG_H2D_MAILBOX_1,
-+	.int_d2h_db = BRCMF_PCIE_MB_INT_D2H_DB,
-+	.int_fn0 = BRCMF_PCIE_MB_INT_FN0,
-+};
-+
-+static const struct brcmf_pcie_reginfo brcmf_reginfo_64 = {
-+	.intmask = BRCMF_PCIE_64_PCIE2REG_INTMASK,
-+	.mailboxint = BRCMF_PCIE_64_PCIE2REG_MAILBOXINT,
-+	.mailboxmask = BRCMF_PCIE_64_PCIE2REG_MAILBOXMASK,
-+	.h2d_mailbox_0 = BRCMF_PCIE_64_PCIE2REG_H2D_MAILBOX_0,
-+	.h2d_mailbox_1 = BRCMF_PCIE_64_PCIE2REG_H2D_MAILBOX_1,
-+	.int_d2h_db = BRCMF_PCIE_64_MB_INT_D2H_DB,
-+	.int_fn0 = 0,
-+};
-+
- static void brcmf_pcie_setup(struct device *dev, int ret,
- 			     struct brcmf_fw_request *fwreq);
- static struct brcmf_fw_request *
-@@ -802,30 +875,29 @@ static void brcmf_pcie_bus_console_read(struct brcmf_pciedev_info *devinfo,
- 
- static void brcmf_pcie_intr_disable(struct brcmf_pciedev_info *devinfo)
- {
--	brcmf_pcie_write_reg32(devinfo, BRCMF_PCIE_PCIE2REG_MAILBOXMASK, 0);
-+	brcmf_pcie_write_reg32(devinfo, devinfo->reginfo->mailboxmask, 0);
- }
- 
- 
- static void brcmf_pcie_intr_enable(struct brcmf_pciedev_info *devinfo)
- {
--	brcmf_pcie_write_reg32(devinfo, BRCMF_PCIE_PCIE2REG_MAILBOXMASK,
--			       BRCMF_PCIE_MB_INT_D2H_DB |
--			       BRCMF_PCIE_MB_INT_FN0_0 |
--			       BRCMF_PCIE_MB_INT_FN0_1);
-+	brcmf_pcie_write_reg32(devinfo, devinfo->reginfo->mailboxmask,
-+			       devinfo->reginfo->int_d2h_db |
-+			       devinfo->reginfo->int_fn0);
- }
- 
- static void brcmf_pcie_hostready(struct brcmf_pciedev_info *devinfo)
- {
- 	if (devinfo->shared.flags & BRCMF_PCIE_SHARED_HOSTRDY_DB1)
- 		brcmf_pcie_write_reg32(devinfo,
--				       BRCMF_PCIE_PCIE2REG_H2D_MAILBOX_1, 1);
-+				       devinfo->reginfo->h2d_mailbox_1, 1);
- }
- 
- static irqreturn_t brcmf_pcie_quick_check_isr(int irq, void *arg)
- {
- 	struct brcmf_pciedev_info *devinfo = (struct brcmf_pciedev_info *)arg;
- 
--	if (brcmf_pcie_read_reg32(devinfo, BRCMF_PCIE_PCIE2REG_MAILBOXINT)) {
-+	if (brcmf_pcie_read_reg32(devinfo, devinfo->reginfo->mailboxint)) {
- 		brcmf_pcie_intr_disable(devinfo);
- 		brcmf_dbg(PCIE, "Enter\n");
- 		return IRQ_WAKE_THREAD;
-@@ -840,15 +912,14 @@ static irqreturn_t brcmf_pcie_isr_thread(int irq, void *arg)
- 	u32 status;
- 
- 	devinfo->in_irq = true;
--	status = brcmf_pcie_read_reg32(devinfo, BRCMF_PCIE_PCIE2REG_MAILBOXINT);
-+	status = brcmf_pcie_read_reg32(devinfo, devinfo->reginfo->mailboxint);
- 	brcmf_dbg(PCIE, "Enter %x\n", status);
- 	if (status) {
--		brcmf_pcie_write_reg32(devinfo, BRCMF_PCIE_PCIE2REG_MAILBOXINT,
-+		brcmf_pcie_write_reg32(devinfo, devinfo->reginfo->mailboxint,
- 				       status);
--		if (status & (BRCMF_PCIE_MB_INT_FN0_0 |
--			      BRCMF_PCIE_MB_INT_FN0_1))
-+		if (status & devinfo->reginfo->int_fn0)
- 			brcmf_pcie_handle_mb_data(devinfo);
--		if (status & BRCMF_PCIE_MB_INT_D2H_DB) {
-+		if (status & devinfo->reginfo->int_d2h_db) {
- 			if (devinfo->state == BRCMFMAC_PCIE_STATE_UP)
- 				brcmf_proto_msgbuf_rx_trigger(
- 							&devinfo->pdev->dev);
-@@ -907,8 +978,8 @@ static void brcmf_pcie_release_irq(struct brcmf_pciedev_info *devinfo)
- 	if (devinfo->in_irq)
- 		brcmf_err(bus, "Still in IRQ (processing) !!!\n");
- 
--	status = brcmf_pcie_read_reg32(devinfo, BRCMF_PCIE_PCIE2REG_MAILBOXINT);
--	brcmf_pcie_write_reg32(devinfo, BRCMF_PCIE_PCIE2REG_MAILBOXINT, status);
-+	status = brcmf_pcie_read_reg32(devinfo, devinfo->reginfo->mailboxint);
-+	brcmf_pcie_write_reg32(devinfo, devinfo->reginfo->mailboxint, status);
- 
- 	devinfo->irq_allocated = false;
- }
-@@ -960,7 +1031,7 @@ static int brcmf_pcie_ring_mb_ring_bell(void *ctx)
- 
- 	brcmf_dbg(PCIE, "RING !\n");
- 	/* Any arbitrary value will do, lets use 1 */
--	brcmf_pcie_write_reg32(devinfo, BRCMF_PCIE_PCIE2REG_H2D_MAILBOX_0, 1);
-+	brcmf_pcie_write_reg32(devinfo, devinfo->reginfo->h2d_mailbox_0, 1);
- 
- 	return 0;
- }
-@@ -1723,15 +1794,22 @@ static int brcmf_pcie_buscoreprep(void *ctx)
- static int brcmf_pcie_buscore_reset(void *ctx, struct brcmf_chip *chip)
- {
- 	struct brcmf_pciedev_info *devinfo = (struct brcmf_pciedev_info *)ctx;
--	u32 val;
-+	struct brcmf_core *core;
-+	u32 val, reg;
- 
- 	devinfo->ci = chip;
- 	brcmf_pcie_reset_device(devinfo);
- 
--	val = brcmf_pcie_read_reg32(devinfo, BRCMF_PCIE_PCIE2REG_MAILBOXINT);
-+	/* reginfo is not ready yet */
-+	core = brcmf_chip_get_core(chip, BCMA_CORE_PCIE2);
-+	if (core->rev >= 64)
-+		reg = BRCMF_PCIE_64_PCIE2REG_MAILBOXINT;
-+	else
-+		reg = BRCMF_PCIE_PCIE2REG_MAILBOXINT;
-+
-+	val = brcmf_pcie_read_reg32(devinfo, reg);
- 	if (val != 0xffffffff)
--		brcmf_pcie_write_reg32(devinfo, BRCMF_PCIE_PCIE2REG_MAILBOXINT,
--				       val);
-+		brcmf_pcie_write_reg32(devinfo, reg, val);
- 
- 	return 0;
- }
-@@ -2119,6 +2197,7 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
- 	struct brcmf_pciedev_info *devinfo;
- 	struct brcmf_pciedev *pcie_bus_dev;
- 	struct brcmf_bus *bus;
-+	struct brcmf_core *core;
- 
- 	brcmf_dbg(PCIE, "Enter %x:%x\n", pdev->vendor, pdev->device);
- 
-@@ -2137,6 +2216,12 @@ brcmf_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
- 		goto fail;
- 	}
- 
-+	core = brcmf_chip_get_core(devinfo->ci, BCMA_CORE_PCIE2);
-+	if (core->rev >= 64)
-+		devinfo->reginfo = &brcmf_reginfo_64;
-+	else
-+		devinfo->reginfo = &brcmf_reginfo_default;
-+
- 	pcie_bus_dev = kzalloc(sizeof(*pcie_bus_dev), GFP_KERNEL);
- 	if (pcie_bus_dev == NULL) {
- 		ret = -ENOMEM;
-@@ -2306,7 +2391,7 @@ static int brcmf_pcie_pm_leave_D3(struct device *dev)
- 	brcmf_dbg(PCIE, "Enter, dev=%p, bus=%p\n", dev, bus);
- 
- 	/* Check if device is still up and running, if so we are ready */
--	if (brcmf_pcie_read_reg32(devinfo, BRCMF_PCIE_PCIE2REG_INTMASK) != 0) {
-+	if (brcmf_pcie_read_reg32(devinfo, devinfo->reginfo->intmask) != 0) {
- 		brcmf_dbg(PCIE, "Try to wakeup device....\n");
- 		if (brcmf_pcie_send_mb_data(devinfo, BRCMF_H2D_HOST_D0_INFORM))
- 			goto cleanup;
-
-From 5a3b301867ae6355df1ca0c1f87e546061e14b24 Mon Sep 17 00:00:00 2001
-From: Hector Martin <marcan@marcan.st>
-Date: Tue, 21 Dec 2021 17:46:40 +0900
-Subject: [PATCH 11/28] brcmfmac: pcie: Add IDs/properties for BCM4378
-
-This chip is present on Apple M1 (t8103) platforms:
-
-* atlantisb (apple,j274): Mac mini (M1, 2020)
-* honshu    (apple,j293): MacBook Pro (13-inch, M1, 2020)
-* shikoku   (apple,j313): MacBook Air (M1, 2020)
-* capri     (apple,j456): iMac (24-inch, 4x USB-C, M1, 2020)
-* santorini (apple,j457): iMac (24-inch, 2x USB-C, M1, 2020)
-
-Reviewed-by: Linus Walleij <linus.walleij@linaro.org>
-Signed-off-by: Hector Martin <marcan@marcan.st>
----
- drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c   | 2 ++
- drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c   | 8 ++++++++
- .../net/wireless/broadcom/brcm80211/include/brcm_hw_ids.h | 2 ++
- 3 files changed, 12 insertions(+)
-
-diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c
-index 4ec7773b69064..7f1d6cea2141d 100644
---- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c
-+++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c
-@@ -732,6 +732,8 @@ static u32 brcmf_chip_tcm_rambase(struct brcmf_chip_priv *ci)
- 		return 0x160000;
- 	case CY_CC_43752_CHIP_ID:
- 		return 0x170000;
-+	case BRCM_CC_4378_CHIP_ID:
-+		return 0x352000;
- 	default:
- 		brcmf_err("unknown chip: %s\n", ci->pub.name);
- 		break;
-diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-index a2ef3de834f60..2ca2c4b603cfd 100644
---- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-+++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-@@ -59,6 +59,7 @@ BRCMF_FW_DEF(4365C, "brcmfmac4365c-pcie");
- BRCMF_FW_DEF(4366B, "brcmfmac4366b-pcie");
- BRCMF_FW_DEF(4366C, "brcmfmac4366c-pcie");
- BRCMF_FW_DEF(4371, "brcmfmac4371-pcie");
-+BRCMF_FW_CLM_DEF(4378B1, "brcmfmac4378b1-pcie");
- 
- /* firmware config files */
- MODULE_FIRMWARE(BRCMF_FW_DEFAULT_PATH "brcmfmac*-pcie.txt");
-@@ -88,6 +89,7 @@ static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
- 	BRCMF_FW_ENTRY(BRCM_CC_43664_CHIP_ID, 0xFFFFFFF0, 4366C),
- 	BRCMF_FW_ENTRY(BRCM_CC_43666_CHIP_ID, 0xFFFFFFF0, 4366C),
- 	BRCMF_FW_ENTRY(BRCM_CC_4371_CHIP_ID, 0xFFFFFFFF, 4371),
-+	BRCMF_FW_ENTRY(BRCM_CC_4378_CHIP_ID, 0xFFFFFFFF, 4378B1), /* 3 */
- };
- 
- #define BRCMF_PCIE_FW_UP_TIMEOUT		5000 /* msec */
-@@ -1970,6 +1972,11 @@ static int brcmf_pcie_read_otp(struct brcmf_pciedev_info *devinfo)
- 	int ret;
- 
- 	switch (devinfo->ci->chip) {
-+	case BRCM_CC_4378_CHIP_ID:
-+		coreid = BCMA_CORE_GCI;
-+		base = 0x1120;
-+		words = 0x170;
-+		break;
- 	default:
- 		/* OTP not supported on this chip */
- 		return 0;
-@@ -2458,6 +2465,7 @@ static const struct pci_device_id brcmf_pcie_devid_table[] = {
- 	BRCMF_PCIE_DEVICE(BRCM_PCIE_4366_2G_DEVICE_ID),
- 	BRCMF_PCIE_DEVICE(BRCM_PCIE_4366_5G_DEVICE_ID),
- 	BRCMF_PCIE_DEVICE(BRCM_PCIE_4371_DEVICE_ID),
-+	BRCMF_PCIE_DEVICE(BRCM_PCIE_4378_DEVICE_ID),
- 	{ /* end: all zeroes */ }
- };
- 
-diff --git a/drivers/net/wireless/broadcom/brcm80211/include/brcm_hw_ids.h b/drivers/net/wireless/broadcom/brcm80211/include/brcm_hw_ids.h
-index ed0b707f0cdfc..43158a4046526 100644
---- a/drivers/net/wireless/broadcom/brcm80211/include/brcm_hw_ids.h
-+++ b/drivers/net/wireless/broadcom/brcm80211/include/brcm_hw_ids.h
-@@ -51,6 +51,7 @@
- #define BRCM_CC_43664_CHIP_ID		43664
- #define BRCM_CC_43666_CHIP_ID		43666
- #define BRCM_CC_4371_CHIP_ID		0x4371
-+#define BRCM_CC_4378_CHIP_ID		0x4378
- #define CY_CC_4373_CHIP_ID		0x4373
- #define CY_CC_43012_CHIP_ID		43012
- #define CY_CC_43752_CHIP_ID		43752
-@@ -87,6 +88,7 @@
- #define BRCM_PCIE_4366_2G_DEVICE_ID	0x43c4
- #define BRCM_PCIE_4366_5G_DEVICE_ID	0x43c5
- #define BRCM_PCIE_4371_DEVICE_ID	0x440d
-+#define BRCM_PCIE_4378_DEVICE_ID	0x4425
- 
- 
- /* brcmsmac IDs */
-
-From 1ee6d7ff720179103e44041ea4c250283e3c1cb8 Mon Sep 17 00:00:00 2001
+From 35d6882064554e9c2fb91a35051ad623219fe5bb Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Thu, 23 Dec 2021 19:51:11 +0900
-Subject: [PATCH 12/28] ACPI / property: Support strings in Apple _DSM props
+Subject: [PATCH 01/26] ACPI / property: Support strings in Apple _DSM props
 
 The Wi-Fi module in Apple machines has a "module-instance" device
 property that specifies the platform type and is used for firmware
@@ -1738,10 +16,10 @@ Signed-off-by: Hector Martin <marcan@marcan.st>
  1 file changed, 10 insertions(+), 1 deletion(-)
 
 diff --git a/drivers/acpi/x86/apple.c b/drivers/acpi/x86/apple.c
-index c285c91a5e9cf..71b8f103ab0f4 100644
+index 8812ecd03d5525..45d0f16f374f44 100644
 --- a/drivers/acpi/x86/apple.c
 +++ b/drivers/acpi/x86/apple.c
-@@ -70,13 +70,16 @@ void acpi_extract_apple_properties(struct acpi_device *adev)
+@@ -71,13 +71,16 @@ void acpi_extract_apple_properties(struct acpi_device *adev)
  
  		if ( key->type != ACPI_TYPE_STRING ||
  		    (val->type != ACPI_TYPE_INTEGER &&
@@ -1759,7 +37,7 @@ index c285c91a5e9cf..71b8f103ab0f4 100644
  	}
  
  	numvalid = bitmap_weight(valid, numprops);
-@@ -118,6 +121,12 @@ void acpi_extract_apple_properties(struct acpi_device *adev)
+@@ -119,6 +122,12 @@ void acpi_extract_apple_properties(struct acpi_device *adev)
  		newprops[v].type = val->type;
  		if (val->type == ACPI_TYPE_INTEGER) {
  			newprops[v].integer.value = val->integer.value;
@@ -1773,10 +51,10 @@ index c285c91a5e9cf..71b8f103ab0f4 100644
  			newprops[v].buffer.length = val->buffer.length;
  			newprops[v].buffer.pointer = free_space;
 
-From 500c0b1f9da8dbfcf69e1b6ab7b1cc851e56cf99 Mon Sep 17 00:00:00 2001
+From e8ba1630bbaad330521b7f54665bae71950d42d4 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Thu, 23 Dec 2021 19:51:36 +0900
-Subject: [PATCH 13/28] brcmfmac: acpi: Add support for fetching Apple ACPI
+Subject: [PATCH 02/26] brcmfmac: acpi: Add support for fetching Apple ACPI
  properties
 
 On DT platforms, the module-instance and antenna-sku-info properties
@@ -1798,7 +76,7 @@ Signed-off-by: Hector Martin <marcan@marcan.st>
  create mode 100644 drivers/net/wireless/broadcom/brcm80211/brcmfmac/acpi.c
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/Makefile b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/Makefile
-index 13c13504a6e81..19009eb9db932 100644
+index 13c13504a6e811..19009eb9db932d 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/Makefile
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/Makefile
 @@ -47,3 +47,5 @@ brcmfmac-$(CONFIG_OF) += \
@@ -1809,7 +87,7 @@ index 13c13504a6e81..19009eb9db932 100644
 +		acpi.o
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/acpi.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/acpi.c
 new file mode 100644
-index 0000000000000..dec6a83d13b13
+index 00000000000000..dec6a83d13b135
 --- /dev/null
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/acpi.c
 @@ -0,0 +1,52 @@
@@ -1866,10 +144,10 @@ index 0000000000000..dec6a83d13b13
 +	}
 +}
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.c
-index b8ed851129b4d..c84c48e49fdef 100644
+index 74020fa100659e..ac10dd88ac6b5f 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.c
-@@ -437,6 +437,7 @@ struct brcmf_mp_device *brcmf_get_module_param(struct device *dev,
+@@ -479,6 +479,7 @@ struct brcmf_mp_device *brcmf_get_module_param(struct device *dev,
  		/* No platform data for this device, try OF and DMI data */
  		brcmf_dmi_probe(settings, chip, chiprev);
  		brcmf_of_probe(dev, bus_type, settings);
@@ -1878,10 +156,10 @@ index b8ed851129b4d..c84c48e49fdef 100644
  	return settings;
  }
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.h b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.h
-index d4aa25d646feb..a88c4a9310f36 100644
+index aa25abffcc7dbc..7167fd4f8c639b 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.h
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.h
-@@ -73,6 +73,15 @@ static inline void
+@@ -77,6 +77,15 @@ static inline void
  brcmf_dmi_probe(struct brcmf_mp_device *settings, u32 chip, u32 chiprev) {}
  #endif
  
@@ -1898,10 +176,10 @@ index d4aa25d646feb..a88c4a9310f36 100644
  
  u8 brcmf_map_prio_to_aci(void *cfg, u8 prio);
 
-From ce969dfd6802913b791996e7e00a7b478612d24b Mon Sep 17 00:00:00 2001
+From 4e1cd6720efe7796d334f7e08d7215fff4e983bf Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Thu, 23 Dec 2021 19:30:17 +0900
-Subject: [PATCH 14/28] brcmfmac: pcie: Provide a buffer of random bytes to the
+Subject: [PATCH 03/26] brcmfmac: pcie: Provide a buffer of random bytes to the
  device
 
 Newer Apple firmwares on chipsets without a hardware RNG require the
@@ -1919,7 +197,7 @@ Signed-off-by: Hector Martin <marcan@marcan.st>
  1 file changed, 29 insertions(+)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-index 2ca2c4b603cfd..1e2afca5a60bf 100644
+index 80083f9ea31162..a06edc31da5924 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 @@ -13,6 +13,7 @@
@@ -1930,7 +208,7 @@ index 2ca2c4b603cfd..1e2afca5a60bf 100644
  #include <asm/unaligned.h>
  
  #include <soc.h>
-@@ -1625,6 +1626,13 @@ brcmf_pcie_init_share_ram_info(struct brcmf_pciedev_info *devinfo,
+@@ -1627,6 +1628,13 @@ brcmf_pcie_init_share_ram_info(struct brcmf_pciedev_info *devinfo,
  	return 0;
  }
  
@@ -1944,7 +222,7 @@ index 2ca2c4b603cfd..1e2afca5a60bf 100644
  
  static int brcmf_pcie_download_fw_nvram(struct brcmf_pciedev_info *devinfo,
  					const struct firmware *fw, void *nvram,
-@@ -1656,11 +1664,32 @@ static int brcmf_pcie_download_fw_nvram(struct brcmf_pciedev_info *devinfo,
+@@ -1658,11 +1666,32 @@ static int brcmf_pcie_download_fw_nvram(struct brcmf_pciedev_info *devinfo,
  	brcmf_pcie_write_ram32(devinfo, devinfo->ci->ramsize - 4, 0);
  
  	if (nvram) {
@@ -1978,10 +256,10 @@ index 2ca2c4b603cfd..1e2afca5a60bf 100644
  		brcmf_dbg(PCIE, "No matching NVRAM file found %s\n",
  			  devinfo->nvram_name);
 
-From 2655cdac2dc0c22d6e3403897e46c8d312ce7ddb Mon Sep 17 00:00:00 2001
+From 8dc342e057b535e587408cc1e2256a2a3ad090d2 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
-Date: Tue, 21 Dec 2021 17:50:15 +0900
-Subject: [PATCH 15/28] brcmfmac: pcie: Add IDs/properties for BCM4355
+Date: Mon, 17 Oct 2022 20:30:21 +0900
+Subject: [PATCH 04/26] brcmfmac: pcie: Add IDs/properties for BCM4355
 
 This chip is present on at least these Apple T2 Macs:
 
@@ -1991,48 +269,19 @@ This chip is present on at least these Apple T2 Macs:
 Reviewed-by: Linus Walleij <linus.walleij@linaro.org>
 Signed-off-by: Hector Martin <marcan@marcan.st>
 ---
- drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c   | 1 +
- drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c   | 8 ++++++++
- .../net/wireless/broadcom/brcm80211/include/brcm_hw_ids.h | 2 ++
- 3 files changed, 11 insertions(+)
+ drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c     | 6 ++++++
+ .../net/wireless/broadcom/brcm80211/include/brcm_hw_ids.h   | 1 +
+ 2 files changed, 7 insertions(+)
 
-diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c
-index 7f1d6cea2141d..6ac6a4414eda2 100644
---- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c
-+++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c
-@@ -727,6 +727,7 @@ static u32 brcmf_chip_tcm_rambase(struct brcmf_chip_priv *ci)
- 		return 0x200000;
- 	case BRCM_CC_4359_CHIP_ID:
- 		return (ci->pub.chiprev < 9) ? 0x180000 : 0x160000;
-+	case BRCM_CC_4355_CHIP_ID:
- 	case BRCM_CC_4364_CHIP_ID:
- 	case CY_CC_4373_CHIP_ID:
- 		return 0x160000;
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-index 1e2afca5a60bf..67f79985e4b8b 100644
+index a06edc31da5924..d8efd8ff7fd81e 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-@@ -50,6 +50,7 @@ enum brcmf_pcie_state {
- BRCMF_FW_DEF(43602, "brcmfmac43602-pcie");
- BRCMF_FW_DEF(4350, "brcmfmac4350-pcie");
- BRCMF_FW_DEF(4350C, "brcmfmac4350c2-pcie");
-+BRCMF_FW_CLM_DEF(4355C1, "brcmfmac4355c1-pcie");
- BRCMF_FW_CLM_DEF(4356, "brcmfmac4356-pcie");
- BRCMF_FW_CLM_DEF(43570, "brcmfmac43570-pcie");
- BRCMF_FW_DEF(4358, "brcmfmac4358-pcie");
-@@ -76,6 +77,7 @@ static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
- 	BRCMF_FW_ENTRY(BRCM_CC_4350_CHIP_ID, 0x000000FF, 4350C),
- 	BRCMF_FW_ENTRY(BRCM_CC_4350_CHIP_ID, 0xFFFFFF00, 4350),
- 	BRCMF_FW_ENTRY(BRCM_CC_43525_CHIP_ID, 0xFFFFFFF0, 4365C),
-+	BRCMF_FW_ENTRY(BRCM_CC_4355_CHIP_ID, 0xFFFFFFFF, 4355C1), /* 12 */
- 	BRCMF_FW_ENTRY(BRCM_CC_4356_CHIP_ID, 0xFFFFFFFF, 4356),
- 	BRCMF_FW_ENTRY(BRCM_CC_43567_CHIP_ID, 0xFFFFFFFF, 43570),
- 	BRCMF_FW_ENTRY(BRCM_CC_43569_CHIP_ID, 0xFFFFFFFF, 43570),
-@@ -2001,6 +2003,11 @@ static int brcmf_pcie_read_otp(struct brcmf_pciedev_info *devinfo)
+@@ -2003,6 +2003,11 @@ static int brcmf_pcie_read_otp(struct brcmf_pciedev_info *devinfo)
  	int ret;
  
  	switch (devinfo->ci->chip) {
-+	case BRCM_CC_4355_CHIP_ID:
++	case CY_CC_89459_CHIP_ID:
 +		coreid = BCMA_CORE_CHIPCOMMON;
 +		base = 0x8c0;
 +		words = 0xb2;
@@ -2040,7 +289,7 @@ index 1e2afca5a60bf..67f79985e4b8b 100644
  	case BRCM_CC_4378_CHIP_ID:
  		coreid = BCMA_CORE_GCI;
  		base = 0x1120;
-@@ -2475,6 +2482,7 @@ static const struct pci_device_id brcmf_pcie_devid_table[] = {
+@@ -2476,6 +2481,7 @@ static const struct pci_device_id brcmf_pcie_devid_table[] = {
  	BRCMF_PCIE_DEVICE(BRCM_PCIE_4350_DEVICE_ID),
  	BRCMF_PCIE_DEVICE_SUB(0x4355, BRCM_PCIE_VENDOR_ID_BROADCOM, 0x4355),
  	BRCMF_PCIE_DEVICE(BRCM_PCIE_4354_RAW_DEVICE_ID),
@@ -2049,18 +298,10 @@ index 1e2afca5a60bf..67f79985e4b8b 100644
  	BRCMF_PCIE_DEVICE(BRCM_PCIE_43567_DEVICE_ID),
  	BRCMF_PCIE_DEVICE(BRCM_PCIE_43570_DEVICE_ID),
 diff --git a/drivers/net/wireless/broadcom/brcm80211/include/brcm_hw_ids.h b/drivers/net/wireless/broadcom/brcm80211/include/brcm_hw_ids.h
-index 43158a4046526..81ada150ee301 100644
+index f4939cf6276720..32dec1dff0593c 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/include/brcm_hw_ids.h
 +++ b/drivers/net/wireless/broadcom/brcm80211/include/brcm_hw_ids.h
-@@ -37,6 +37,7 @@
- #define BRCM_CC_4350_CHIP_ID		0x4350
- #define BRCM_CC_43525_CHIP_ID		43525
- #define BRCM_CC_4354_CHIP_ID		0x4354
-+#define BRCM_CC_4355_CHIP_ID		0x4355
- #define BRCM_CC_4356_CHIP_ID		0x4356
- #define BRCM_CC_43566_CHIP_ID		43566
- #define BRCM_CC_43567_CHIP_ID		43567
-@@ -70,6 +71,7 @@
+@@ -72,6 +72,7 @@
  #define BRCM_PCIE_4350_DEVICE_ID	0x43a3
  #define BRCM_PCIE_4354_DEVICE_ID	0x43df
  #define BRCM_PCIE_4354_RAW_DEVICE_ID	0x4354
@@ -2069,10 +310,10 @@ index 43158a4046526..81ada150ee301 100644
  #define BRCM_PCIE_43567_DEVICE_ID	0x43d3
  #define BRCM_PCIE_43570_DEVICE_ID	0x43d9
 
-From d12ac316f2133989f400d84ad8e05c59b87b3b33 Mon Sep 17 00:00:00 2001
+From 19b759c27320d374618a0e439820af4d95ed2158 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:51:31 +0900
-Subject: [PATCH 16/28] brcmfmac: pcie: Add IDs/properties for BCM4377
+Subject: [PATCH 05/26] brcmfmac: pcie: Add IDs/properties for BCM4377
 
 This chip is present on at least these Apple T2 Macs:
 
@@ -2089,7 +330,7 @@ Signed-off-by: Hector Martin <marcan@marcan.st>
  3 files changed, 7 insertions(+)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c
-index 6ac6a4414eda2..4108108f04319 100644
+index 121893bbaa1d7c..e18b74efdfcb0d 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c
 @@ -732,6 +732,7 @@ static u32 brcmf_chip_tcm_rambase(struct brcmf_chip_priv *ci)
@@ -2101,25 +342,25 @@ index 6ac6a4414eda2..4108108f04319 100644
  	case BRCM_CC_4378_CHIP_ID:
  		return 0x352000;
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-index 67f79985e4b8b..d33919fd1db9f 100644
+index d8efd8ff7fd81e..06a709f4dc4ad7 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-@@ -61,6 +61,7 @@ BRCMF_FW_DEF(4365C, "brcmfmac4365c-pcie");
+@@ -60,6 +60,7 @@ BRCMF_FW_DEF(4365C, "brcmfmac4365c-pcie");
  BRCMF_FW_DEF(4366B, "brcmfmac4366b-pcie");
  BRCMF_FW_DEF(4366C, "brcmfmac4366c-pcie");
  BRCMF_FW_DEF(4371, "brcmfmac4371-pcie");
 +BRCMF_FW_CLM_DEF(4377B3, "brcmfmac4377b3-pcie");
  BRCMF_FW_CLM_DEF(4378B1, "brcmfmac4378b1-pcie");
+ BRCMF_FW_DEF(4355, "brcmfmac89459-pcie");
  
- /* firmware config files */
-@@ -92,6 +93,7 @@ static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
+@@ -91,6 +92,7 @@ static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
  	BRCMF_FW_ENTRY(BRCM_CC_43664_CHIP_ID, 0xFFFFFFF0, 4366C),
  	BRCMF_FW_ENTRY(BRCM_CC_43666_CHIP_ID, 0xFFFFFFF0, 4366C),
  	BRCMF_FW_ENTRY(BRCM_CC_4371_CHIP_ID, 0xFFFFFFFF, 4371),
-+	BRCMF_FW_ENTRY(BRCM_CC_4377_CHIP_ID, 0xFFFFFFFF, 4377B3), /* 4 */
- 	BRCMF_FW_ENTRY(BRCM_CC_4378_CHIP_ID, 0xFFFFFFFF, 4378B1), /* 3 */
++	BRCMF_FW_ENTRY(BRCM_CC_4377_CHIP_ID, 0xFFFFFFFF, 4377B3), /* revision ID 4 */
+ 	BRCMF_FW_ENTRY(BRCM_CC_4378_CHIP_ID, 0xFFFFFFFF, 4378B1), /* revision ID 3 */
+ 	BRCMF_FW_ENTRY(CY_CC_89459_CHIP_ID, 0xFFFFFFFF, 4355),
  };
- 
 @@ -2008,6 +2010,7 @@ static int brcmf_pcie_read_otp(struct brcmf_pciedev_info *devinfo)
  		base = 0x8c0;
  		words = 0xb2;
@@ -2128,19 +369,19 @@ index 67f79985e4b8b..d33919fd1db9f 100644
  	case BRCM_CC_4378_CHIP_ID:
  		coreid = BCMA_CORE_GCI;
  		base = 0x1120;
-@@ -2502,6 +2505,7 @@ static const struct pci_device_id brcmf_pcie_devid_table[] = {
+@@ -2501,6 +2504,7 @@ static const struct pci_device_id brcmf_pcie_devid_table[] = {
  	BRCMF_PCIE_DEVICE(BRCM_PCIE_4366_2G_DEVICE_ID),
  	BRCMF_PCIE_DEVICE(BRCM_PCIE_4366_5G_DEVICE_ID),
  	BRCMF_PCIE_DEVICE(BRCM_PCIE_4371_DEVICE_ID),
 +	BRCMF_PCIE_DEVICE(BRCM_PCIE_4377_DEVICE_ID),
  	BRCMF_PCIE_DEVICE(BRCM_PCIE_4378_DEVICE_ID),
- 	{ /* end: all zeroes */ }
- };
+ 	BRCMF_PCIE_DEVICE(CY_PCIE_89459_DEVICE_ID),
+ 	BRCMF_PCIE_DEVICE(CY_PCIE_89459_RAW_DEVICE_ID),
 diff --git a/drivers/net/wireless/broadcom/brcm80211/include/brcm_hw_ids.h b/drivers/net/wireless/broadcom/brcm80211/include/brcm_hw_ids.h
-index 81ada150ee301..6aea4a82e4db2 100644
+index 32dec1dff0593c..175804877922fa 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/include/brcm_hw_ids.h
 +++ b/drivers/net/wireless/broadcom/brcm80211/include/brcm_hw_ids.h
-@@ -52,6 +52,7 @@
+@@ -51,6 +51,7 @@
  #define BRCM_CC_43664_CHIP_ID		43664
  #define BRCM_CC_43666_CHIP_ID		43666
  #define BRCM_CC_4371_CHIP_ID		0x4371
@@ -2148,19 +389,19 @@ index 81ada150ee301..6aea4a82e4db2 100644
  #define BRCM_CC_4378_CHIP_ID		0x4378
  #define CY_CC_4373_CHIP_ID		0x4373
  #define CY_CC_43012_CHIP_ID		43012
-@@ -90,6 +91,7 @@
+@@ -91,6 +92,7 @@
  #define BRCM_PCIE_4366_2G_DEVICE_ID	0x43c4
  #define BRCM_PCIE_4366_5G_DEVICE_ID	0x43c5
  #define BRCM_PCIE_4371_DEVICE_ID	0x440d
 +#define BRCM_PCIE_4377_DEVICE_ID	0x4488
  #define BRCM_PCIE_4378_DEVICE_ID	0x4425
- 
- 
+ #define CY_PCIE_89459_DEVICE_ID         0x4415
+ #define CY_PCIE_89459_RAW_DEVICE_ID     0x4355
 
-From 1f0c4c100a8fd5f20560fcddd6273bbde206947b Mon Sep 17 00:00:00 2001
+From 11141de381531430f4f4de1ad6c2d7bab0a1bb02 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:51:52 +0900
-Subject: [PATCH 17/28] brcmfmac: pcie: Perform correct BCM4364 firmware
+Subject: [PATCH 06/26] brcmfmac: pcie: Perform correct BCM4364 firmware
  selection
 
 This chip exists in two revisions (B2=r3 and B3=r4) on different
@@ -2197,10 +438,10 @@ Signed-off-by: Hector Martin <marcan@marcan.st>
  1 file changed, 9 insertions(+), 2 deletions(-)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-index d33919fd1db9f..4e5964dd6c476 100644
+index 06a709f4dc4ad7..09f7147ef14720 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-@@ -55,7 +55,8 @@ BRCMF_FW_CLM_DEF(4356, "brcmfmac4356-pcie");
+@@ -54,7 +54,8 @@ BRCMF_FW_CLM_DEF(4356, "brcmfmac4356-pcie");
  BRCMF_FW_CLM_DEF(43570, "brcmfmac43570-pcie");
  BRCMF_FW_DEF(4358, "brcmfmac4358-pcie");
  BRCMF_FW_DEF(4359, "brcmfmac4359-pcie");
@@ -2210,7 +451,7 @@ index d33919fd1db9f..4e5964dd6c476 100644
  BRCMF_FW_DEF(4365B, "brcmfmac4365b-pcie");
  BRCMF_FW_DEF(4365C, "brcmfmac4365c-pcie");
  BRCMF_FW_DEF(4366B, "brcmfmac4366b-pcie");
-@@ -85,7 +86,8 @@ static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
+@@ -84,7 +85,8 @@ static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
  	BRCMF_FW_ENTRY(BRCM_CC_43570_CHIP_ID, 0xFFFFFFFF, 43570),
  	BRCMF_FW_ENTRY(BRCM_CC_4358_CHIP_ID, 0xFFFFFFFF, 4358),
  	BRCMF_FW_ENTRY(BRCM_CC_4359_CHIP_ID, 0xFFFFFFFF, 4359),
@@ -2233,10 +474,10 @@ index d33919fd1db9f..4e5964dd6c476 100644
  	case BRCM_CC_4378_CHIP_ID:
  		coreid = BCMA_CORE_GCI;
 
-From bde32bae5162c06b6f67421405e48b682deddc66 Mon Sep 17 00:00:00 2001
+From 83688b87fd376deabca886175e69a4c07b45e387 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Mon, 20 Dec 2021 20:00:57 +0900
-Subject: [PATCH 18/28] brcmfmac: chip: Only disable D11 cores; handle an
+Subject: [PATCH 07/26] brcmfmac: chip: Only disable D11 cores; handle an
  arbitrary number
 
 At least on BCM4387, the D11 cores are held in reset on cold startup and
@@ -2256,10 +497,10 @@ Signed-off-by: Hector Martin <marcan@marcan.st>
  1 file changed, 8 insertions(+), 5 deletions(-)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c
-index 4108108f04319..8266466283e49 100644
+index e18b74efdfcb0d..1a9ef2ee2d3822 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c
-@@ -1290,15 +1290,18 @@ static bool brcmf_chip_cm3_set_active(struct brcmf_chip_priv *chip)
+@@ -1293,15 +1293,18 @@ static bool brcmf_chip_cm3_set_active(struct brcmf_chip_priv *chip)
  static inline void
  brcmf_chip_cr4_set_passive(struct brcmf_chip_priv *chip)
  {
@@ -2284,10 +525,10 @@ index 4108108f04319..8266466283e49 100644
  
  static bool brcmf_chip_cr4_set_active(struct brcmf_chip_priv *chip, u32 rstvec)
 
-From 68f9f9f598ca733046fcbb1e2d410f376b43457c Mon Sep 17 00:00:00 2001
+From 10023d3d2e643ee430c93994f16c5d0640a52998 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:14:59 +0900
-Subject: [PATCH 19/28] brcmfmac: chip: Handle 1024-unit sizes for TCM blocks
+Subject: [PATCH 08/26] brcmfmac: chip: Handle 1024-unit sizes for TCM blocks
 
 BCM4387 has trailing odd-sized blocks as part of TCM which have
 their size described as a multiple of 1024 instead of 8192. Handle this
@@ -2300,7 +541,7 @@ Signed-off-by: Hector Martin <marcan@marcan.st>
  1 file changed, 12 insertions(+), 5 deletions(-)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c
-index 8266466283e49..78d835dea8d2a 100644
+index 1a9ef2ee2d3822..195e13c3c32d6b 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c
 @@ -212,8 +212,8 @@ struct sbsocramregs {
@@ -2314,7 +555,7 @@ index 8266466283e49..78d835dea8d2a 100644
  
  struct brcmf_core_priv {
  	struct brcmf_core pub;
-@@ -675,7 +675,8 @@ static u32 brcmf_chip_sysmem_ramsize(struct brcmf_core_priv *sysmem)
+@@ -676,7 +676,8 @@ static u32 brcmf_chip_sysmem_ramsize(struct brcmf_core_priv *sysmem)
  }
  
  /** Return the TCM-RAM size of the ARMCR4 core. */
@@ -2324,7 +565,7 @@ index 8266466283e49..78d835dea8d2a 100644
  {
  	u32 corecap;
  	u32 memsize = 0;
-@@ -683,6 +684,7 @@ static u32 brcmf_chip_tcm_ramsize(struct brcmf_core_priv *cr4)
+@@ -684,6 +685,7 @@ static u32 brcmf_chip_tcm_ramsize(struct brcmf_core_priv *cr4)
  	u32 nbb;
  	u32 totb;
  	u32 bxinfo;
@@ -2332,7 +573,7 @@ index 8266466283e49..78d835dea8d2a 100644
  	u32 idx;
  
  	corecap = brcmf_chip_core_read32(cr4, ARMCR4_CAP);
-@@ -694,7 +696,12 @@ static u32 brcmf_chip_tcm_ramsize(struct brcmf_core_priv *cr4)
+@@ -695,7 +697,12 @@ static u32 brcmf_chip_tcm_ramsize(struct brcmf_core_priv *cr4)
  	for (idx = 0; idx < totb; idx++) {
  		brcmf_chip_core_write32(cr4, ARMCR4_BANKIDX, idx);
  		bxinfo = brcmf_chip_core_read32(cr4, ARMCR4_BANKINFO);
@@ -2346,7 +587,7 @@ index 8266466283e49..78d835dea8d2a 100644
  	}
  
  	return memsize;
-@@ -753,7 +760,7 @@ int brcmf_chip_get_raminfo(struct brcmf_chip *pub)
+@@ -755,7 +762,7 @@ int brcmf_chip_get_raminfo(struct brcmf_chip *pub)
  	mem = brcmf_chip_get_core(&ci->pub, BCMA_CORE_ARM_CR4);
  	if (mem) {
  		mem_core = container_of(mem, struct brcmf_core_priv, pub);
@@ -2356,10 +597,10 @@ index 8266466283e49..78d835dea8d2a 100644
  		if (ci->pub.rambase == INVALID_RAMBASE) {
  			brcmf_err("RAM base not provided with ARM CR4 core\n");
 
-From 8c3cd65371c2613a71d00fea216aeabf268504ce Mon Sep 17 00:00:00 2001
+From 15696403d6c829a18bb02c3f8afd518f499fd870 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Mon, 20 Dec 2021 03:39:44 +0900
-Subject: [PATCH 20/28] brcmfmac: cfg80211: Add support for scan params v2
+Subject: [PATCH 09/26] brcmfmac: cfg80211: Add support for scan params v2
 
 This new API version is required for at least the BCM4387 firmware. Add
 support for it, with a fallback to the v1 API.
@@ -2367,14 +608,14 @@ support for it, with a fallback to the v1 API.
 Acked-by: Linus Walleij <linus.walleij@linaro.org>
 Signed-off-by: Hector Martin <marcan@marcan.st>
 ---
- .../broadcom/brcm80211/brcmfmac/cfg80211.c    | 113 ++++++++++++++----
+ .../broadcom/brcm80211/brcmfmac/cfg80211.c    | 115 ++++++++++++++----
  .../broadcom/brcm80211/brcmfmac/feature.c     |   1 +
  .../broadcom/brcm80211/brcmfmac/feature.h     |   4 +-
  .../broadcom/brcm80211/brcmfmac/fwil_types.h  |  49 +++++++-
- 4 files changed, 145 insertions(+), 22 deletions(-)
+ 4 files changed, 146 insertions(+), 23 deletions(-)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
-index f0ad1e23f3c80..4d38836587cbe 100644
+index dfcfb333336906..c3d890ee53d240 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
 @@ -770,12 +770,50 @@ void brcmf_set_mpc(struct brcmf_if *ifp, int mpc)
@@ -2398,7 +639,7 @@ index f0ad1e23f3c80..4d38836587cbe 100644
 +	       sizeof(params_le->bssid));
 +
 +	params_le->bss_type = params_v2_le->bss_type;
-+	params_le->scan_type = params_v2_le->scan_type;
++	params_le->scan_type = le32_to_cpu(params_v2_le->scan_type);
 +	params_le->nprobes = params_v2_le->nprobes;
 +	params_le->active_time = params_v2_le->active_time;
 +	params_le->passive_time = params_v2_le->passive_time;
@@ -2486,7 +727,7 @@ index f0ad1e23f3c80..4d38836587cbe 100644
 +
 +	length = BRCMF_SCAN_PARAMS_V2_FIXED_SIZE;
 +
-+	params_le->version = BRCMF_SCAN_PARAMS_VERSION_V2;
++	params_le->version = cpu_to_le16(BRCMF_SCAN_PARAMS_VERSION_V2);
  	params_le->bss_type = DOT11_BSSTYPE_ANY;
  	params_le->scan_type = BRCMF_SCANTYPE_ACTIVE;
  	params_le->channel_num = 0;
@@ -2530,9 +771,12 @@ index f0ad1e23f3c80..4d38836587cbe 100644
  		ptr = (char *)params_le + offset;
  		for (i = 0; i < n_ssids; i++) {
  			memset(&ssid_le, 0, sizeof(ssid_le));
-@@ -1090,6 +1148,7 @@ static void brcmf_escan_prep(struct brcmf_cfg80211_info *cfg,
+@@ -1088,8 +1146,9 @@ static void brcmf_escan_prep(struct brcmf_cfg80211_info *cfg,
+ 		}
+ 	} else {
  		brcmf_dbg(SCAN, "Performing passive scan\n");
- 		params_le->scan_type = BRCMF_SCANTYPE_PASSIVE;
+-		params_le->scan_type = BRCMF_SCANTYPE_PASSIVE;
++		params_le->scan_type = cpu_to_le32(BRCMF_SCANTYPE_PASSIVE);
  	}
 +	params_le->length = cpu_to_le16(length);
  	/* Adding mask to channel numbers */
@@ -2575,10 +819,10 @@ index f0ad1e23f3c80..4d38836587cbe 100644
  	params->sync_id = cpu_to_le16(0x1234);
  
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/feature.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/feature.c
-index d2ac844e1e9ff..19df83399a45a 100644
+index 2c2f3e026c1366..2a7c87e78e7869 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/feature.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/feature.c
-@@ -288,6 +288,7 @@ void brcmf_feat_attach(struct brcmf_pub *drvr)
+@@ -289,6 +289,7 @@ void brcmf_feat_attach(struct brcmf_pub *drvr)
  		ifp->drvr->feat_flags |= BIT(BRCMF_FEAT_SCAN_RANDOM_MAC);
  
  	brcmf_feat_iovar_int_get(ifp, BRCMF_FEAT_FWSUP, "sup_wpa");
@@ -2587,7 +831,7 @@ index d2ac844e1e9ff..19df83399a45a 100644
  	if (drvr->settings->feature_disable) {
  		brcmf_dbg(INFO, "Features: 0x%02x, disable: 0x%02x\n",
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/feature.h b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/feature.h
-index d1f4257af696b..9d098a068d130 100644
+index d1f4257af696b4..9d098a068d130f 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/feature.h
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/feature.h
 @@ -29,6 +29,7 @@
@@ -2609,7 +853,7 @@ index d1f4257af696b..9d098a068d130 100644
  /*
   * Quirks:
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h
-index c87b829adb0d0..648dc302b9986 100644
+index f518e025d6e465..ae59525ad5c99c 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h
 @@ -48,6 +48,10 @@
@@ -2690,10 +934,10 @@ index c87b829adb0d0..648dc302b9986 100644
  
  struct brcmf_escan_result_le {
 
-From 123a8732efbe60357ef7dcc75d57df88526c946a Mon Sep 17 00:00:00 2001
+From 0dc34e586867bd0cbb1ff656d433f4e15571965b Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Mon, 20 Dec 2021 18:15:10 +0900
-Subject: [PATCH 21/28] brcmfmac: feature: Add support for setting feats based
+Subject: [PATCH 10/26] brcmfmac: feature: Add support for setting feats based
  on WLC version
 
 The "wlc_ver" iovar returns information on the WLC and EPI versions.
@@ -2709,7 +953,7 @@ Signed-off-by: Hector Martin <marcan@marcan.st>
  3 files changed, 76 insertions(+), 1 deletion(-)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/feature.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/feature.c
-index 19df83399a45a..ac873677343c0 100644
+index 2a7c87e78e7869..9f52019ffe47f1 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/feature.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/feature.c
 @@ -126,6 +126,53 @@ static void brcmf_feat_firmware_overrides(struct brcmf_pub *drv)
@@ -2766,7 +1010,7 @@ index 19df83399a45a..ac873677343c0 100644
  /**
   * brcmf_feat_iovar_int_get() - determine feature through iovar query.
   *
-@@ -297,6 +344,7 @@ void brcmf_feat_attach(struct brcmf_pub *drvr)
+@@ -298,6 +345,7 @@ void brcmf_feat_attach(struct brcmf_pub *drvr)
  		ifp->drvr->feat_flags &= ~drvr->settings->feature_disable;
  	}
  
@@ -2775,7 +1019,7 @@ index 19df83399a45a..ac873677343c0 100644
  
  	/* set chip related quirks */
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/feature.h b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/feature.h
-index 9d098a068d130..becbcc50d57ab 100644
+index 9d098a068d130f..becbcc50d57ab9 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/feature.h
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/feature.h
 @@ -53,7 +53,9 @@
@@ -2790,7 +1034,7 @@ index 9d098a068d130..becbcc50d57ab 100644
  /*
   * Quirks:
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h
-index 648dc302b9986..a75aabb0933b2 100644
+index ae59525ad5c99c..9f182d8f268409 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h
 @@ -788,6 +788,31 @@ struct brcmf_rev_info_le {
@@ -2826,10 +1070,10 @@ index 648dc302b9986..a75aabb0933b2 100644
   * struct brcmf_assoclist_le - request assoc list.
   *
 
-From b3aa960bc14b7b38539d37bcf58466bb782c10c8 Mon Sep 17 00:00:00 2001
+From 95d4689c28545c1b853ba8cfda3b44daf2816239 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Mon, 20 Dec 2021 18:16:33 +0900
-Subject: [PATCH 22/28] brcmfmac: cfg80211: Add support for PMKID_V3 operations
+Subject: [PATCH 11/26] brcmfmac: cfg80211: Add support for PMKID_V3 operations
 
 Add support for the new PMKID_V3 API, which allows performing PMKID
 mutations individually, instead of requiring the driver to keep track of
@@ -2845,10 +1089,10 @@ Signed-off-by: Hector Martin <marcan@marcan.st>
  2 files changed, 132 insertions(+), 3 deletions(-)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
-index 4d38836587cbe..c001287fa293f 100644
+index c3d890ee53d240..e1344be5393fbc 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
-@@ -4051,6 +4051,37 @@ static s32 brcmf_cfg80211_suspend(struct wiphy *wiphy,
+@@ -4031,6 +4031,37 @@ static s32 brcmf_cfg80211_suspend(struct wiphy *wiphy,
  	return 0;
  }
  
@@ -2886,7 +1130,7 @@ index 4d38836587cbe..c001287fa293f 100644
  static __used s32
  brcmf_update_pmklist(struct brcmf_cfg80211_info *cfg, struct brcmf_if *ifp)
  {
-@@ -4087,6 +4118,14 @@ brcmf_cfg80211_set_pmksa(struct wiphy *wiphy, struct net_device *ndev,
+@@ -4064,6 +4095,14 @@ brcmf_cfg80211_set_pmksa(struct wiphy *wiphy, struct net_device *ndev,
  	if (!check_vif_up(ifp->vif))
  		return -EIO;
  
@@ -2901,7 +1145,7 @@ index 4d38836587cbe..c001287fa293f 100644
  	npmk = le32_to_cpu(cfg->pmk_list.npmk);
  	for (i = 0; i < npmk; i++)
  		if (!memcmp(pmksa->bssid, pmk[i].bssid, ETH_ALEN))
-@@ -4103,9 +4142,6 @@ brcmf_cfg80211_set_pmksa(struct wiphy *wiphy, struct net_device *ndev,
+@@ -4080,9 +4119,6 @@ brcmf_cfg80211_set_pmksa(struct wiphy *wiphy, struct net_device *ndev,
  		return -EINVAL;
  	}
  
@@ -2911,7 +1155,7 @@ index 4d38836587cbe..c001287fa293f 100644
  	err = brcmf_update_pmklist(cfg, ifp);
  
  	brcmf_dbg(TRACE, "Exit\n");
-@@ -4129,6 +4165,11 @@ brcmf_cfg80211_del_pmksa(struct wiphy *wiphy, struct net_device *ndev,
+@@ -4106,6 +4142,11 @@ brcmf_cfg80211_del_pmksa(struct wiphy *wiphy, struct net_device *ndev,
  
  	brcmf_dbg(CONN, "del_pmksa - PMK bssid = %pM\n", pmksa->bssid);
  
@@ -2923,7 +1167,7 @@ index 4d38836587cbe..c001287fa293f 100644
  	npmk = le32_to_cpu(cfg->pmk_list.npmk);
  	for (i = 0; i < npmk; i++)
  		if (!memcmp(pmksa->bssid, pmk[i].bssid, ETH_ALEN))
-@@ -4165,6 +4206,11 @@ brcmf_cfg80211_flush_pmksa(struct wiphy *wiphy, struct net_device *ndev)
+@@ -4142,6 +4183,11 @@ brcmf_cfg80211_flush_pmksa(struct wiphy *wiphy, struct net_device *ndev)
  	if (!check_vif_up(ifp->vif))
  		return -EIO;
  
@@ -2936,7 +1180,7 @@ index 4d38836587cbe..c001287fa293f 100644
  	err = brcmf_update_pmklist(cfg, ifp);
  
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h
-index a75aabb0933b2..9debd72483447 100644
+index 9f182d8f268409..89307688ab47e4 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h
 @@ -174,6 +174,10 @@
@@ -3051,10 +1295,10 @@ index a75aabb0933b2..9debd72483447 100644
   * struct brcmf_pno_param_le - PNO scan configuration parameters
   *
 
-From 12f84e3a60a561e9f4d4e10bc7a61c551c618df9 Mon Sep 17 00:00:00 2001
+From 74dee1e2dabf13a49a4878f1d806256749a7b5b6 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Mon, 20 Dec 2021 19:15:58 +0900
-Subject: [PATCH 23/28] brcmfmac: cfg80211: Pass the PMK in binary instead of
+Subject: [PATCH 12/26] brcmfmac: cfg80211: Pass the PMK in binary instead of
  hex
 
 Apparently the hex passphrase mechanism does not work on newer
@@ -3074,7 +1318,7 @@ Signed-off-by: Hector Martin <marcan@marcan.st>
  1 file changed, 7 insertions(+), 6 deletions(-)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
-index c001287fa293f..ae1ca231d684f 100644
+index e1344be5393fbc..2fc3fa15fcdbf3 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
 @@ -1421,13 +1421,14 @@ static int brcmf_set_pmk(struct brcmf_if *ifp, const u8 *pmk_data, u16 pmk_len)
@@ -3099,10 +1343,10 @@ index c001287fa293f..ae1ca231d684f 100644
  	/* store psk in firmware */
  	err = brcmf_fil_cmd_data_set(ifp, BRCMF_C_SET_WSEC_PMK,
 
-From 5b5da2ae069795daf66a93bf6a5b56047d21d7a0 Mon Sep 17 00:00:00 2001
+From 228e6bafc9d9b3092f4d7e92ad5761762f077b7f Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Thu, 6 Jan 2022 19:45:15 +0900
-Subject: [PATCH 24/28] brcmflac: cfg80211: Use WSEC to set SAE password
+Subject: [PATCH 13/26] brcmflac: cfg80211: Use WSEC to set SAE password
 
 Using the WSEC command instead of sae_password seems to be the supported
 mechanism on newer firmware, and also how the brcmdhd driver does it.
@@ -3114,7 +1358,7 @@ Signed-off-by: Hector Martin <marcan@marcan.st>
  2 files changed, 20 insertions(+), 28 deletions(-)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
-index ae1ca231d684f..0b2a3a387fa71 100644
+index 2fc3fa15fcdbf3..3bd0407ba88336 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
 @@ -1417,52 +1417,44 @@ static u16 brcmf_map_fw_linkdown_reason(const struct brcmf_event_msg *e)
@@ -3190,7 +1434,7 @@ index ae1ca231d684f..0b2a3a387fa71 100644
  
  static void brcmf_link_down(struct brcmf_cfg80211_vif *vif, u16 reason,
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h
-index 9debd72483447..1d406649eca21 100644
+index 89307688ab47e4..d28427ce27c450 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h
 @@ -574,7 +574,7 @@ struct brcmf_wsec_key_le {
@@ -3203,10 +1447,10 @@ index 9debd72483447..1d406649eca21 100644
  
  /**
 
-From 35870777d2431d3280aac275c880c633b040fc54 Mon Sep 17 00:00:00 2001
+From 5ca21c57dfba281207eaf238e7879b96ee77e41d Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 21 Dec 2021 17:52:03 +0900
-Subject: [PATCH 25/28] brcmfmac: pcie: Add IDs/properties for BCM4387
+Subject: [PATCH 14/26] brcmfmac: pcie: Add IDs/properties for BCM4387
 
 This chip is present on Apple M1 Pro/Max (t600x) platforms:
 
@@ -3224,7 +1468,7 @@ Signed-off-by: Hector Martin <marcan@marcan.st>
  3 files changed, 12 insertions(+)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c
-index 78d835dea8d2a..99502de31d56c 100644
+index 195e13c3c32d6b..ef887fcd6b60f7 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/chip.c
 @@ -743,6 +743,8 @@ static u32 brcmf_chip_tcm_rambase(struct brcmf_chip_priv *ci)
@@ -3233,29 +1477,29 @@ index 78d835dea8d2a..99502de31d56c 100644
  		return 0x352000;
 +	case BRCM_CC_4387_CHIP_ID:
 +		return 0x740000;
+ 	case CY_CC_89459_CHIP_ID:
+ 		return ((ci->pub.chiprev < 9) ? 0x180000 : 0x160000);
  	default:
- 		brcmf_err("unknown chip: %s\n", ci->pub.name);
- 		break;
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-index 4e5964dd6c476..3597571039a94 100644
+index 09f7147ef14720..e8c2d549c43fba 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-@@ -64,6 +64,7 @@ BRCMF_FW_DEF(4366C, "brcmfmac4366c-pcie");
+@@ -63,6 +63,7 @@ BRCMF_FW_DEF(4366C, "brcmfmac4366c-pcie");
  BRCMF_FW_DEF(4371, "brcmfmac4371-pcie");
  BRCMF_FW_CLM_DEF(4377B3, "brcmfmac4377b3-pcie");
  BRCMF_FW_CLM_DEF(4378B1, "brcmfmac4378b1-pcie");
 +BRCMF_FW_CLM_DEF(4387C2, "brcmfmac4387c2-pcie");
+ BRCMF_FW_DEF(4355, "brcmfmac89459-pcie");
  
  /* firmware config files */
- MODULE_FIRMWARE(BRCMF_FW_DEFAULT_PATH "brcmfmac*-pcie.txt");
-@@ -97,6 +98,7 @@ static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
+@@ -96,6 +97,7 @@ static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
  	BRCMF_FW_ENTRY(BRCM_CC_4371_CHIP_ID, 0xFFFFFFFF, 4371),
- 	BRCMF_FW_ENTRY(BRCM_CC_4377_CHIP_ID, 0xFFFFFFFF, 4377B3), /* 4 */
- 	BRCMF_FW_ENTRY(BRCM_CC_4378_CHIP_ID, 0xFFFFFFFF, 4378B1), /* 3 */
-+	BRCMF_FW_ENTRY(BRCM_CC_4387_CHIP_ID, 0xFFFFFFFF, 4387C2), /* 7 */
+ 	BRCMF_FW_ENTRY(BRCM_CC_4377_CHIP_ID, 0xFFFFFFFF, 4377B3), /* revision ID 4 */
+ 	BRCMF_FW_ENTRY(BRCM_CC_4378_CHIP_ID, 0xFFFFFFFF, 4378B1), /* revision ID 3 */
++	BRCMF_FW_ENTRY(BRCM_CC_4387_CHIP_ID, 0xFFFFFFFF, 4387C2), /* revision ID 7 */
+ 	BRCMF_FW_ENTRY(CY_CC_89459_CHIP_ID, 0xFFFFFFFF, 4355),
  };
  
- #define BRCMF_PCIE_FW_UP_TIMEOUT		5000 /* msec */
 @@ -2023,6 +2025,11 @@ static int brcmf_pcie_read_otp(struct brcmf_pciedev_info *devinfo)
  		base = 0x1120;
  		words = 0x170;
@@ -3268,39 +1512,39 @@ index 4e5964dd6c476..3597571039a94 100644
  	default:
  		/* OTP not supported on this chip */
  		return 0;
-@@ -2514,6 +2521,7 @@ static const struct pci_device_id brcmf_pcie_devid_table[] = {
+@@ -2513,6 +2520,7 @@ static const struct pci_device_id brcmf_pcie_devid_table[] = {
  	BRCMF_PCIE_DEVICE(BRCM_PCIE_4371_DEVICE_ID),
  	BRCMF_PCIE_DEVICE(BRCM_PCIE_4377_DEVICE_ID),
  	BRCMF_PCIE_DEVICE(BRCM_PCIE_4378_DEVICE_ID),
 +	BRCMF_PCIE_DEVICE(BRCM_PCIE_4387_DEVICE_ID),
+ 	BRCMF_PCIE_DEVICE(CY_PCIE_89459_DEVICE_ID),
+ 	BRCMF_PCIE_DEVICE(CY_PCIE_89459_RAW_DEVICE_ID),
  	{ /* end: all zeroes */ }
- };
- 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/include/brcm_hw_ids.h b/drivers/net/wireless/broadcom/brcm80211/include/brcm_hw_ids.h
-index 6aea4a82e4db2..7e863cea344f7 100644
+index 175804877922fa..782c55bb265587 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/include/brcm_hw_ids.h
 +++ b/drivers/net/wireless/broadcom/brcm80211/include/brcm_hw_ids.h
-@@ -54,6 +54,7 @@
+@@ -53,6 +53,7 @@
  #define BRCM_CC_4371_CHIP_ID		0x4371
  #define BRCM_CC_4377_CHIP_ID		0x4377
  #define BRCM_CC_4378_CHIP_ID		0x4378
 +#define BRCM_CC_4387_CHIP_ID		0x4387
  #define CY_CC_4373_CHIP_ID		0x4373
  #define CY_CC_43012_CHIP_ID		43012
- #define CY_CC_43752_CHIP_ID		43752
-@@ -93,6 +94,7 @@
+ #define CY_CC_43439_CHIP_ID		43439
+@@ -94,6 +95,7 @@
  #define BRCM_PCIE_4371_DEVICE_ID	0x440d
  #define BRCM_PCIE_4377_DEVICE_ID	0x4488
  #define BRCM_PCIE_4378_DEVICE_ID	0x4425
 +#define BRCM_PCIE_4387_DEVICE_ID	0x4433
+ #define CY_PCIE_89459_DEVICE_ID         0x4415
+ #define CY_PCIE_89459_RAW_DEVICE_ID     0x4355
  
- 
- /* brcmsmac IDs */
 
-From 360637ab636b46c84bac9a9af0dc363673310e15 Mon Sep 17 00:00:00 2001
+From 3a6f4cc19e0ee6873576d655366a9690b4a52e2f Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Sun, 26 Dec 2021 00:25:00 +0900
-Subject: [PATCH 26/28] brcmfmac: common: Add support for downloading TxCap
+Subject: [PATCH 15/26] brcmfmac: common: Add support for downloading TxCap
  blobs
 
 The TxCap blobs are additional data blobs used on Apple devices, and
@@ -3314,7 +1558,7 @@ Signed-off-by: Hector Martin <marcan@marcan.st>
  2 files changed, 71 insertions(+), 27 deletions(-)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/bus.h b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/bus.h
-index b13af8f631f31..f4bd98da97619 100644
+index 2208ab3aa79598..4802692c91f765 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/bus.h
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/bus.h
 @@ -39,6 +39,7 @@ enum brcmf_bus_protocol_type {
@@ -3326,7 +1570,7 @@ index b13af8f631f31..f4bd98da97619 100644
  
  struct brcmf_mp_device;
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.c
-index c84c48e49fdef..d65308c3f070f 100644
+index ac10dd88ac6b5f..2319bf2f007429 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.c
 @@ -101,7 +101,7 @@ void brcmf_c_set_joinpref_default(struct brcmf_if *ifp)
@@ -3470,7 +1714,7 @@ index c84c48e49fdef..d65308c3f070f 100644
  	return err;
  }
  
-@@ -248,6 +284,13 @@ int brcmf_c_preinit_dcmds(struct brcmf_if *ifp)
+@@ -290,6 +326,13 @@ int brcmf_c_preinit_dcmds(struct brcmf_if *ifp)
  		goto done;
  	}
  
@@ -3485,10 +1729,10 @@ index c84c48e49fdef..d65308c3f070f 100644
  	memset(buf, 0, sizeof(buf));
  	err = brcmf_fil_iovar_data_get(ifp, "ver", buf, sizeof(buf));
 
-From 07060c23212d5010ff5424b20088b15426a5b929 Mon Sep 17 00:00:00 2001
+From 23c79fcd81440b79a023b30ca1a706f8474ceef4 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Sun, 26 Dec 2021 00:26:10 +0900
-Subject: [PATCH 27/28] brcmfmac: pcie: Load and provide TxCap blobs
+Subject: [PATCH 16/26] brcmfmac: pcie: Load and provide TxCap blobs
 
 These blobs are named .txcap_blob, and exist alongside the existing
 .clm_blob files. Use the existing firmware machinery to provide them to
@@ -3501,7 +1745,7 @@ Signed-off-by: Hector Martin <marcan@marcan.st>
  1 file changed, 13 insertions(+)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
-index 3597571039a94..da24915d3555c 100644
+index e8c2d549c43fba..286362c2c6cb23 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
 @@ -73,6 +73,7 @@ MODULE_FIRMWARE(BRCMF_FW_DEFAULT_PATH "brcmfmac*-pcie.*.txt");
@@ -3566,7 +1810,7 @@ index 3597571039a94..da24915d3555c 100644
  	/* NVRAM reserves PCI domain 0 for Broadcom's SDK faked bus */
  	fwreq->domain_nr = pci_domain_nr(devinfo->pdev->bus) + 1;
  	fwreq->bus_nr = devinfo->pdev->bus->number;
-@@ -2394,6 +2406,7 @@ brcmf_pcie_remove(struct pci_dev *pdev)
+@@ -2393,6 +2405,7 @@ brcmf_pcie_remove(struct pci_dev *pdev)
  	brcmf_pcie_reset_device(devinfo);
  	brcmf_pcie_release_resource(devinfo);
  	release_firmware(devinfo->clm_fw);
@@ -3575,10 +1819,11 @@ index 3597571039a94..da24915d3555c 100644
  	if (devinfo->ci)
  		brcmf_chip_detach(devinfo->ci);
 
-From 4455dd49fb77e2d401ff101bee890d9a26fce84b Mon Sep 17 00:00:00 2001
+From 6ab2422ebe5c45bdcdfaab1205138bee8aa0cc3e Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Sun, 26 Dec 2021 00:53:37 +0900
-Subject: [PATCH] brcmfmac: common: Add support for external calibration blobs
+Subject: [PATCH 17/26] brcmfmac: common: Add support for external calibration
+ blobs
 
 The calibration blob for a chip is normally stored in SROM and loaded
 internally by the firmware. However, Apple ARM64 platforms instead store
@@ -3598,7 +1843,7 @@ Signed-off-by: Hector Martin <marcan@marcan.st>
  3 files changed, 33 insertions(+)
 
 diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.c
-index 19c086271f91cf..caaa4fc7eb52b4 100644
+index 2319bf2f007429..1b522b66d3af9d 100644
 --- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.c
 +++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.c
 @@ -243,6 +243,23 @@ static const u8 brcmf_default_mac_address[ETH_ALEN] = {
@@ -3670,3 +1915,741 @@ index a83699de01ec3c..d295b9f3a4fbe5 100644
  	/* Set board-type to the first string of the machine compatible prop */
  	root = of_find_node_by_path("/");
  	if (root && !settings->board_type) {
+
+From 55b5f2833aa40024bf6cde448fb8403a8be0e686 Mon Sep 17 00:00:00 2001
+From: Hector Martin <marcan@marcan.st>
+Date: Fri, 1 Jul 2022 23:51:23 +0900
+Subject: [PATCH 18/26] brcmfmac: pcie: Add BCM4378B3 support
+
+BCM4378B3 is a new silicon revision of BCM4378 present on the Apple M2
+13" MacBook Pro "kyushu". Its PCI revision number is 5.
+
+Signed-off-by: Hector Martin <marcan@marcan.st>
+---
+ drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+index 286362c2c6cb23..7d9e593a822ada 100644
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+@@ -63,6 +63,7 @@ BRCMF_FW_DEF(4366C, "brcmfmac4366c-pcie");
+ BRCMF_FW_DEF(4371, "brcmfmac4371-pcie");
+ BRCMF_FW_CLM_DEF(4377B3, "brcmfmac4377b3-pcie");
+ BRCMF_FW_CLM_DEF(4378B1, "brcmfmac4378b1-pcie");
++BRCMF_FW_CLM_DEF(4378B3, "brcmfmac4378b3-pcie");
+ BRCMF_FW_CLM_DEF(4387C2, "brcmfmac4387c2-pcie");
+ BRCMF_FW_DEF(4355, "brcmfmac89459-pcie");
+ 
+@@ -97,7 +98,8 @@ static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
+ 	BRCMF_FW_ENTRY(BRCM_CC_43666_CHIP_ID, 0xFFFFFFF0, 4366C),
+ 	BRCMF_FW_ENTRY(BRCM_CC_4371_CHIP_ID, 0xFFFFFFFF, 4371),
+ 	BRCMF_FW_ENTRY(BRCM_CC_4377_CHIP_ID, 0xFFFFFFFF, 4377B3), /* revision ID 4 */
+-	BRCMF_FW_ENTRY(BRCM_CC_4378_CHIP_ID, 0xFFFFFFFF, 4378B1), /* revision ID 3 */
++	BRCMF_FW_ENTRY(BRCM_CC_4378_CHIP_ID, 0x0000000F, 4378B1), /* revision ID 3 */
++	BRCMF_FW_ENTRY(BRCM_CC_4378_CHIP_ID, 0xFFFFFFE0, 4378B3), /* revision ID 5 */
+ 	BRCMF_FW_ENTRY(BRCM_CC_4387_CHIP_ID, 0xFFFFFFFF, 4387C2), /* revision ID 7 */
+ 	BRCMF_FW_ENTRY(CY_CC_89459_CHIP_ID, 0xFFFFFFFF, 4355),
+ };
+
+From 287713d2f27eb826f1dcae16368bcda262e4318d Mon Sep 17 00:00:00 2001
+From: Hector Martin <marcan@marcan.st>
+Date: Tue, 18 Oct 2022 21:59:24 +0900
+Subject: [PATCH 19/26] wifi: brcmfmac: Add missing shared area defines to
+ pcie.c
+
+There are many newer flags and extended shared area fields used by newer
+firmwares that are not yet defined. Add them for future usage.
+
+Signed-off-by: Hector Martin <marcan@marcan.st>
+---
+ .../broadcom/brcm80211/brcmfmac/pcie.c        | 58 +++++++++++++++++++
+ 1 file changed, 58 insertions(+)
+
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+index 7d9e593a822ada..ec58f0a83dbe42 100644
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+@@ -209,11 +209,64 @@ static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
+ #define BRCMF_PCIE_SHARED_VERSION_MASK		0x00FF
+ #define BRCMF_PCIE_SHARED_DMA_INDEX		0x10000
+ #define BRCMF_PCIE_SHARED_DMA_2B_IDX		0x100000
++#define BRCMF_PCIE_SHARED_USE_MAILBOX		0x2000000
++#define BRCMF_PCIE_SHARED_TIMESTAMP_DB0		0x8000000
+ #define BRCMF_PCIE_SHARED_HOSTRDY_DB1		0x10000000
++#define BRCMF_PCIE_SHARED_NO_OOB_DW		0x20000000
++#define BRCMF_PCIE_SHARED_INBAND_DS		0x40000000
++#define BRCMF_PCIE_SHARED_DAR			0x80000000
++
++#define BRCMF_PCIE_SHARED2_EXTENDED_TRAP_DATA	0x1
++#define BRCMF_PCIE_SHARED2_TXSTATUS_METADATA	0x2
++#define BRCMF_PCIE_SHARED2_BT_LOGGING		0x4
++#define BRCMF_PCIE_SHARED2_SNAPSHOT_UPLOAD	0x8
++#define BRCMF_PCIE_SHARED2_SUBMIT_COUNT_WAR	0x10
++#define BRCMF_PCIE_SHARED2_FAST_DELETE_RING	0x20
++#define BRCMF_PCIE_SHARED2_EVTBUF_MAX_MASK	0xC0
++#define BRCMF_PCIE_SHARED2_PKT_TX_STATUS	0x100
++#define BRCMF_PCIE_SHARED2_FW_SMALL_MEMDUMP	0x200
++#define BRCMF_PCIE_SHARED2_FW_HC_ON_TRAP	0x400
++#define BRCMF_PCIE_SHARED2_HSCB			0x800
++#define BRCMF_PCIE_SHARED2_EDL_RING		0x1000
++#define BRCMF_PCIE_SHARED2_DEBUG_BUF_DEST	0x2000
++#define BRCMF_PCIE_SHARED2_PCIE_ENUM_RESET_FLR	0x4000
++#define BRCMF_PCIE_SHARED2_PKT_TIMESTAMP	0x8000
++#define BRCMF_PCIE_SHARED2_HP2P			0x10000
++#define BRCMF_PCIE_SHARED2_HWA			0x20000
++#define BRCMF_PCIE_SHARED2_TRAP_ON_HOST_DB7	0x40000
++#define BRCMF_PCIE_SHARED2_DURATION_SCALE	0x100000
++#define BRCMF_PCIE_SHARED2_D2H_D11_TX_STATUS	0x40000000
++#define BRCMF_PCIE_SHARED2_H2D_D11_TX_STATUS	0x80000000
+ 
+ #define BRCMF_PCIE_FLAGS_HTOD_SPLIT		0x4000
+ #define BRCMF_PCIE_FLAGS_DTOH_SPLIT		0x8000
+ 
++#define BRCMF_HOSTCAP_PCIEAPI_VERSION_MASK	0x000000FF
++#define BRCMF_HOSTCAP_H2D_VALID_PHASE		0x00000100
++#define BRCMF_HOSTCAP_H2D_ENABLE_TRAP_ON_BADPHASE	0x00000200
++#define BRCMF_HOSTCAP_H2D_ENABLE_HOSTRDY	0x400
++#define BRCMF_HOSTCAP_DB0_TIMESTAMP		0x800
++#define BRCMF_HOSTCAP_DS_NO_OOB_DW		0x1000
++#define BRCMF_HOSTCAP_DS_INBAND_DW		0x2000
++#define BRCMF_HOSTCAP_H2D_IDMA			0x4000
++#define BRCMF_HOSTCAP_H2D_IFRM			0x8000
++#define BRCMF_HOSTCAP_H2D_DAR			0x10000
++#define BRCMF_HOSTCAP_EXTENDED_TRAP_DATA	0x20000
++#define BRCMF_HOSTCAP_TXSTATUS_METADATA		0x40000
++#define BRCMF_HOSTCAP_BT_LOGGING		0x80000
++#define BRCMF_HOSTCAP_SNAPSHOT_UPLOAD		0x100000
++#define BRCMF_HOSTCAP_FAST_DELETE_RING		0x200000
++#define BRCMF_HOSTCAP_PKT_TXSTATUS		0x400000
++#define BRCMF_HOSTCAP_UR_FW_NO_TRAP		0x800000
++#define BRCMF_HOSTCAP_HSCB			0x2000000
++#define BRCMF_HOSTCAP_EXT_TRAP_DBGBUF		0x4000000
++#define BRCMF_HOSTCAP_EDL_RING			0x10000000
++#define BRCMF_HOSTCAP_PKT_TIMESTAMP		0x20000000
++#define BRCMF_HOSTCAP_PKT_HP2P			0x40000000
++#define BRCMF_HOSTCAP_HWA			0x80000000
++#define BRCMF_HOSTCAP2_DURATION_SCALE_MASK	0x3F
++
++#define BRCMF_SHARED_FLAGS_OFFSET		0
+ #define BRCMF_SHARED_MAX_RXBUFPOST_OFFSET	34
+ #define BRCMF_SHARED_RING_BASE_OFFSET		52
+ #define BRCMF_SHARED_RX_DATAOFFSET_OFFSET	36
+@@ -225,6 +278,11 @@ static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
+ #define BRCMF_SHARED_DMA_SCRATCH_ADDR_OFFSET	56
+ #define BRCMF_SHARED_DMA_RINGUPD_LEN_OFFSET	64
+ #define BRCMF_SHARED_DMA_RINGUPD_ADDR_OFFSET	68
++#define BRCMF_SHARED_FLAGS2_OFFSET		80
++#define BRCMF_SHARED_HOST_CAP_OFFSET		84
++#define BRCMF_SHARED_FLAGS3_OFFSET		108
++#define BRCMF_SHARED_HOST_CAP2_OFFSET		112
++#define BRCMF_SHARED_HOST_CAP3_OFFSET		116
+ 
+ #define BRCMF_RING_H2D_RING_COUNT_OFFSET	0
+ #define BRCMF_RING_D2H_RING_COUNT_OFFSET	1
+
+From d65e16faef2e15889ba1c67075fff294249aeba8 Mon Sep 17 00:00:00 2001
+From: Hector Martin <marcan@marcan.st>
+Date: Tue, 18 Oct 2022 22:02:10 +0900
+Subject: [PATCH 20/26] wifi: brcmfmac: Handle PCIe MSI properly
+
+On newer firmwares under at least certain conditions, MSI mode does not
+leave interrupt flags set (they are cleared by the firmware). Handle
+this by always checking for ring data when we get an MSI, regardless of
+whether any IRQ flags were set.
+
+Signed-off-by: Hector Martin <marcan@marcan.st>
+---
+ .../broadcom/brcm80211/brcmfmac/pcie.c        | 23 +++++++++++++------
+ 1 file changed, 16 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+index ec58f0a83dbe42..2d0071df2b2bfc 100644
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+@@ -400,6 +400,7 @@ struct brcmf_pciedev_info {
+ 	wait_queue_head_t mbdata_resp_wait;
+ 	bool mbdata_completed;
+ 	bool irq_allocated;
++	bool have_msi;
+ 	bool wowl_enabled;
+ 	u8 dma_idx_sz;
+ 	void *idxbuf;
+@@ -976,6 +977,11 @@ static irqreturn_t brcmf_pcie_quick_check_isr(int irq, void *arg)
+ 		brcmf_dbg(PCIE, "Enter\n");
+ 		return IRQ_WAKE_THREAD;
+ 	}
++
++	/* mailboxint is cleared by the firmware in MSI mode */
++	if (devinfo->have_msi)
++		return IRQ_WAKE_THREAD;
++
+ 	return IRQ_NONE;
+ }
+ 
+@@ -992,13 +998,13 @@ static irqreturn_t brcmf_pcie_isr_thread(int irq, void *arg)
+ 		brcmf_pcie_write_reg32(devinfo, devinfo->reginfo->mailboxint,
+ 				       status);
+ 		if (status & devinfo->reginfo->int_fn0)
+-			brcmf_pcie_handle_mb_data(devinfo);
+-		if (status & devinfo->reginfo->int_d2h_db) {
+-			if (devinfo->state == BRCMFMAC_PCIE_STATE_UP)
+-				brcmf_proto_msgbuf_rx_trigger(
+-							&devinfo->pdev->dev);
+-		}
++			brcmf_pcie_poll_mb_data(devinfo);
+ 	}
++	if (devinfo->have_msi || status & devinfo->reginfo->int_d2h_db) {
++		if (devinfo->state == BRCMFMAC_PCIE_STATE_UP)
++			brcmf_proto_msgbuf_rx_trigger(&devinfo->pdev->dev);
++	}
++
+ 	brcmf_pcie_bus_console_read(devinfo, false);
+ 	if (devinfo->state == BRCMFMAC_PCIE_STATE_UP)
+ 		brcmf_pcie_intr_enable(devinfo);
+@@ -1016,7 +1022,10 @@ static int brcmf_pcie_request_irq(struct brcmf_pciedev_info *devinfo)
+ 
+ 	brcmf_dbg(PCIE, "Enter\n");
+ 
+-	pci_enable_msi(pdev);
++	devinfo->have_msi = pci_enable_msi(pdev) >= 0;
++	if (devinfo->have_msi)
++		brcmf_dbg(PCIE, "MSI enabled\n");
++
+ 	if (request_threaded_irq(pdev->irq, brcmf_pcie_quick_check_isr,
+ 				 brcmf_pcie_isr_thread, IRQF_SHARED,
+ 				 "brcmf_pcie_intr", devinfo)) {
+
+From cc715bdd066512ae2b507b776b0c2c49849e1213 Mon Sep 17 00:00:00 2001
+From: Hector Martin <marcan@marcan.st>
+Date: Tue, 18 Oct 2022 22:06:40 +0900
+Subject: [PATCH 21/26] wifi: brcmfmac: Fix logic for deciding which doorbell
+ registers to use
+
+While the other >PCIe r64 registers (which are apparently called DAR
+registers) are always used on newer revisions, which doorbell registers
+should be used depends only on flags set by firmware. Take them out of
+the reginfo struct and check the flag to decide instead.
+
+Signed-off-by: Hector Martin <marcan@marcan.st>
+---
+ .../broadcom/brcm80211/brcmfmac/pcie.c        | 20 +++++++++----------
+ 1 file changed, 10 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+index 2d0071df2b2bfc..b49dcdf70fccd3 100644
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+@@ -481,8 +481,6 @@ struct brcmf_pcie_reginfo {
+ 	u32 intmask;
+ 	u32 mailboxint;
+ 	u32 mailboxmask;
+-	u32 h2d_mailbox_0;
+-	u32 h2d_mailbox_1;
+ 	u32 int_d2h_db;
+ 	u32 int_fn0;
+ };
+@@ -491,8 +489,6 @@ static const struct brcmf_pcie_reginfo brcmf_reginfo_default = {
+ 	.intmask = BRCMF_PCIE_PCIE2REG_INTMASK,
+ 	.mailboxint = BRCMF_PCIE_PCIE2REG_MAILBOXINT,
+ 	.mailboxmask = BRCMF_PCIE_PCIE2REG_MAILBOXMASK,
+-	.h2d_mailbox_0 = BRCMF_PCIE_PCIE2REG_H2D_MAILBOX_0,
+-	.h2d_mailbox_1 = BRCMF_PCIE_PCIE2REG_H2D_MAILBOX_1,
+ 	.int_d2h_db = BRCMF_PCIE_MB_INT_D2H_DB,
+ 	.int_fn0 = BRCMF_PCIE_MB_INT_FN0,
+ };
+@@ -501,8 +497,6 @@ static const struct brcmf_pcie_reginfo brcmf_reginfo_64 = {
+ 	.intmask = BRCMF_PCIE_64_PCIE2REG_INTMASK,
+ 	.mailboxint = BRCMF_PCIE_64_PCIE2REG_MAILBOXINT,
+ 	.mailboxmask = BRCMF_PCIE_64_PCIE2REG_MAILBOXMASK,
+-	.h2d_mailbox_0 = BRCMF_PCIE_64_PCIE2REG_H2D_MAILBOX_0,
+-	.h2d_mailbox_1 = BRCMF_PCIE_64_PCIE2REG_H2D_MAILBOX_1,
+ 	.int_d2h_db = BRCMF_PCIE_64_MB_INT_D2H_DB,
+ 	.int_fn0 = 0,
+ };
+@@ -963,9 +957,12 @@ static void brcmf_pcie_intr_enable(struct brcmf_pciedev_info *devinfo)
+ 
+ static void brcmf_pcie_hostready(struct brcmf_pciedev_info *devinfo)
+ {
+-	if (devinfo->shared.flags & BRCMF_PCIE_SHARED_HOSTRDY_DB1)
+-		brcmf_pcie_write_reg32(devinfo,
+-				       devinfo->reginfo->h2d_mailbox_1, 1);
++	if (devinfo->shared.flags & BRCMF_PCIE_SHARED_HOSTRDY_DB1) {
++		if (devinfo->shared.flags & BRCMF_PCIE_SHARED_DAR)
++			brcmf_pcie_write_reg32(devinfo, BRCMF_PCIE_64_PCIE2REG_H2D_MAILBOX_1, 1);
++		else
++			brcmf_pcie_write_reg32(devinfo, BRCMF_PCIE_PCIE2REG_H2D_MAILBOX_1, 1);
++	}
+ }
+ 
+ static irqreturn_t brcmf_pcie_quick_check_isr(int irq, void *arg)
+@@ -1114,7 +1111,10 @@ static int brcmf_pcie_ring_mb_ring_bell(void *ctx)
+ 
+ 	brcmf_dbg(PCIE, "RING !\n");
+ 	/* Any arbitrary value will do, lets use 1 */
+-	brcmf_pcie_write_reg32(devinfo, devinfo->reginfo->h2d_mailbox_0, 1);
++	if (devinfo->shared.flags & BRCMF_PCIE_SHARED_DAR)
++		brcmf_pcie_write_reg32(devinfo, BRCMF_PCIE_64_PCIE2REG_H2D_MAILBOX_0, 1);
++	else
++		brcmf_pcie_write_reg32(devinfo, BRCMF_PCIE_PCIE2REG_H2D_MAILBOX_0, 1);
+ 
+ 	return 0;
+ }
+
+From 8e76ec01738c0d63afb72ff681547b1efb530b69 Mon Sep 17 00:00:00 2001
+From: Hector Martin <marcan@marcan.st>
+Date: Tue, 18 Oct 2022 22:10:08 +0900
+Subject: [PATCH 22/26] wifi: brcmfmac: Support v6+ flags and set host_cap
+ properly
+
+Interface versions 6 and above support having the host tell the dongle
+about what it supports via a host_cap field (it seems that if it is set
+to zero, some kind of unknown defaults are used). Explicitly support and
+set this.
+
+This also disables OOB deep sleep support; it doesn't look like deep
+sleep is properly supported yet at all (it needs more logic than merely
+acking requests, which is all pcie.c does right now).
+
+Signed-off-by: Hector Martin <marcan@marcan.st>
+---
+ .../broadcom/brcm80211/brcmfmac/pcie.c        | 35 ++++++++++++++++++-
+ 1 file changed, 34 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+index b49dcdf70fccd3..81d908b75de14c 100644
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+@@ -347,6 +347,8 @@ struct brcmf_pcie_console {
+ struct brcmf_pcie_shared_info {
+ 	u32 tcm_base_address;
+ 	u32 flags;
++	u32 flags2;
++	u32 flags3;
+ 	struct brcmf_pcie_ringbuf *commonrings[BRCMF_NROF_COMMON_MSGRINGS];
+ 	struct brcmf_pcie_ringbuf *flowrings;
+ 	u16 max_rxbufpost;
+@@ -1661,12 +1663,16 @@ brcmf_pcie_init_share_ram_info(struct brcmf_pciedev_info *devinfo,
+ {
+ 	struct brcmf_bus *bus = dev_get_drvdata(&devinfo->pdev->dev);
+ 	struct brcmf_pcie_shared_info *shared;
++	u32 host_cap;
++	u32 host_cap2;
+ 	u32 addr;
+ 
+ 	shared = &devinfo->shared;
+ 	shared->tcm_base_address = sharedram_addr;
+ 
+-	shared->flags = brcmf_pcie_read_tcm32(devinfo, sharedram_addr);
++	shared->flags = brcmf_pcie_read_tcm32(devinfo, sharedram_addr +
++	                                      BRCMF_SHARED_FLAGS_OFFSET);
++
+ 	shared->version = (u8)(shared->flags & BRCMF_PCIE_SHARED_VERSION_MASK);
+ 	brcmf_dbg(PCIE, "PCIe protocol version %d\n", shared->version);
+ 	if ((shared->version > BRCMF_PCIE_MAX_SHARED_VERSION) ||
+@@ -1707,6 +1713,33 @@ brcmf_pcie_init_share_ram_info(struct brcmf_pciedev_info *devinfo,
+ 	brcmf_pcie_bus_console_init(devinfo);
+ 	brcmf_pcie_bus_console_read(devinfo, false);
+ 
++	/* Features added in revision 6 follow */
++	if (shared->version < 6)
++		return 0;
++
++	shared->flags2 = brcmf_pcie_read_tcm32(devinfo, sharedram_addr +
++	                                       BRCMF_SHARED_FLAGS2_OFFSET);
++	shared->flags3 = brcmf_pcie_read_tcm32(devinfo, sharedram_addr +
++	                                       BRCMF_SHARED_FLAGS3_OFFSET);
++
++	/* Update host support flags */
++	host_cap = shared->version;
++	host_cap2 = 0;
++
++	if (shared->flags & BRCMF_PCIE_SHARED_HOSTRDY_DB1)
++		host_cap |= BRCMF_HOSTCAP_H2D_ENABLE_HOSTRDY;
++
++	if (shared->flags & BRCMF_PCIE_SHARED_DAR)
++		host_cap |= BRCMF_HOSTCAP_H2D_DAR;
++
++	/* Disable DS: this is not currently properly supported */
++	host_cap |= BRCMF_HOSTCAP_DS_NO_OOB_DW;
++
++	brcmf_pcie_write_tcm32(devinfo, sharedram_addr +
++			       BRCMF_SHARED_HOST_CAP_OFFSET, host_cap);
++	brcmf_pcie_write_tcm32(devinfo, sharedram_addr +
++			       BRCMF_SHARED_HOST_CAP2_OFFSET, host_cap2);
++
+ 	return 0;
+ }
+ 
+
+From 3ea0fedefa1fe836caf71726a0060c1ec6d19fff Mon Sep 17 00:00:00 2001
+From: Hector Martin <marcan@marcan.st>
+Date: Tue, 18 Oct 2022 21:55:52 +0900
+Subject: [PATCH 23/26] wifi: brcmfmac: Add newer msgbuf packet types up to
+ 0x2e
+
+There are many newer msgbuf packet types that are not yet listed in the
+defines in msgbuf.c. Add them for future use.
+
+Signed-off-by: Hector Martin <marcan@marcan.st>
+---
+ .../broadcom/brcm80211/brcmfmac/msgbuf.c      | 26 +++++++++++++++++++
+ 1 file changed, 26 insertions(+)
+
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/msgbuf.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/msgbuf.c
+index cec53f934940a6..6b462c8e0b54be 100644
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/msgbuf.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/msgbuf.c
+@@ -47,6 +47,32 @@
+ #define MSGBUF_TYPE_RX_CMPLT			0x12
+ #define MSGBUF_TYPE_LPBK_DMAXFER		0x13
+ #define MSGBUF_TYPE_LPBK_DMAXFER_CMPLT		0x14
++#define MSGBUF_TYPE_FLOW_RING_RESUME		0x15
++#define MSGBUF_TYPE_FLOW_RING_RESUME_CMPLT	0x16
++#define MSGBUF_TYPE_FLOW_RING_SUSPEND		0x17
++#define MSGBUF_TYPE_FLOW_RING_SUSPEND_CMPLT	0x18
++#define MSGBUF_TYPE_INFO_BUF_POST		0x19
++#define MSGBUF_TYPE_INFO_BUF_CMPLT		0x1A
++#define MSGBUF_TYPE_H2D_RING_CREATE		0x1B
++#define MSGBUF_TYPE_D2H_RING_CREATE		0x1C
++#define MSGBUF_TYPE_H2D_RING_CREATE_CMPLT	0x1D
++#define MSGBUF_TYPE_D2H_RING_CREATE_CMPLT	0x1E
++#define MSGBUF_TYPE_H2D_RING_CONFIG		0x1F
++#define MSGBUF_TYPE_D2H_RING_CONFIG		0x20
++#define MSGBUF_TYPE_H2D_RING_CONFIG_CMPLT	0x21
++#define MSGBUF_TYPE_D2H_RING_CONFIG_CMPLT	0x22
++#define MSGBUF_TYPE_H2D_MAILBOX_DATA		0x23
++#define MSGBUF_TYPE_D2H_MAILBOX_DATA		0x24
++#define MSGBUF_TYPE_TIMSTAMP_BUFPOST		0x25
++#define MSGBUF_TYPE_HOSTTIMSTAMP		0x26
++#define MSGBUF_TYPE_HOSTTIMSTAMP_CMPLT		0x27
++#define MSGBUF_TYPE_FIRMWARE_TIMESTAMP		0x28
++#define MSGBUF_TYPE_SNAPSHOT_UPLOAD		0x29
++#define MSGBUF_TYPE_SNAPSHOT_CMPLT		0x2A
++#define MSGBUF_TYPE_H2D_RING_DELETE		0x2B
++#define MSGBUF_TYPE_D2H_RING_DELETE		0x2C
++#define MSGBUF_TYPE_H2D_RING_DELETE_CMPLT	0x2D
++#define MSGBUF_TYPE_D2H_RING_DELETE_CMPLT	0x2E
+ 
+ #define NR_TX_PKTIDS				2048
+ #define NR_RX_PKTIDS				1024
+
+From caddbfef02f63b2b7b119ff58043dde5f9dad61f Mon Sep 17 00:00:00 2001
+From: Hector Martin <marcan@marcan.st>
+Date: Tue, 18 Oct 2022 21:56:53 +0900
+Subject: [PATCH 24/26] wifi: brcmfmac: Add a new bus op for D2H mailbox
+ message handling
+
+Newer firmware versions use the common ring for sending mailbox messages
+between the dongle and host, instead of the hardware mailboxes. This
+needs the protocol driver to call back into the bus driver, so add a
+callback for this to bus.h.
+
+Signed-off-by: Hector Martin <marcan@marcan.st>
+---
+ drivers/net/wireless/broadcom/brcm80211/brcmfmac/bus.h | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/bus.h b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/bus.h
+index 4802692c91f765..c350af827003b6 100644
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/bus.h
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/bus.h
+@@ -89,6 +89,7 @@ struct brcmf_bus_ops {
+ 			enum brcmf_blob_type type);
+ 	void (*debugfs_create)(struct device *dev);
+ 	int (*reset)(struct device *dev);
++	void (*d2h_mb_rx)(struct device *dev, u32 data);
+ };
+ 
+ 
+@@ -252,6 +253,15 @@ int brcmf_bus_reset(struct brcmf_bus *bus)
+ 	return bus->ops->reset(bus->dev);
+ }
+ 
++static inline
++void brcmf_bus_d2h_mb_rx(struct brcmf_bus *bus, u32 data)
++{
++	if (!bus->ops->d2h_mb_rx)
++		return;
++
++	return bus->ops->d2h_mb_rx(bus->dev, data);
++}
++
+ /*
+  * interface functions from common layer
+  */
+
+From 9318e60cd2aa1dc88feba0f6fa14f3e1bba2b0a0 Mon Sep 17 00:00:00 2001
+From: Hector Martin <marcan@marcan.st>
+Date: Tue, 18 Oct 2022 21:58:21 +0900
+Subject: [PATCH 25/26] wifi: brcmfmac: Implement the H2D/D2H mailbox data
+ commonring messages
+
+Newer firmware versions use these to exchange mailbox data, instead of
+the hardware mailbox registers. Add handling for them to msgbuf.c.
+
+Signed-off-by: Hector Martin <marcan@marcan.st>
+---
+ .../broadcom/brcm80211/brcmfmac/msgbuf.c      | 59 +++++++++++++++++++
+ .../broadcom/brcm80211/brcmfmac/msgbuf.h      |  1 +
+ 2 files changed, 60 insertions(+)
+
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/msgbuf.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/msgbuf.c
+index 6b462c8e0b54be..e737db3f5774c8 100644
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/msgbuf.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/msgbuf.c
+@@ -244,6 +244,19 @@ struct msgbuf_flowring_flush_resp {
+ 	__le32				rsvd0[3];
+ };
+ 
++struct msgbuf_h2d_mailbox_data {
++	struct msgbuf_common_hdr	msg;
++	__le32				data;
++	__le32				rsvd0[7];
++};
++
++struct msgbuf_d2h_mailbox_data {
++	struct msgbuf_common_hdr	msg;
++	struct msgbuf_completion_hdr	compl_hdr;
++	__le32				data;
++	__le32				rsvd0[2];
++};
++
+ struct brcmf_msgbuf_work_item {
+ 	struct list_head queue;
+ 	u32 flowid;
+@@ -1308,6 +1321,16 @@ brcmf_msgbuf_process_flow_ring_delete_response(struct brcmf_msgbuf *msgbuf,
+ }
+ 
+ 
++static void brcmf_msgbuf_process_d2h_mailbox_data(struct brcmf_msgbuf *msgbuf,
++						  void *buf)
++{
++	struct msgbuf_d2h_mailbox_data *d2h_mb_data = buf;
++	struct brcmf_pub *drvr = msgbuf->drvr;
++
++	brcmf_bus_d2h_mb_rx(drvr->bus_if, le32_to_cpu(d2h_mb_data->data));
++}
++
++
+ static void brcmf_msgbuf_process_msgtype(struct brcmf_msgbuf *msgbuf, void *buf)
+ {
+ 	struct brcmf_pub *drvr = msgbuf->drvr;
+@@ -1350,6 +1373,10 @@ static void brcmf_msgbuf_process_msgtype(struct brcmf_msgbuf *msgbuf, void *buf)
+ 		brcmf_dbg(MSGBUF, "MSGBUF_TYPE_RX_CMPLT\n");
+ 		brcmf_msgbuf_process_rx_complete(msgbuf, buf);
+ 		break;
++	case MSGBUF_TYPE_D2H_MAILBOX_DATA:
++		brcmf_dbg(MSGBUF, "MSGBUF_TYPE_D2H_MAILBOX_DATA\n");
++		brcmf_msgbuf_process_d2h_mailbox_data(msgbuf, buf);
++		break;
+ 	default:
+ 		bphy_err(drvr, "Unsupported msgtype %d\n", msg->msgtype);
+ 		break;
+@@ -1488,6 +1515,38 @@ void brcmf_msgbuf_delete_flowring(struct brcmf_pub *drvr, u16 flowid)
+ 	}
+ }
+ 
++
++int brcmf_msgbuf_h2d_mb_write(struct brcmf_pub *drvr, u32 data)
++{
++	struct brcmf_msgbuf *msgbuf = (struct brcmf_msgbuf *)drvr->proto->pd;
++	struct brcmf_commonring *commonring;
++	struct msgbuf_h2d_mailbox_data *request;
++	void *ret_ptr;
++	int err;
++
++	commonring = msgbuf->commonrings[BRCMF_H2D_MSGRING_CONTROL_SUBMIT];
++	brcmf_commonring_lock(commonring);
++	ret_ptr = brcmf_commonring_reserve_for_write(commonring);
++	if (!ret_ptr) {
++		bphy_err(drvr, "Failed to reserve space in commonring\n");
++		brcmf_commonring_unlock(commonring);
++		return -ENOMEM;
++	}
++
++	request = (struct msgbuf_h2d_mailbox_data *)ret_ptr;
++	request->msg.msgtype = MSGBUF_TYPE_H2D_MAILBOX_DATA;
++	request->msg.ifidx = -1;
++	request->msg.flags = 0;
++	request->msg.request_id = 0;
++	request->data = data;
++
++	err = brcmf_commonring_write_complete(commonring);
++	brcmf_commonring_unlock(commonring);
++
++	return err;
++}
++
++
+ #ifdef DEBUG
+ static int brcmf_msgbuf_stats_read(struct seq_file *seq, void *data)
+ {
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/msgbuf.h b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/msgbuf.h
+index 6a849f4a94dd7f..89b6b7f9ddb748 100644
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/msgbuf.h
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/msgbuf.h
+@@ -32,6 +32,7 @@ int brcmf_proto_msgbuf_rx_trigger(struct device *dev);
+ void brcmf_msgbuf_delete_flowring(struct brcmf_pub *drvr, u16 flowid);
+ int brcmf_proto_msgbuf_attach(struct brcmf_pub *drvr);
+ void brcmf_proto_msgbuf_detach(struct brcmf_pub *drvr);
++int brcmf_msgbuf_h2d_mb_write(struct brcmf_pub *drvr, u32 data);
+ #else
+ static inline int brcmf_proto_msgbuf_attach(struct brcmf_pub *drvr)
+ {
+
+From 306575a75261ada4c85e47ed74a0a030b74f37cf Mon Sep 17 00:00:00 2001
+From: Hector Martin <marcan@marcan.st>
+Date: Tue, 18 Oct 2022 22:12:15 +0900
+Subject: [PATCH 26/26] wifi: brcmfmac: Support exchanging power mailbox
+ messages via commonring
+
+Newer firmwares have switched from using the hardware mailbox to
+commonring messages for power mailbox data. Implement this, which makes
+D3 work on WiFi chipsets in Apple devices.
+
+This is only enabled on v6 or newer, iff BRCMF_PCIE_SHARED_USE_MAILBOX
+is not set in the flags.
+
+Signed-off-by: Hector Martin <marcan@marcan.st>
+---
+ .../broadcom/brcm80211/brcmfmac/pcie.c        | 73 ++++++++++++++-----
+ 1 file changed, 54 insertions(+), 19 deletions(-)
+
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+index 81d908b75de14c..a3c66b808bc17c 100644
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+@@ -365,6 +365,7 @@ struct brcmf_pcie_shared_info {
+ 	void *ringupd;
+ 	dma_addr_t ringupd_dmahandle;
+ 	u8 version;
++	bool mb_via_ctl;
+ };
+ 
+ struct brcmf_pcie_core_info {
+@@ -808,6 +809,19 @@ brcmf_pcie_send_mb_data(struct brcmf_pciedev_info *devinfo, u32 htod_mb_data)
+ 	u32 i;
+ 
+ 	shared = &devinfo->shared;
++
++	if (shared->mb_via_ctl) {
++		struct pci_dev *pdev = devinfo->pdev;
++		struct brcmf_bus *bus = dev_get_drvdata(&pdev->dev);
++		int ret;
++
++		ret = brcmf_msgbuf_h2d_mb_write(bus->drvr, htod_mb_data);
++		if (ret < 0)
++			brcmf_err(bus, "Failed to send H2D mailbox data (%d)\n",
++				  ret);
++		return ret;
++	}
++
+ 	addr = shared->htod_mb_data_addr;
+ 	cur_htod_mb_data = brcmf_pcie_read_tcm32(devinfo, addr);
+ 
+@@ -835,8 +849,29 @@ brcmf_pcie_send_mb_data(struct brcmf_pciedev_info *devinfo, u32 htod_mb_data)
+ 	return 0;
+ }
+ 
++static void brcmf_pcie_handle_mb_data(struct brcmf_pciedev_info *devinfo, u32 data)
++{
++	brcmf_dbg(PCIE, "D2H_MB_DATA: 0x%04x\n", data);
++	if (data & BRCMF_D2H_DEV_DS_ENTER_REQ)  {
++		brcmf_dbg(PCIE, "D2H_MB_DATA: DEEP SLEEP REQ\n");
++		brcmf_pcie_send_mb_data(devinfo, BRCMF_H2D_HOST_DS_ACK);
++		brcmf_dbg(PCIE, "D2H_MB_DATA: sent DEEP SLEEP ACK\n");
++	}
++	if (data & BRCMF_D2H_DEV_DS_EXIT_NOTE)
++		brcmf_dbg(PCIE, "D2H_MB_DATA: DEEP SLEEP EXIT\n");
++	if (data & BRCMF_D2H_DEV_D3_ACK) {
++		brcmf_dbg(PCIE, "D2H_MB_DATA: D3 ACK\n");
++		devinfo->mbdata_completed = true;
++		wake_up(&devinfo->mbdata_resp_wait);
++	}
++	if (data & BRCMF_D2H_DEV_FWHALT) {
++		brcmf_dbg(PCIE, "D2H_MB_DATA: FW HALT\n");
++		brcmf_fw_crashed(&devinfo->pdev->dev);
++	}
++}
++
+ 
+-static void brcmf_pcie_handle_mb_data(struct brcmf_pciedev_info *devinfo)
++static void brcmf_pcie_poll_mb_data(struct brcmf_pciedev_info *devinfo)
+ {
+ 	struct brcmf_pcie_shared_info *shared;
+ 	u32 addr;
+@@ -851,23 +886,16 @@ static void brcmf_pcie_handle_mb_data(struct brcmf_pciedev_info *devinfo)
+ 
+ 	brcmf_pcie_write_tcm32(devinfo, addr, 0);
+ 
+-	brcmf_dbg(PCIE, "D2H_MB_DATA: 0x%04x\n", dtoh_mb_data);
+-	if (dtoh_mb_data & BRCMF_D2H_DEV_DS_ENTER_REQ)  {
+-		brcmf_dbg(PCIE, "D2H_MB_DATA: DEEP SLEEP REQ\n");
+-		brcmf_pcie_send_mb_data(devinfo, BRCMF_H2D_HOST_DS_ACK);
+-		brcmf_dbg(PCIE, "D2H_MB_DATA: sent DEEP SLEEP ACK\n");
+-	}
+-	if (dtoh_mb_data & BRCMF_D2H_DEV_DS_EXIT_NOTE)
+-		brcmf_dbg(PCIE, "D2H_MB_DATA: DEEP SLEEP EXIT\n");
+-	if (dtoh_mb_data & BRCMF_D2H_DEV_D3_ACK) {
+-		brcmf_dbg(PCIE, "D2H_MB_DATA: D3 ACK\n");
+-		devinfo->mbdata_completed = true;
+-		wake_up(&devinfo->mbdata_resp_wait);
+-	}
+-	if (dtoh_mb_data & BRCMF_D2H_DEV_FWHALT) {
+-		brcmf_dbg(PCIE, "D2H_MB_DATA: FW HALT\n");
+-		brcmf_fw_crashed(&devinfo->pdev->dev);
+-	}
++	brcmf_pcie_handle_mb_data(devinfo, dtoh_mb_data);
++}
++
++
++static void brcmf_pcie_d2h_mb_rx(struct device *dev, u32 data)
++{
++	struct brcmf_bus *bus_if = dev_get_drvdata(dev);
++	struct brcmf_pciedev *buspub = bus_if->bus_priv.pcie;
++
++	brcmf_pcie_handle_mb_data(buspub->devinfo, data);
+ }
+ 
+ 
+@@ -1632,6 +1660,7 @@ static const struct brcmf_bus_ops brcmf_pcie_bus_ops = {
+ 	.get_memdump = brcmf_pcie_get_memdump,
+ 	.get_blob = brcmf_pcie_get_blob,
+ 	.reset = brcmf_pcie_reset,
++	.d2h_mb_rx = brcmf_pcie_d2h_mb_rx,
+ };
+ 
+ 
+@@ -1722,6 +1751,10 @@ brcmf_pcie_init_share_ram_info(struct brcmf_pciedev_info *devinfo,
+ 	shared->flags3 = brcmf_pcie_read_tcm32(devinfo, sharedram_addr +
+ 	                                       BRCMF_SHARED_FLAGS3_OFFSET);
+ 
++	/* Check which mailbox mechanism to use */
++	if (!(shared->flags & BRCMF_PCIE_SHARED_USE_MAILBOX))
++		shared->mb_via_ctl = true;
++
+ 	/* Update host support flags */
+ 	host_cap = shared->version;
+ 	host_cap2 = 0;
+@@ -2567,10 +2600,11 @@ static int brcmf_pcie_pm_leave_D3(struct device *dev)
+ 	/* Check if device is still up and running, if so we are ready */
+ 	if (brcmf_pcie_read_reg32(devinfo, devinfo->reginfo->intmask) != 0) {
+ 		brcmf_dbg(PCIE, "Try to wakeup device....\n");
++		/* Set the device up, so we can write the MB data message in ring mode */
++		devinfo->state = BRCMFMAC_PCIE_STATE_UP;
+ 		if (brcmf_pcie_send_mb_data(devinfo, BRCMF_H2D_HOST_D0_INFORM))
+ 			goto cleanup;
+ 		brcmf_dbg(PCIE, "Hot resume, continue....\n");
+-		devinfo->state = BRCMFMAC_PCIE_STATE_UP;
+ 		brcmf_pcie_select_core(devinfo, BCMA_CORE_PCIE2);
+ 		brcmf_bus_change_state(bus, BRCMF_BUS_UP);
+ 		brcmf_pcie_intr_enable(devinfo);
+@@ -2579,6 +2613,7 @@ static int brcmf_pcie_pm_leave_D3(struct device *dev)
+ 	}
+ 
+ cleanup:
++	devinfo->state = BRCMFMAC_PCIE_STATE_DOWN;
+ 	brcmf_chip_detach(devinfo->ci);
+ 	devinfo->ci = NULL;
+ 	pdev = devinfo->pdev;
