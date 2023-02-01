@@ -1914,7 +1914,7 @@ index a83699de01ec3c..d295b9f3a4fbe5 100644
 +
  	/* Set board-type to the first string of the machine compatible prop */
  	root = of_find_node_by_path("/");
- 	if (root && !settings->board_type) {
+ 	if (root && err) {
 
 From 55b5f2833aa40024bf6cde448fb8403a8be0e686 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
