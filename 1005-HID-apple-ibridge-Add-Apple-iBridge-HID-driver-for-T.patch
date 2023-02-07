@@ -1,7 +1,7 @@
-From cdc15881c4b8e31d3e39b73057ca211597d904cb Mon Sep 17 00:00:00 2001
+From a6ff9bb4b9ad1ad6b3bfe3808270246998838978 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Ronald=20Tschal=C3=A4r?= <ronald@innovation.ch>
 Date: Sat, 27 Feb 2021 17:26:42 -0800
-Subject: [PATCH 03/13] HID: apple-ibridge: Add Apple iBridge HID driver for T1
+Subject: [PATCH 1/5] HID: apple-ibridge: Add Apple iBridge HID driver for T1
  chip.
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -41,10 +41,10 @@ Signed-off-by: Ronald Tschalär <ronald@innovation.ch>
  create mode 100644 drivers/hid/apple-ibridge.h
 
 diff --git a/drivers/hid/Kconfig b/drivers/hid/Kconfig
-index c4308d4988dc..133be168691d 100644
+index e2a5d30c8..35dd436f2 100644
 --- a/drivers/hid/Kconfig
 +++ b/drivers/hid/Kconfig
-@@ -138,6 +138,22 @@ config HID_APPLE
+@@ -130,6 +130,22 @@ config HID_APPLE
  	Say Y here if you want support for keyboards of	Apple iBooks, PowerBooks,
  	MacBooks, MacBook Pros and Apple Aluminum.
  
@@ -68,7 +68,7 @@ index c4308d4988dc..133be168691d 100644
  	tristate "Apple infrared receiver"
  	depends on (USB_HID)
 diff --git a/drivers/hid/Makefile b/drivers/hid/Makefile
-index bccaec0d77d3..5a7dd0393df4 100644
+index e8014c1a2..b61373cd8 100644
 --- a/drivers/hid/Makefile
 +++ b/drivers/hid/Makefile
 @@ -26,6 +26,7 @@ obj-$(CONFIG_HID_ACCUTOUCH)	+= hid-accutouch.o
@@ -81,7 +81,7 @@ index bccaec0d77d3..5a7dd0393df4 100644
  obj-$(CONFIG_HID_ASUS)		+= hid-asus.o
 diff --git a/drivers/hid/apple-ibridge.c b/drivers/hid/apple-ibridge.c
 new file mode 100644
-index 000000000000..5f2b71c19974
+index 000000000..7ad6fa6c3
 --- /dev/null
 +++ b/drivers/hid/apple-ibridge.c
 @@ -0,0 +1,682 @@
@@ -766,10 +766,10 @@ index 000000000000..5f2b71c19974
 +
 +MODULE_AUTHOR("Ronald Tschalär");
 +MODULE_DESCRIPTION("Apple iBridge driver");
-+MODULE_LICENSE("GPL v2");
++MODULE_LICENSE("GPL");
 diff --git a/drivers/hid/apple-ibridge.h b/drivers/hid/apple-ibridge.h
 new file mode 100644
-index 000000000000..8aefcf61589a
+index 000000000..8aefcf615
 --- /dev/null
 +++ b/drivers/hid/apple-ibridge.h
 @@ -0,0 +1,15 @@
@@ -789,7 +789,7 @@ index 000000000000..8aefcf61589a
 +
 +#endif
 diff --git a/drivers/hid/hid-ids.h b/drivers/hid/hid-ids.h
-index 043cf1cc8794..bc92fa5f8573 100644
+index 0f8c11842..0c62e6280 100644
 --- a/drivers/hid/hid-ids.h
 +++ b/drivers/hid/hid-ids.h
 @@ -187,6 +187,7 @@
@@ -801,10 +801,10 @@ index 043cf1cc8794..bc92fa5f8573 100644
  #define USB_VENDOR_ID_ASUS		0x0486
  #define USB_DEVICE_ID_ASUS_T91MT	0x0185
 diff --git a/drivers/hid/hid-quirks.c b/drivers/hid/hid-quirks.c
-index 70f602c64fd1..cc862fbf1995 100644
+index be3ad0257..c03535c4b 100644
 --- a/drivers/hid/hid-quirks.c
 +++ b/drivers/hid/hid-quirks.c
-@@ -317,6 +317,9 @@ static const struct hid_device_id hid_have_special_driver[] = {
+@@ -319,6 +319,9 @@ static const struct hid_device_id hid_have_special_driver[] = {
  	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_TOUCHBAR_BACKLIGHT) },
  	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_TOUCHBAR_DISPLAY) },
  #endif
@@ -815,5 +815,5 @@ index 70f602c64fd1..cc862fbf1995 100644
  	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_IRCONTROL) },
  	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_IRCONTROL2) },
 -- 
-2.38.1
+2.37.2
 

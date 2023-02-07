@@ -1,7 +1,7 @@
-From 9e54642dbda2f205af8a1181c7be5bffb0deb352 Mon Sep 17 00:00:00 2001
+From 8595d7167545009cc7289de5d4fcc7466c6bdc46 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Ronald=20Tschal=C3=A4r?= <ronald@innovation.ch>
 Date: Sat, 27 Feb 2021 17:26:43 -0800
-Subject: [PATCH 04/13] HID: apple-touchbar: Add driver for the Touch Bar on
+Subject: [PATCH 2/5] HID: apple-touchbar: Add driver for the Touch Bar on
  MacBook Pro's.
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -21,10 +21,10 @@ Signed-off-by: Kerem Karabay <kekrby@gmail.com>
  create mode 100644 drivers/hid/apple-touchbar.c
 
 diff --git a/drivers/hid/Kconfig b/drivers/hid/Kconfig
-index 133be168691d..d5a61773a163 100644
+index 35dd436f2..adf341d33 100644
 --- a/drivers/hid/Kconfig
 +++ b/drivers/hid/Kconfig
-@@ -143,6 +143,7 @@ config HID_APPLE_IBRIDGE
+@@ -135,6 +135,7 @@ config HID_APPLE_IBRIDGE
  	depends on ACPI
  	depends on USB_HID
  	depends on X86 || COMPILE_TEST
@@ -32,7 +32,7 @@ index 133be168691d..d5a61773a163 100644
  	imply HID_SENSOR_HUB
  	imply HID_SENSOR_ALS
  	help
-@@ -154,6 +155,15 @@ config HID_APPLE_IBRIDGE
+@@ -146,6 +147,15 @@ config HID_APPLE_IBRIDGE
  	  To compile this driver as a module, choose M here: the
  	  module will be called apple-ibridge.
  
@@ -49,7 +49,7 @@ index 133be168691d..d5a61773a163 100644
  	tristate "Apple infrared receiver"
  	depends on (USB_HID)
 diff --git a/drivers/hid/Makefile b/drivers/hid/Makefile
-index 5a7dd0393df4..3f0706a459ee 100644
+index b61373cd8..c792e42fe 100644
 --- a/drivers/hid/Makefile
 +++ b/drivers/hid/Makefile
 @@ -27,6 +27,7 @@ obj-$(CONFIG_HID_ALPS)		+= hid-alps.o
@@ -62,7 +62,7 @@ index 5a7dd0393df4..3f0706a459ee 100644
  obj-$(CONFIG_HID_ASUS)		+= hid-asus.o
 diff --git a/drivers/hid/apple-touchbar.c b/drivers/hid/apple-touchbar.c
 new file mode 100644
-index 000000000000..87cb9ebafb61
+index 000000000..c13440a01
 --- /dev/null
 +++ b/drivers/hid/apple-touchbar.c
 @@ -0,0 +1,1523 @@
@@ -1588,7 +1588,7 @@ index 000000000000..87cb9ebafb61
 +
 +MODULE_AUTHOR("Ronald Tschalär");
 +MODULE_DESCRIPTION("MacBookPro Touch Bar driver");
-+MODULE_LICENSE("GPL v2");
++MODULE_LICENSE("GPL");
 -- 
-2.38.1
+2.37.2
 

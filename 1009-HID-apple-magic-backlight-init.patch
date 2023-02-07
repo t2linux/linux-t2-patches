@@ -1,7 +1,7 @@
-From 9f2b36e1c4f418c126b1d823bc00c620e6c4b811 Mon Sep 17 00:00:00 2001
+From 641d3a7ec78053c9c107b1c8f32108d047b83828 Mon Sep 17 00:00:00 2001
 From: Orlando Chamberlain <orlandoch.dev@gmail.com>
 Date: Mon, 14 Nov 2022 17:29:52 +0300
-Subject: [PATCH] HID: apple-magic-backlight: init
+Subject: [PATCH 5/5] HID: apple-magic-backlight: init
 
 Add support for the keyboard backlight on Intel T2 Macs
 with internal Magic Keyboards (MacBookPro16,x and MacBookAir9,1)
@@ -19,10 +19,10 @@ Signed-off-by: Kerem Karabay <kekrby@gmail.com>
  create mode 100644 drivers/hid/apple-magic-backlight.c
 
 diff --git a/MAINTAINERS b/MAINTAINERS
-index 468f39a37b33..5bdb5f456226 100644
+index fb1471cb5..3319f0c3e 100644
 --- a/MAINTAINERS
 +++ b/MAINTAINERS
-@@ -9192,6 +9192,12 @@ F:	include/linux/pm.h
+@@ -9201,6 +9201,12 @@ F:	include/linux/pm.h
  F:	include/linux/suspend.h
  F:	kernel/power/
  
@@ -36,7 +36,7 @@ index 468f39a37b33..5bdb5f456226 100644
  M:	Jiri Kosina <jikos@kernel.org>
  M:	Benjamin Tissoires <benjamin.tissoires@redhat.com>
 diff --git a/drivers/hid/Kconfig b/drivers/hid/Kconfig
-index 9066e0fe458c..d555bf62e496 100644
+index 9066e0fe4..d555bf62e 100644
 --- a/drivers/hid/Kconfig
 +++ b/drivers/hid/Kconfig
 @@ -148,6 +148,7 @@ config HID_APPLE_IBRIDGE
@@ -68,7 +68,7 @@ index 9066e0fe458c..d555bf62e496 100644
  	tristate "Apple infrared receiver"
  	depends on (USB_HID)
 diff --git a/drivers/hid/Makefile b/drivers/hid/Makefile
-index c792e42fe43f..a961914ec399 100644
+index c792e42fe..a961914ec 100644
 --- a/drivers/hid/Makefile
 +++ b/drivers/hid/Makefile
 @@ -28,6 +28,7 @@ obj-$(CONFIG_HID_ACRUX)		+= hid-axff.o
@@ -81,7 +81,7 @@ index c792e42fe43f..a961914ec399 100644
  obj-$(CONFIG_HID_ASUS)		+= hid-asus.o
 diff --git a/drivers/hid/apple-magic-backlight.c b/drivers/hid/apple-magic-backlight.c
 new file mode 100644
-index 000000000000..c7f1e5e90ab7
+index 000000000..c7f1e5e90
 --- /dev/null
 +++ b/drivers/hid/apple-magic-backlight.c
 @@ -0,0 +1,143 @@
@@ -229,7 +229,7 @@ index 000000000000..c7f1e5e90ab7
 +MODULE_LICENSE("GPL");
 +MODULE_DEVICE_TABLE(hid, apple_magic_backlight_hid_ids);
 diff --git a/drivers/hid/apple-touchbar.c b/drivers/hid/apple-touchbar.c
-index 40c12886e651..7de495b1c7f1 100644
+index a87716435..715e013be 100644
 --- a/drivers/hid/apple-touchbar.c
 +++ b/drivers/hid/apple-touchbar.c
 @@ -1222,6 +1222,23 @@ static int appletb_probe(struct hid_device *hdev,
@@ -270,5 +270,5 @@ index 40c12886e651..7de495b1c7f1 100644
  	rc = appletb_extract_report_and_iface_info(tb_dev, hdev, id);
  	if (rc < 0)
 -- 
-2.39.1
+2.37.2
 

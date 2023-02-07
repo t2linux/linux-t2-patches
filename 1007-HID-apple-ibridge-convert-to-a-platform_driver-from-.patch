@@ -1,23 +1,24 @@
-From 6afbbbbb3c8d576c5c15c593e3fd64b80e9474f0 Mon Sep 17 00:00:00 2001
+From 8205b29335497166e4df74e07995fb62a2c953d9 Mon Sep 17 00:00:00 2001
 From: Kerem Karabay <kekrby@gmail.com>
-Date: Mon, 7 Nov 2022 21:37:44 +0300
-Subject: [PATCH 06/13] HID: apple-ibridge: convert to a platform_driver from
- an acpi_driver
+Date: Tue, 7 Feb 2023 21:32:33 +0530
+Subject: [PATCH 3/5] HID: apple-ibridge: convert to a platform_driver from an
+ acpi_driver and rely on hid-core's parsing
 
-This commit addresses the issues raised in
-https://lore.kernel.org/lkml/CAHp75Vd13nobdyiUbYoTbeoqG4rGP-Vfswcuuy3oYjXgTXzNSw@mail.gmail.com/.
+This patch addresses the following issues raised by upstream maintainers:
 
-Signed-off-by: Kerem Karabay <kekrby@gmail.com>
+1. https://lore.kernel.org/lkml/CAHp75Vd13nobdyiUbYoTbeoqG4rGP-Vfswcuuy3oYjXgTXzNSw@mail.gmail.com/
+2. https://lore.kernel.org/lkml/20210228150239.00007d34@Huawei.com/
+3. https://lore.kernel.org/lkml/CAO-hwJLXAHvjYKxu8pyqMPCNgMrN-H8bGWudVqCaRFnWODHPVQ@mail.gmail.com/
 ---
- drivers/hid/Kconfig         |  3 +-
- drivers/hid/apple-ibridge.c | 67 +++++++++++++++----------------------
- 2 files changed, 28 insertions(+), 42 deletions(-)
+ drivers/hid/Kconfig         |   3 +-
+ drivers/hid/apple-ibridge.c | 144 +++++++++---------------------------
+ 2 files changed, 37 insertions(+), 110 deletions(-)
 
 diff --git a/drivers/hid/Kconfig b/drivers/hid/Kconfig
-index d5a61773a163..476c1fd50520 100644
+index adf341d33..9066e0fe4 100644
 --- a/drivers/hid/Kconfig
 +++ b/drivers/hid/Kconfig
-@@ -140,9 +140,8 @@ config HID_APPLE
+@@ -132,9 +132,8 @@ config HID_APPLE
  
  config HID_APPLE_IBRIDGE
  	tristate "Apple iBridge"
@@ -29,7 +30,7 @@ index d5a61773a163..476c1fd50520 100644
  	imply HID_SENSOR_HUB
  	imply HID_SENSOR_ALS
 diff --git a/drivers/hid/apple-ibridge.c b/drivers/hid/apple-ibridge.c
-index 5f2b71c19974..d4d15e54eedf 100644
+index 7ad6fa6c3..997db0837 100644
 --- a/drivers/hid/apple-ibridge.c
 +++ b/drivers/hid/apple-ibridge.c
 @@ -40,6 +40,7 @@
@@ -59,7 +60,147 @@ index 5f2b71c19974..d4d15e54eedf 100644
  };
  
  struct appleib_hid_dev_info {
-@@ -561,21 +559,19 @@ static struct hid_driver appleib_hid_driver = {
+@@ -163,7 +161,7 @@ static int appleib_forward_int_op(struct hid_device *hdev,
+ {
+ 	struct appleib_hid_dev_info *hdev_info = hid_get_drvdata(hdev);
+ 	struct hid_device *sub_hdev;
+-	int rc = 0;
++	int rc;
+ 	int i;
+ 
+ 	for (i = 0; i < ARRAY_SIZE(hdev_info->sub_hdevs); i++) {
+@@ -171,13 +169,11 @@ static int appleib_forward_int_op(struct hid_device *hdev,
+ 		if (sub_hdev->driver) {
+ 			rc = forward(sub_hdev->driver, sub_hdev, args);
+ 			if (rc)
+-				break;
++				return rc;
+ 		}
+-
+-		break;
+ 	}
+ 
+-	return rc;
++	return 0;
+ }
+ 
+ static int appleib_hid_suspend_fwd(struct hid_driver *drv,
+@@ -332,43 +328,6 @@ static struct hid_ll_driver appleib_ll_driver = {
+ 	.output_report = appleib_ll_output_report,
+ };
+ 
+-static __u8 *appleib_find_collection(__u8 *start, __u8 *end,
+-				     unsigned int *usage)
+-{
+-	struct hid_item item;
+-	int depth = 0;
+-
+-	*usage = 0;
+-
+-	while ((start = hid_fetch_item(start, end, &item)) != NULL) {
+-		if (item.type == HID_ITEM_TYPE_MAIN) {
+-			switch (item.tag) {
+-			case HID_MAIN_ITEM_TAG_BEGIN_COLLECTION:
+-				depth++;
+-				break;
+-
+-			case HID_MAIN_ITEM_TAG_END_COLLECTION:
+-				depth--;
+-				if (depth <= 0)
+-					return start;
+-				break;
+-			}
+-		} else if (item.type == HID_ITEM_TYPE_GLOBAL &&
+-			   item.tag == HID_GLOBAL_ITEM_TAG_USAGE_PAGE &&
+-			   depth == 0) {
+-			*usage = (*usage & 0x0000FFFF) |
+-				 ((hid_item_udata(&item) & 0xFFFF) << 16);
+-		} else if (item.type == HID_ITEM_TYPE_LOCAL &&
+-			   item.tag == HID_LOCAL_ITEM_TAG_USAGE &&
+-			   depth == 0) {
+-			*usage = (*usage & 0xFFFF0000) |
+-				 (hid_item_udata(&item) & 0xFFFF);
+-		}
+-	}
+-
+-	return end;
+-}
+-
+ static struct hid_device_id *appleib_find_dev_id_for_usage(unsigned int usage)
+ {
+ 	int i;
+@@ -383,7 +342,7 @@ static struct hid_device_id *appleib_find_dev_id_for_usage(unsigned int usage)
+ 
+ static struct hid_device *
+ appleib_add_sub_dev(struct appleib_hid_dev_info *hdev_info,
+-		    struct hid_device_id *dev_id, u8 *rdesc, size_t rsize)
++		    struct hid_device_id *dev_id)
+ {
+ 	struct hid_device *sub_hdev;
+ 	int rc;
+@@ -408,12 +367,6 @@ appleib_add_sub_dev(struct appleib_hid_dev_info *hdev_info,
+ 
+ 	sub_hdev->driver_data = hdev_info;
+ 
+-	rc = hid_parse_report(sub_hdev, rdesc, rsize);
+-	if (rc) {
+-		hid_destroy_device(sub_hdev);
+-		return ERR_PTR(rc);
+-	}
+-
+ 	rc = hid_add_device(sub_hdev);
+ 	if (rc) {
+ 		hid_destroy_device(sub_hdev);
+@@ -426,9 +379,6 @@ appleib_add_sub_dev(struct appleib_hid_dev_info *hdev_info,
+ static struct appleib_hid_dev_info *appleib_add_device(struct hid_device *hdev)
+ {
+ 	struct appleib_hid_dev_info *hdev_info;
+-	__u8 *start = hdev->dev_rdesc;
+-	__u8 *end = start + hdev->dev_rsize;
+-	__u8 *pos;
+ 	struct hid_device_id *dev_id;
+ 	unsigned int usage;
+ 	int i;
+@@ -439,33 +389,22 @@ static struct appleib_hid_dev_info *appleib_add_device(struct hid_device *hdev)
+ 
+ 	hdev_info->hdev = hdev;
+ 
+-	for (i = 0; ; ) {
+-		pos = appleib_find_collection(start, end, &usage);
+-
++	for (i = 0; i < hdev->maxcollection; i++) {
++		usage = hdev->collection[i].usage;
+ 		dev_id = appleib_find_dev_id_for_usage(usage);
++
+ 		if (!dev_id) {
+ 			hid_warn(hdev, "Unknown collection encountered with usage %x\n",
+ 				 usage);
+-
+-		} else if (i >= ARRAY_SIZE(hdev_info->sub_hdevs)) {
+-			hid_warn(hdev, "Too many collections encountered - ignoring for usage %x\n",
+-				 usage);
+ 		} else {
+-			hdev_info->sub_hdevs[i] =
+-				appleib_add_sub_dev(hdev_info, dev_id, start,
+-						    pos - start);
++			hdev_info->sub_hdevs[i] = appleib_add_sub_dev(hdev_info, dev_id);
++
+ 			if (IS_ERR(hdev_info->sub_hdevs[i])) {
+ 				while (i-- > 0)
+ 					hid_destroy_device(hdev_info->sub_hdevs[i]);
+ 				return (void *)hdev_info->sub_hdevs[i];
+ 			}
+-
+-			i++;
+ 		}
+-
+-		start = pos;
+-		if (start >= end)
+-			break;
+ 	}
+ 
+ 	return hdev_info;
+@@ -561,21 +500,19 @@ static struct hid_driver appleib_hid_driver = {
  #endif
  };
  
@@ -85,7 +226,7 @@ index 5f2b71c19974..d4d15e54eedf 100644
  			"Error getting handle for ASOC.SOCW method: %s\n",
  			acpi_format_exception(sts));
  		return ERR_PTR(-ENXIO);
-@@ -584,76 +580,70 @@ static struct appleib_device *appleib_alloc_device(struct acpi_device *acpi_dev)
+@@ -584,76 +521,70 @@ static struct appleib_device *appleib_alloc_device(struct acpi_device *acpi_dev)
  	/* ensure iBridge is powered on */
  	sts = acpi_execute_simple_method(ib_dev->asoc_socw, NULL, 1);
  	if (ACPI_FAILURE(sts))
@@ -174,7 +315,7 @@ index 5f2b71c19974..d4d15e54eedf 100644
  static const struct acpi_device_id appleib_acpi_match[] = {
  	{ "APP7777", 0 },
  	{ },
-@@ -661,21 +651,18 @@ static const struct acpi_device_id appleib_acpi_match[] = {
+@@ -661,21 +592,18 @@ static const struct acpi_device_id appleib_acpi_match[] = {
  
  MODULE_DEVICE_TABLE(acpi, appleib_acpi_match);
  
@@ -206,5 +347,5 @@ index 5f2b71c19974..d4d15e54eedf 100644
  MODULE_AUTHOR("Ronald Tschalär");
  MODULE_DESCRIPTION("Apple iBridge driver");
 -- 
-2.38.1
+2.37.2
 
