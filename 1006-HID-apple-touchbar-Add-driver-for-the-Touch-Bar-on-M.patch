@@ -1,7 +1,7 @@
-From 8595d7167545009cc7289de5d4fcc7466c6bdc46 Mon Sep 17 00:00:00 2001
+From 7bde56de7b4e61ea2cd1367e1bf6e6df3c50d9b1 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Ronald=20Tschal=C3=A4r?= <ronald@innovation.ch>
 Date: Sat, 27 Feb 2021 17:26:43 -0800
-Subject: [PATCH 2/5] HID: apple-touchbar: Add driver for the Touch Bar on
+Subject: [PATCH 2/3] HID: apple-touchbar: Add driver for the Touch Bar on
  MacBook Pro's.
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -12,34 +12,44 @@ between modes on FN key press, and dimming and turning the display
 off/on when idle/active.
 
 Signed-off-by: Ronald Tschalär <ronald@innovation.ch>
+[Kerem Karabay: use USB product IDs from hid-ids.h]
+[Kerem Karabay: use hid_hw_raw_request except when setting the touchbar mode on T1 Macs]
+[Kerem Karabay: update Kconfig description]
 Signed-off-by: Kerem Karabay <kekrby@gmail.com>
+[Orlando Chamberlain: add usage check to not bind to keyboard backlight interface]
+Not-signed-off-yet-by: Orlando Chamberlain <orlandoch.dev@gmail.com>
+[Aditya Garg: check if apple-touchbar is enabled in the special driver list]
+[Aditya Garg: fix suspend on T2 Macs]
+Signed-off-by: Aditya Garg <gargaditya08@live.com>
 ---
- drivers/hid/Kconfig          |   10 +
+ drivers/hid/Kconfig          |   11 +
  drivers/hid/Makefile         |    1 +
- drivers/hid/apple-touchbar.c | 1523 ++++++++++++++++++++++++++++++++++
- 3 files changed, 1534 insertions(+)
+ drivers/hid/apple-touchbar.c | 1500 ++++++++++++++++++++++++++++++++++
+ drivers/hid/hid-quirks.c     |    6 +-
+ 4 files changed, 1516 insertions(+), 2 deletions(-)
  create mode 100644 drivers/hid/apple-touchbar.c
 
 diff --git a/drivers/hid/Kconfig b/drivers/hid/Kconfig
-index 35dd436f2..adf341d33 100644
+index 460c9b160cb9..5bcdda7ea809 100644
 --- a/drivers/hid/Kconfig
 +++ b/drivers/hid/Kconfig
-@@ -135,6 +135,7 @@ config HID_APPLE_IBRIDGE
- 	depends on ACPI
+@@ -134,6 +134,7 @@ config HID_APPLE_IBRIDGE
+ 	tristate "Apple iBridge"
  	depends on USB_HID
- 	depends on X86 || COMPILE_TEST
+ 	depends on (X86 && ACPI) || COMPILE_TEST
 +	imply HID_APPLE_TOUCHBAR
  	imply HID_SENSOR_HUB
  	imply HID_SENSOR_ALS
  	help
-@@ -146,6 +147,15 @@ config HID_APPLE_IBRIDGE
- 	  To compile this driver as a module, choose M here: the
- 	  module will be called apple-ibridge.
+@@ -145,6 +146,16 @@ config HID_APPLE_IBRIDGE
+ 	To compile this driver as a module, choose M here: the
+ 	module will be called apple-ibridge.
  
 +config HID_APPLE_TOUCHBAR
 +	tristate "Apple Touch Bar"
++	depends on USB_HID
 +	help
-+	Say Y here if you want support for the Touch Bar on recent
++	Say Y here if you want support for the Touch Bar on x86
 +	MacBook Pros.
 +
 +	To compile this driver as a module, choose M here: the
@@ -49,7 +59,7 @@ index 35dd436f2..adf341d33 100644
  	tristate "Apple infrared receiver"
  	depends on (USB_HID)
 diff --git a/drivers/hid/Makefile b/drivers/hid/Makefile
-index b61373cd8..c792e42fe 100644
+index b61373cd82e8..c792e42fe43f 100644
 --- a/drivers/hid/Makefile
 +++ b/drivers/hid/Makefile
 @@ -27,6 +27,7 @@ obj-$(CONFIG_HID_ALPS)		+= hid-alps.o
@@ -62,10 +72,10 @@ index b61373cd8..c792e42fe 100644
  obj-$(CONFIG_HID_ASUS)		+= hid-asus.o
 diff --git a/drivers/hid/apple-touchbar.c b/drivers/hid/apple-touchbar.c
 new file mode 100644
-index 000000000..c13440a01
+index 000000000000..ff6a8493b7c9
 --- /dev/null
 +++ b/drivers/hid/apple-touchbar.c
-@@ -0,0 +1,1523 @@
+@@ -0,0 +1,1500 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Apple Touch Bar Driver
@@ -267,29 +277,6 @@ index 000000000..c13440a01
 +
 +static struct appletb_device *appletb_dev;
 +
-+static int appletb_send_usb_ctrl(struct appletb_iface_info *iface_info,
-+				 __u8 requesttype, struct hid_report *report,
-+				 void *data, __u16 size)
-+{
-+	struct usb_device *dev = interface_to_usbdev(iface_info->usb_iface);
-+	u8 ifnum = iface_info->usb_iface->cur_altsetting->desc.bInterfaceNumber;
-+	int tries = 0;
-+	int rc;
-+
-+	do {
-+		rc = usb_control_msg(dev, usb_sndctrlpipe(dev, 0),
-+				     HID_REQ_SET_REPORT, requesttype,
-+				     (report->type + 1) << 8 | report->id,
-+				     ifnum, data, size, 2000);
-+		if (rc != -EPIPE)
-+			break;
-+
-+		usleep_range(1000 << tries, 3000 << tries);
-+	} while (++tries < 5);
-+
-+	return (rc > 0) ? 0 : rc;
-+}
-+
 +static bool appletb_disable_autopm(struct hid_device *hdev)
 +{
 +	int rc;
@@ -309,7 +296,9 @@ index 000000000..c13440a01
 + * interface descriptor, on a T1 it's not sent that way. Instead it's sent with
 + * different request-type and without a leading report-id in the data. Hence
 + * we need to send it as a custom usb control message rather via any of the
-+ * standard hid_hw_*request() functions.
++ * standard hid_hw_*request() functions. The device might return EPIPE for a
++ * while after setting the display mode on T1 models, so retrying should be
++ * done on those models.
 + */
 +static int appletb_set_tb_mode(struct appletb_device *tb_dev,
 +			       unsigned char mode)
@@ -328,6 +317,7 @@ index 000000000..c13440a01
 +		buf = kmemdup(&mode, 1, GFP_KERNEL);
 +	} else {
 +		char data[] = { report->id, mode };
++
 +		buf = kmemdup(data, sizeof(data), GFP_KERNEL);
 +	}
 +	if (!buf)
@@ -335,50 +325,34 @@ index 000000000..c13440a01
 +
 +	autopm_off = appletb_disable_autopm(tb_dev->mode_iface.hdev);
 +
-+	if (tb_dev->is_t1)
-+		rc = appletb_send_usb_ctrl(&tb_dev->mode_iface,
-+					   USB_DIR_OUT | USB_TYPE_VENDOR |
-+					   USB_RECIP_DEVICE,
-+					   report, buf, 1);
-+	else
-+		rc = appletb_send_usb_ctrl(&tb_dev->mode_iface,
-+					   USB_DIR_OUT | USB_TYPE_CLASS |
-+					   USB_RECIP_INTERFACE,
-+					   report, buf, 2);
++	if (tb_dev->is_t1) {
++		int tries = 0;
++		struct usb_device *dev = interface_to_usbdev(tb_dev->mode_iface.usb_iface);
++		__u8 ifnum = tb_dev->mode_iface.usb_iface->cur_altsetting->desc.bInterfaceNumber;
++
++		do {
++			rc = usb_control_msg(dev, usb_sndctrlpipe(dev, 0), HID_REQ_SET_REPORT,
++					     USB_DIR_OUT | USB_RECIP_INTERFACE | USB_TYPE_VENDOR,
++					     (report->type + 1) << 8 | report->id,
++					     ifnum, buf, 1, 2000);
++
++			if (rc != -EPIPE)
++				break;
++
++			usleep_range(1000 << tries, 3000 << tries);
++		} while (++tries < 5);
++	} else {
++		rc = hid_hw_raw_request(tb_dev->mode_iface.hdev, report->id,
++					(__u8 *) buf, 2, report->type,
++					HID_REQ_SET_REPORT);
++	}
++
 +	if (rc < 0)
 +		dev_err(tb_dev->log_dev,
 +			"Failed to set touch bar mode to %u (%d)\n", mode, rc);
 +
 +	if (autopm_off)
 +		hid_hw_power(tb_dev->mode_iface.hdev, PM_HINT_NORMAL);
-+
-+	kfree(buf);
-+
-+	return rc;
-+}
-+
-+/*
-+ * We don't use hid_hw_request() because that doesn't allow us to get the
-+ * returned status from the usb-control request; we also don't use
-+ * hid_hw_raw_request() because would mean duplicating the retry-on-EPIPE
-+ * in our appletb_send_usb_ctrl().
-+ */
-+static int appletb_send_hid_report(struct appletb_iface_info *iface_info,
-+				   struct hid_report *report)
-+{
-+	unsigned char *buf;
-+	int rc;
-+
-+	buf = hid_alloc_report_buf(report, GFP_KERNEL);
-+	if (!buf)
-+		return -ENOMEM;
-+
-+	hid_output_report(report, buf);
-+
-+	rc = appletb_send_usb_ctrl(iface_info,
-+				   USB_DIR_OUT | USB_TYPE_CLASS |
-+							USB_RECIP_INTERFACE,
-+				   report, buf, hid_report_len(report));
 +
 +	kfree(buf);
 +
@@ -418,11 +392,7 @@ index 000000000..c13440a01
 +		tb_dev->tb_autopm_off =
 +			appletb_disable_autopm(report->device);
 +
-+	rc = appletb_send_hid_report(&tb_dev->disp_iface, report);
-+	if (rc < 0)
-+		dev_err(tb_dev->log_dev,
-+			"Failed to set touch bar display to %u (%d)\n", disp,
-+			rc);
++	hid_hw_request(tb_dev->disp_iface.hdev, report, HID_REQ_SET_REPORT);
 +
 +	if (disp == APPLETB_CMD_DISP_OFF && tb_dev->tb_autopm_off) {
 +		hid_hw_power(tb_dev->disp_iface.hdev, PM_HINT_NORMAL);
@@ -1278,6 +1248,22 @@ index 000000000..c13440a01
 +	unsigned long flags;
 +	int rc;
 +
++	/* initialize the report info */
++	rc = hid_parse(hdev);
++	if (rc) {
++		dev_err(tb_dev->log_dev, "hid parse failed (%d)\n", rc);
++		goto error;
++	}
++
++	/* Ensure this usb endpoint is for the touchbar backlight, not keyboard
++	 * backlight.
++	 */
++	if ((hdev->product == USB_DEVICE_ID_APPLE_TOUCHBAR_BACKLIGHT) &&
++			!(hdev->collection && hdev->collection[0].usage ==
++				HID_USAGE_APPLE_APP)) {
++		return -ENODEV;
++	}
++
 +	spin_lock_irqsave(&tb_dev->tb_lock, flags);
 +
 +	if (!tb_dev->log_dev)
@@ -1286,13 +1272,6 @@ index 000000000..c13440a01
 +	spin_unlock_irqrestore(&tb_dev->tb_lock, flags);
 +
 +	hid_set_drvdata(hdev, tb_dev);
-+
-+	/* initialize the report info */
-+	rc = hid_parse(hdev);
-+	if (rc) {
-+		dev_err(tb_dev->log_dev, "als: hid parse failed (%d)\n", rc);
-+		goto error;
-+	}
 +
 +	rc = appletb_extract_report_and_iface_info(tb_dev, hdev, id);
 +	if (rc < 0)
@@ -1423,54 +1402,60 @@ index 000000000..c13440a01
 +	    message.event != PM_EVENT_FREEZE)
 +		return 0;
 +
-+	/*
-+	 * Wait for both interfaces to be suspended and no more async work
-+	 * in progress.
-+	 */
-+	spin_lock_irqsave(&tb_dev->tb_lock, flags);
++	if (tb_dev->is_t1) {
 +
-+	if (!tb_dev->mode_iface.suspended && !tb_dev->disp_iface.suspended) {
-+		tb_dev->active = false;
-+		cancel_delayed_work(&tb_dev->tb_work);
++		/*
++		 * Wait for both interfaces to be suspended and no more async work
++		 * in progress.
++		 */
++
++		spin_lock_irqsave(&tb_dev->tb_lock, flags);
++
++		if (!tb_dev->mode_iface.suspended && !tb_dev->disp_iface.suspended) {
++			tb_dev->active = false;
++			cancel_delayed_work(&tb_dev->tb_work);
++		}
++
++		iface_info = appletb_get_iface_info(tb_dev, hdev);
++		if (iface_info)
++			iface_info->suspended = true;
++
++		if ((!tb_dev->mode_iface.hdev || tb_dev->mode_iface.suspended) &&
++		    (!tb_dev->disp_iface.hdev || tb_dev->disp_iface.suspended))
++			all_suspended = true;
++
++		spin_unlock_irqrestore(&tb_dev->tb_lock, flags);
++
++		flush_delayed_work(&tb_dev->tb_work);
++
++		if (!all_suspended)
++			return 0;
++
++		/*
++		 * The touch bar device itself remembers the last state when suspended
++		 * in some cases, but in others (e.g. when mode != off and disp == off)
++		 * it resumes with a different state; furthermore it may be only
++		 * partially responsive in that state. By turning both mode and disp
++		 * off we ensure it is in a good state when resuming (and this happens
++		 * to be the same state after booting/resuming-from-hibernate, so less
++		 * special casing between the two).
++		 */
++		if (message.event == PM_EVENT_SUSPEND) {
++			appletb_set_tb_mode(tb_dev, APPLETB_CMD_MODE_OFF);
++			appletb_set_tb_disp(tb_dev, APPLETB_CMD_DISP_OFF);
++		}
++
++		spin_lock_irqsave(&tb_dev->tb_lock, flags);
++
++		tb_dev->cur_tb_mode = APPLETB_CMD_MODE_OFF;
++		tb_dev->cur_tb_disp = APPLETB_CMD_DISP_OFF;
++
++		spin_unlock_irqrestore(&tb_dev->tb_lock, flags);
++
++		dev_info(tb_dev->log_dev, "Touchbar suspended.\n");
++	} else {
++		dev_info(tb_dev->log_dev, "T2 Mac detected, not handling suspend.\n");
 +	}
-+
-+	iface_info = appletb_get_iface_info(tb_dev, hdev);
-+	if (iface_info)
-+		iface_info->suspended = true;
-+
-+	if ((!tb_dev->mode_iface.hdev || tb_dev->mode_iface.suspended) &&
-+	    (!tb_dev->disp_iface.hdev || tb_dev->disp_iface.suspended))
-+		all_suspended = true;
-+
-+	spin_unlock_irqrestore(&tb_dev->tb_lock, flags);
-+
-+	flush_delayed_work(&tb_dev->tb_work);
-+
-+	if (!all_suspended)
-+		return 0;
-+
-+	/*
-+	 * The touch bar device itself remembers the last state when suspended
-+	 * in some cases, but in others (e.g. when mode != off and disp == off)
-+	 * it resumes with a different state; furthermore it may be only
-+	 * partially responsive in that state. By turning both mode and disp
-+	 * off we ensure it is in a good state when resuming (and this happens
-+	 * to be the same state after booting/resuming-from-hibernate, so less
-+	 * special casing between the two).
-+	 */
-+	if (message.event == PM_EVENT_SUSPEND) {
-+		appletb_set_tb_mode(tb_dev, APPLETB_CMD_MODE_OFF);
-+		appletb_set_tb_disp(tb_dev, APPLETB_CMD_DISP_OFF);
-+	}
-+
-+	spin_lock_irqsave(&tb_dev->tb_lock, flags);
-+
-+	tb_dev->cur_tb_mode = APPLETB_CMD_MODE_OFF;
-+	tb_dev->cur_tb_disp = APPLETB_CMD_DISP_OFF;
-+
-+	spin_unlock_irqrestore(&tb_dev->tb_lock, flags);
-+
-+	dev_info(tb_dev->log_dev, "Touchbar suspended.\n");
 +
 +	return 0;
 +}
@@ -1534,9 +1519,11 @@ index 000000000..c13440a01
 +			 USB_DEVICE_ID_IBRIDGE_TB),
 +	  .driver_data = APPLETB_FEATURE_IS_T1 },
 +	/* MacBook Pro's 2018, 2019, with T2 chip: iBridge DFR brightness */
-+	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, 0x8102) },
++	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE,
++			USB_DEVICE_ID_APPLE_TOUCHBAR_BACKLIGHT) },
 +	/* MacBook Pro's 2018, 2019, with T2 chip: iBridge Display */
-+	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, 0x8302) },
++	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE,
++			USB_DEVICE_ID_APPLE_TOUCHBAR_DISPLAY) },
 +	{ },
 +};
 +
@@ -1589,6 +1576,27 @@ index 000000000..c13440a01
 +MODULE_AUTHOR("Ronald Tschalär");
 +MODULE_DESCRIPTION("MacBookPro Touch Bar driver");
 +MODULE_LICENSE("GPL");
+diff --git a/drivers/hid/hid-quirks.c b/drivers/hid/hid-quirks.c
+index 695d4a0e964b..530c9ee6c304 100644
+--- a/drivers/hid/hid-quirks.c
++++ b/drivers/hid/hid-quirks.c
+@@ -317,12 +317,14 @@ static const struct hid_device_id hid_have_special_driver[] = {
+ 	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_GEYSER1_TP_ONLY) },
+ 	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_2021) },
+ 	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_FINGERPRINT_2021) },
+-	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_TOUCHBAR_BACKLIGHT) },
+-	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_TOUCHBAR_DISPLAY) },
+ #endif
+ #if IS_ENABLED(CONFIG_HID_APPLE_IBRIDGE)
+ 	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_IBRIDGE) },
+ #endif
++#if IS_ENABLED(CONFIG_HID_APPLE_TOUCHBAR)
++	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_TOUCHBAR_BACKLIGHT) },
++	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_TOUCHBAR_DISPLAY) },
++#endif
+ #if IS_ENABLED(CONFIG_HID_APPLEIR)
+ 	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_IRCONTROL) },
+ 	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_IRCONTROL2) },
 -- 
-2.37.2
+2.38.1
 

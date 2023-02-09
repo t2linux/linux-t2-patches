@@ -1,7 +1,7 @@
-From a6ff9bb4b9ad1ad6b3bfe3808270246998838978 Mon Sep 17 00:00:00 2001
+From 5252f7f553c118af1818d1a57a6cfd2c5b26b4dd Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Ronald=20Tschal=C3=A4r?= <ronald@innovation.ch>
 Date: Sat, 27 Feb 2021 17:26:42 -0800
-Subject: [PATCH 1/5] HID: apple-ibridge: Add Apple iBridge HID driver for T1
+Subject: [PATCH 1/3] HID: apple-ibridge: Add Apple iBridge HID driver for T1
  chip.
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -29,46 +29,49 @@ without further changes on MacBooks with the T2 chip that don't need
 this driver.
 
 Signed-off-by: Ronald Tschalär <ronald@innovation.ch>
+[Kerem Karabay: convert to a platform driver]
+[Kerem Karabay: fix appleib_forward_int_op]
+[Kerem Karabay: rely on HID core's parsing in appleib_add_device]
+Signed-off-by: Kerem Karabay <kekrby@gmail.com>
 ---
- drivers/hid/Kconfig         |  16 +
+ drivers/hid/Kconfig         |  15 +
  drivers/hid/Makefile        |   1 +
- drivers/hid/apple-ibridge.c | 682 ++++++++++++++++++++++++++++++++++++
+ drivers/hid/apple-ibridge.c | 610 ++++++++++++++++++++++++++++++++++++
  drivers/hid/apple-ibridge.h |  15 +
  drivers/hid/hid-ids.h       |   1 +
  drivers/hid/hid-quirks.c    |   3 +
- 6 files changed, 718 insertions(+)
+ 6 files changed, 645 insertions(+)
  create mode 100644 drivers/hid/apple-ibridge.c
  create mode 100644 drivers/hid/apple-ibridge.h
 
 diff --git a/drivers/hid/Kconfig b/drivers/hid/Kconfig
-index e2a5d30c8..35dd436f2 100644
+index 185a077d59cd..460c9b160cb9 100644
 --- a/drivers/hid/Kconfig
 +++ b/drivers/hid/Kconfig
-@@ -130,6 +130,22 @@ config HID_APPLE
+@@ -130,6 +130,21 @@ config HID_APPLE
  	Say Y here if you want support for keyboards of	Apple iBooks, PowerBooks,
  	MacBooks, MacBook Pros and Apple Aluminum.
  
 +config HID_APPLE_IBRIDGE
 +	tristate "Apple iBridge"
-+	depends on ACPI
 +	depends on USB_HID
-+	depends on X86 || COMPILE_TEST
++	depends on (X86 && ACPI) || COMPILE_TEST
 +	imply HID_SENSOR_HUB
 +	imply HID_SENSOR_ALS
 +	help
-+	  This module provides the core support for the Apple T1 chip found
-+	  on 2016 and 2017 MacBookPro's, also known as the iBridge. The drivers
-+	  for the Touch Bar (apple-touchbar) and light sensor (hid-sensor-hub
-+	  and hid-sensor-als) need to be enabled separately.
++	This module provides the core support for the Apple T1 chip found
++	on 2016 and 2017 MacBookPro's, also known as the iBridge. The drivers
++	for the Touch Bar (apple-touchbar) and light sensor (hid-sensor-hub
++	and hid-sensor-als) need to be enabled separately.
 +
-+	  To compile this driver as a module, choose M here: the
-+	  module will be called apple-ibridge.
++	To compile this driver as a module, choose M here: the
++	module will be called apple-ibridge.
 +
  config HID_APPLEIR
  	tristate "Apple infrared receiver"
  	depends on (USB_HID)
 diff --git a/drivers/hid/Makefile b/drivers/hid/Makefile
-index e8014c1a2..b61373cd8 100644
+index e8014c1a2f8b..b61373cd82e8 100644
 --- a/drivers/hid/Makefile
 +++ b/drivers/hid/Makefile
 @@ -26,6 +26,7 @@ obj-$(CONFIG_HID_ACCUTOUCH)	+= hid-accutouch.o
@@ -81,10 +84,10 @@ index e8014c1a2..b61373cd8 100644
  obj-$(CONFIG_HID_ASUS)		+= hid-asus.o
 diff --git a/drivers/hid/apple-ibridge.c b/drivers/hid/apple-ibridge.c
 new file mode 100644
-index 000000000..7ad6fa6c3
+index 000000000000..4d26f8d66d3f
 --- /dev/null
 +++ b/drivers/hid/apple-ibridge.c
-@@ -0,0 +1,682 @@
+@@ -0,0 +1,610 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Apple iBridge Driver
@@ -127,6 +130,7 @@ index 000000000..7ad6fa6c3
 + * iBridge when suspending and resuming.
 + */
 +
++#include <linux/platform_device.h>
 +#include <linux/acpi.h>
 +#include <linux/device.h>
 +#include <linux/hid.h>
@@ -140,8 +144,6 @@ index 000000000..7ad6fa6c3
 +#include "apple-ibridge.h"
 +
 +#define APPLEIB_BASIC_CONFIG	1
-+
-+#define	LOG_DEV(ib_dev)		(&(ib_dev)->acpi_dev->dev)
 +
 +static struct hid_device_id appleib_sub_hid_ids[] = {
 +	{ HID_USB_DEVICE(USB_VENDOR_ID_LINUX_FOUNDATION,
@@ -165,8 +167,7 @@ index 000000000..7ad6fa6c3
 +};
 +
 +struct appleib_device {
-+	struct acpi_device	*acpi_dev;
-+	acpi_handle		asoc_socw;
++	acpi_handle asoc_socw;
 +};
 +
 +struct appleib_hid_dev_info {
@@ -250,7 +251,7 @@ index 000000000..7ad6fa6c3
 +{
 +	struct appleib_hid_dev_info *hdev_info = hid_get_drvdata(hdev);
 +	struct hid_device *sub_hdev;
-+	int rc = 0;
++	int rc;
 +	int i;
 +
 +	for (i = 0; i < ARRAY_SIZE(hdev_info->sub_hdevs); i++) {
@@ -258,13 +259,11 @@ index 000000000..7ad6fa6c3
 +		if (sub_hdev->driver) {
 +			rc = forward(sub_hdev->driver, sub_hdev, args);
 +			if (rc)
-+				break;
++				return rc;
 +		}
-+
-+		break;
 +	}
 +
-+	return rc;
++	return 0;
 +}
 +
 +static int appleib_hid_suspend_fwd(struct hid_driver *drv,
@@ -419,43 +418,6 @@ index 000000000..7ad6fa6c3
 +	.output_report = appleib_ll_output_report,
 +};
 +
-+static __u8 *appleib_find_collection(__u8 *start, __u8 *end,
-+				     unsigned int *usage)
-+{
-+	struct hid_item item;
-+	int depth = 0;
-+
-+	*usage = 0;
-+
-+	while ((start = hid_fetch_item(start, end, &item)) != NULL) {
-+		if (item.type == HID_ITEM_TYPE_MAIN) {
-+			switch (item.tag) {
-+			case HID_MAIN_ITEM_TAG_BEGIN_COLLECTION:
-+				depth++;
-+				break;
-+
-+			case HID_MAIN_ITEM_TAG_END_COLLECTION:
-+				depth--;
-+				if (depth <= 0)
-+					return start;
-+				break;
-+			}
-+		} else if (item.type == HID_ITEM_TYPE_GLOBAL &&
-+			   item.tag == HID_GLOBAL_ITEM_TAG_USAGE_PAGE &&
-+			   depth == 0) {
-+			*usage = (*usage & 0x0000FFFF) |
-+				 ((hid_item_udata(&item) & 0xFFFF) << 16);
-+		} else if (item.type == HID_ITEM_TYPE_LOCAL &&
-+			   item.tag == HID_LOCAL_ITEM_TAG_USAGE &&
-+			   depth == 0) {
-+			*usage = (*usage & 0xFFFF0000) |
-+				 (hid_item_udata(&item) & 0xFFFF);
-+		}
-+	}
-+
-+	return end;
-+}
-+
 +static struct hid_device_id *appleib_find_dev_id_for_usage(unsigned int usage)
 +{
 +	int i;
@@ -470,7 +432,7 @@ index 000000000..7ad6fa6c3
 +
 +static struct hid_device *
 +appleib_add_sub_dev(struct appleib_hid_dev_info *hdev_info,
-+		    struct hid_device_id *dev_id, u8 *rdesc, size_t rsize)
++		    struct hid_device_id *dev_id)
 +{
 +	struct hid_device *sub_hdev;
 +	int rc;
@@ -495,12 +457,6 @@ index 000000000..7ad6fa6c3
 +
 +	sub_hdev->driver_data = hdev_info;
 +
-+	rc = hid_parse_report(sub_hdev, rdesc, rsize);
-+	if (rc) {
-+		hid_destroy_device(sub_hdev);
-+		return ERR_PTR(rc);
-+	}
-+
 +	rc = hid_add_device(sub_hdev);
 +	if (rc) {
 +		hid_destroy_device(sub_hdev);
@@ -513,9 +469,6 @@ index 000000000..7ad6fa6c3
 +static struct appleib_hid_dev_info *appleib_add_device(struct hid_device *hdev)
 +{
 +	struct appleib_hid_dev_info *hdev_info;
-+	__u8 *start = hdev->dev_rdesc;
-+	__u8 *end = start + hdev->dev_rsize;
-+	__u8 *pos;
 +	struct hid_device_id *dev_id;
 +	unsigned int usage;
 +	int i;
@@ -526,33 +479,22 @@ index 000000000..7ad6fa6c3
 +
 +	hdev_info->hdev = hdev;
 +
-+	for (i = 0; ; ) {
-+		pos = appleib_find_collection(start, end, &usage);
-+
++	for (i = 0; i < hdev->maxcollection; i++) {
++		usage = hdev->collection[i].usage;
 +		dev_id = appleib_find_dev_id_for_usage(usage);
++
 +		if (!dev_id) {
 +			hid_warn(hdev, "Unknown collection encountered with usage %x\n",
 +				 usage);
-+
-+		} else if (i >= ARRAY_SIZE(hdev_info->sub_hdevs)) {
-+			hid_warn(hdev, "Too many collections encountered - ignoring for usage %x\n",
-+				 usage);
 +		} else {
-+			hdev_info->sub_hdevs[i] =
-+				appleib_add_sub_dev(hdev_info, dev_id, start,
-+						    pos - start);
++			hdev_info->sub_hdevs[i] = appleib_add_sub_dev(hdev_info, dev_id);
++
 +			if (IS_ERR(hdev_info->sub_hdevs[i])) {
 +				while (i-- > 0)
 +					hid_destroy_device(hdev_info->sub_hdevs[i]);
 +				return (void *)hdev_info->sub_hdevs[i];
 +			}
-+
-+			i++;
 +		}
-+
-+		start = pos;
-+		if (start >= end)
-+			break;
 +	}
 +
 +	return hdev_info;
@@ -648,21 +590,19 @@ index 000000000..7ad6fa6c3
 +#endif
 +};
 +
-+static struct appleib_device *appleib_alloc_device(struct acpi_device *acpi_dev)
++static struct appleib_device *appleib_alloc_device(struct platform_device *pdev)
 +{
 +	struct appleib_device *ib_dev;
 +	acpi_status sts;
 +
-+	ib_dev = devm_kzalloc(&acpi_dev->dev, sizeof(*ib_dev), GFP_KERNEL);
++	ib_dev = devm_kzalloc(&pdev->dev, sizeof(*ib_dev), GFP_KERNEL);
 +	if (!ib_dev)
 +		return ERR_PTR(-ENOMEM);
 +
-+	ib_dev->acpi_dev = acpi_dev;
-+
 +	/* get iBridge acpi power control method for suspend/resume */
-+	sts = acpi_get_handle(acpi_dev->handle, "SOCW", &ib_dev->asoc_socw);
++	sts = acpi_get_handle(ACPI_HANDLE(&pdev->dev), "SOCW", &ib_dev->asoc_socw);
 +	if (ACPI_FAILURE(sts)) {
-+		dev_err(LOG_DEV(ib_dev),
++		dev_err(&pdev->dev,
 +			"Error getting handle for ASOC.SOCW method: %s\n",
 +			acpi_format_exception(sts));
 +		return ERR_PTR(-ENXIO);
@@ -671,75 +611,69 @@ index 000000000..7ad6fa6c3
 +	/* ensure iBridge is powered on */
 +	sts = acpi_execute_simple_method(ib_dev->asoc_socw, NULL, 1);
 +	if (ACPI_FAILURE(sts))
-+		dev_warn(LOG_DEV(ib_dev), "SOCW(1) failed: %s\n",
++		dev_warn(&pdev->dev, "SOCW(1) failed: %s\n",
 +			 acpi_format_exception(sts));
 +
 +	return ib_dev;
 +}
 +
-+static int appleib_probe(struct acpi_device *acpi)
++static int appleib_probe(struct platform_device *pdev)
 +{
 +	struct appleib_device *ib_dev;
 +	int ret;
 +
-+	ib_dev = appleib_alloc_device(acpi);
++	ib_dev = appleib_alloc_device(pdev);
 +	if (IS_ERR(ib_dev))
 +		return PTR_ERR(ib_dev);
 +
 +	ret = hid_register_driver(&appleib_hid_driver);
 +	if (ret) {
-+		dev_err(LOG_DEV(ib_dev), "Error registering hid driver: %d\n",
++		dev_err(&pdev->dev, "Error registering hid driver: %d\n",
 +			ret);
 +		return ret;
 +	}
 +
-+	acpi->driver_data = ib_dev;
++	platform_set_drvdata(pdev, ib_dev);
 +
 +	return 0;
 +}
 +
-+static int appleib_remove(struct acpi_device *acpi)
++static int appleib_remove(struct platform_device *pdev)
 +{
 +	hid_unregister_driver(&appleib_hid_driver);
 +
 +	return 0;
 +}
 +
-+static int appleib_suspend(struct device *dev)
++static int appleib_suspend(struct platform_device *pdev, pm_message_t message)
 +{
 +	struct appleib_device *ib_dev;
 +	int rc;
 +
-+	ib_dev = acpi_driver_data(to_acpi_device(dev));
++	ib_dev = platform_get_drvdata(pdev);
 +
 +	rc = acpi_execute_simple_method(ib_dev->asoc_socw, NULL, 0);
 +	if (ACPI_FAILURE(rc))
-+		dev_warn(dev, "SOCW(0) failed: %s\n",
++		dev_warn(&pdev->dev, "SOCW(0) failed: %s\n",
 +			 acpi_format_exception(rc));
 +
 +	return 0;
 +}
 +
-+static int appleib_resume(struct device *dev)
++static int appleib_resume(struct platform_device *pdev)
 +{
 +	struct appleib_device *ib_dev;
 +	int rc;
 +
-+	ib_dev = acpi_driver_data(to_acpi_device(dev));
++	ib_dev = platform_get_drvdata(pdev);
 +
 +	rc = acpi_execute_simple_method(ib_dev->asoc_socw, NULL, 1);
 +	if (ACPI_FAILURE(rc))
-+		dev_warn(dev, "SOCW(1) failed: %s\n",
++		dev_warn(&pdev->dev, "SOCW(1) failed: %s\n",
 +			 acpi_format_exception(rc));
 +
 +	return 0;
 +}
-+
-+static const struct dev_pm_ops appleib_pm = {
-+	.suspend = appleib_suspend,
-+	.resume = appleib_resume,
-+	.restore = appleib_resume,
-+};
 +
 +static const struct acpi_device_id appleib_acpi_match[] = {
 +	{ "APP7777", 0 },
@@ -748,28 +682,25 @@ index 000000000..7ad6fa6c3
 +
 +MODULE_DEVICE_TABLE(acpi, appleib_acpi_match);
 +
-+static struct acpi_driver appleib_driver = {
-+	.name		= "apple-ibridge",
-+	.class		= "apple_ibridge",
-+	.owner		= THIS_MODULE,
-+	.ids		= appleib_acpi_match,
-+	.ops		= {
-+		.add		= appleib_probe,
-+		.remove		= appleib_remove,
-+	},
-+	.drv		= {
-+		.pm		= &appleib_pm,
++static struct platform_driver appleib_driver = {
++	.probe		= appleib_probe,
++	.remove		= appleib_remove,
++	.suspend	= appleib_suspend,
++	.resume		= appleib_resume,
++	.driver		= {
++		.name		  = "apple-ibridge",
++		.acpi_match_table = appleib_acpi_match,
 +	},
 +};
 +
-+module_acpi_driver(appleib_driver)
++module_platform_driver(appleib_driver);
 +
 +MODULE_AUTHOR("Ronald Tschalär");
 +MODULE_DESCRIPTION("Apple iBridge driver");
 +MODULE_LICENSE("GPL");
 diff --git a/drivers/hid/apple-ibridge.h b/drivers/hid/apple-ibridge.h
 new file mode 100644
-index 000000000..8aefcf615
+index 000000000000..8aefcf61589a
 --- /dev/null
 +++ b/drivers/hid/apple-ibridge.h
 @@ -0,0 +1,15 @@
@@ -789,7 +720,7 @@ index 000000000..8aefcf615
 +
 +#endif
 diff --git a/drivers/hid/hid-ids.h b/drivers/hid/hid-ids.h
-index 0f8c11842..0c62e6280 100644
+index 8f58c3c1bec3..87315317608e 100644
 --- a/drivers/hid/hid-ids.h
 +++ b/drivers/hid/hid-ids.h
 @@ -187,6 +187,7 @@
@@ -801,10 +732,10 @@ index 0f8c11842..0c62e6280 100644
  #define USB_VENDOR_ID_ASUS		0x0486
  #define USB_DEVICE_ID_ASUS_T91MT	0x0185
 diff --git a/drivers/hid/hid-quirks.c b/drivers/hid/hid-quirks.c
-index be3ad0257..c03535c4b 100644
+index 0e9702c7f7d6..695d4a0e964b 100644
 --- a/drivers/hid/hid-quirks.c
 +++ b/drivers/hid/hid-quirks.c
-@@ -319,6 +319,9 @@ static const struct hid_device_id hid_have_special_driver[] = {
+@@ -320,6 +320,9 @@ static const struct hid_device_id hid_have_special_driver[] = {
  	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_TOUCHBAR_BACKLIGHT) },
  	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_TOUCHBAR_DISPLAY) },
  #endif
@@ -815,5 +746,5 @@ index be3ad0257..c03535c4b 100644
  	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_IRCONTROL) },
  	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_IRCONTROL2) },
 -- 
-2.37.2
+2.38.1
 

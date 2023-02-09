@@ -1,9 +1,10 @@
-From 641d3a7ec78053c9c107b1c8f32108d047b83828 Mon Sep 17 00:00:00 2001
+From 8602df7360b91ab1505e23f82ba50709e4908ef2 Mon Sep 17 00:00:00 2001
 From: Orlando Chamberlain <orlandoch.dev@gmail.com>
 Date: Mon, 14 Nov 2022 17:29:52 +0300
-Subject: [PATCH 5/5] HID: apple-magic-backlight: init
+Subject: [PATCH 3/3] HID: apple-magic-backlight: Add driver for keyboard
+ backlight on internal Magic Keyboards
 
-Add support for the keyboard backlight on Intel T2 Macs
+This driver adds support for the keyboard backlight on Intel T2 Macs
 with internal Magic Keyboards (MacBookPro16,x and MacBookAir9,1)
 
 Signed-off-by: Orlando Chamberlain <orlandoch.dev@gmail.com>
@@ -11,18 +12,17 @@ Co-developed-by: Kerem Karabay <kekrby@gmail.com>
 Signed-off-by: Kerem Karabay <kekrby@gmail.com>
 ---
  MAINTAINERS                         |   6 ++
- drivers/hid/Kconfig                 |  14 +++
+ drivers/hid/Kconfig                 |  13 +++
  drivers/hid/Makefile                |   1 +
  drivers/hid/apple-magic-backlight.c | 143 ++++++++++++++++++++++++++++
- drivers/hid/apple-touchbar.c        |  23 +++--
- 5 files changed, 181 insertions(+), 6 deletions(-)
+ 4 files changed, 163 insertions(+)
  create mode 100644 drivers/hid/apple-magic-backlight.c
 
 diff --git a/MAINTAINERS b/MAINTAINERS
-index fb1471cb5..3319f0c3e 100644
+index 886d3f69ee64..3d6496c81d92 100644
 --- a/MAINTAINERS
 +++ b/MAINTAINERS
-@@ -9201,6 +9201,12 @@ F:	include/linux/pm.h
+@@ -9087,6 +9087,12 @@ F:	include/linux/pm.h
  F:	include/linux/suspend.h
  F:	kernel/power/
  
@@ -36,18 +36,10 @@ index fb1471cb5..3319f0c3e 100644
  M:	Jiri Kosina <jikos@kernel.org>
  M:	Benjamin Tissoires <benjamin.tissoires@redhat.com>
 diff --git a/drivers/hid/Kconfig b/drivers/hid/Kconfig
-index 9066e0fe4..d555bf62e 100644
+index 5bcdda7ea809..fb055800ab95 100644
 --- a/drivers/hid/Kconfig
 +++ b/drivers/hid/Kconfig
-@@ -148,6 +148,7 @@ config HID_APPLE_IBRIDGE
- 
- config HID_APPLE_TOUCHBAR
- 	tristate "Apple Touch Bar"
-+	depends on USB_HID
- 	help
- 	Say Y here if you want support for the Touch Bar on recent
- 	MacBook Pros.
-@@ -155,6 +156,19 @@ config HID_APPLE_TOUCHBAR
+@@ -156,6 +156,19 @@ config HID_APPLE_TOUCHBAR
  	To compile this driver as a module, choose M here: the
  	module will be called apple-touchbar.
  
@@ -68,7 +60,7 @@ index 9066e0fe4..d555bf62e 100644
  	tristate "Apple infrared receiver"
  	depends on (USB_HID)
 diff --git a/drivers/hid/Makefile b/drivers/hid/Makefile
-index c792e42fe..a961914ec 100644
+index c792e42fe43f..a961914ec399 100644
 --- a/drivers/hid/Makefile
 +++ b/drivers/hid/Makefile
 @@ -28,6 +28,7 @@ obj-$(CONFIG_HID_ACRUX)		+= hid-axff.o
@@ -81,7 +73,7 @@ index c792e42fe..a961914ec 100644
  obj-$(CONFIG_HID_ASUS)		+= hid-asus.o
 diff --git a/drivers/hid/apple-magic-backlight.c b/drivers/hid/apple-magic-backlight.c
 new file mode 100644
-index 000000000..c7f1e5e90
+index 000000000000..9b128f6df18e
 --- /dev/null
 +++ b/drivers/hid/apple-magic-backlight.c
 @@ -0,0 +1,143 @@
@@ -167,7 +159,7 @@ index 000000000..c7f1e5e90
 +	/* Ensure this usb endpoint is for the keyboard backlight, not touchbar
 +	 * backlight.
 +	 */
-+	if (!(hdev->collection && hdev->collection->usage == USAGE_MAGIC_BL))
++	if (!(hdev->collection && hdev->collection[0].usage == USAGE_MAGIC_BL))
 +		return -ENODEV;
 +
 +	backlight = devm_kzalloc(&hdev->dev, sizeof(*backlight), GFP_KERNEL);
@@ -214,6 +206,7 @@ index 000000000..c7f1e5e90
 +	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_TOUCHBAR_BACKLIGHT) },
 +	{ }
 +};
++MODULE_DEVICE_TABLE(hid, apple_magic_backlight_hid_ids);
 +
 +static struct hid_driver apple_magic_backlight_hid_driver = {
 +	.name = "apple-magic-backlight",
@@ -227,48 +220,6 @@ index 000000000..c7f1e5e90
 +MODULE_DESCRIPTION("MacBook Magic Keyboard Backlight");
 +MODULE_AUTHOR("Orlando Chamberlain <orlandoch.dev@gmail.com>");
 +MODULE_LICENSE("GPL");
-+MODULE_DEVICE_TABLE(hid, apple_magic_backlight_hid_ids);
-diff --git a/drivers/hid/apple-touchbar.c b/drivers/hid/apple-touchbar.c
-index a87716435..715e013be 100644
---- a/drivers/hid/apple-touchbar.c
-+++ b/drivers/hid/apple-touchbar.c
-@@ -1222,6 +1222,23 @@ static int appletb_probe(struct hid_device *hdev,
- 	unsigned long flags;
- 	int rc;
- 
-+	/* initialize the report info */
-+	rc = hid_parse(hdev);
-+	if (rc) {
-+		dev_err(tb_dev->log_dev, "tb: hid parse failed (%d)\n", rc);
-+		goto error;
-+	}
-+
-+	/* Ensure this usb endpoint is for the touchbar backlight, not keyboard
-+	 * backlight.
-+	 */
-+
-+	if ((hdev->product == USB_DEVICE_ID_APPLE_TOUCHBAR_BACKLIGHT) &&
-+			!(hdev->collection && hdev->collection->usage ==
-+				HID_USAGE_APPLE_APP)) {
-+		return -ENODEV;
-+	}
-+
- 	spin_lock_irqsave(&tb_dev->tb_lock, flags);
- 
- 	if (!tb_dev->log_dev)
-@@ -1231,12 +1248,6 @@ static int appletb_probe(struct hid_device *hdev,
- 
- 	hid_set_drvdata(hdev, tb_dev);
- 
--	/* initialize the report info */
--	rc = hid_parse(hdev);
--	if (rc) {
--		dev_err(tb_dev->log_dev, "als: hid parse failed (%d)\n", rc);
--		goto error;
--	}
- 
- 	rc = appletb_extract_report_and_iface_info(tb_dev, hdev, id);
- 	if (rc < 0)
 -- 
-2.37.2
+2.38.1
 
