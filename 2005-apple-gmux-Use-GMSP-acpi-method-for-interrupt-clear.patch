@@ -1,0 +1,71 @@
+From c610d5f7581d3ad2616245a75e8fd7876167061d Mon Sep 17 00:00:00 2001
+From: Orlando Chamberlain <orlandoch.dev@gmail.com>
+Date: Mon, 30 Jan 2023 15:14:41 +1100
+Subject: [RFC PATCH 5/9] apple-gmux: Use GMSP acpi method for interrupt clear
+
+This is needed for interrupts to be cleared correctly on MMIO based
+gmux's. It is untested if this helps/hinders other gmux types, but I
+have seen the GMSP method in the acpi tables of a MacBook with an
+indexed gmux.
+
+If this turns out to break support for older gmux's, this can instead
+be only done on MMIO gmux's.
+
+There is also a "GMLV" acpi method, and the "GMSP" method can be called
+with 1 as its argument, but the purposes of these aren't known and they
+don't seem to be needed.
+
+Signed-off-by: Orlando Chamberlain <orlandoch.dev@gmail.com>
+---
+ drivers/platform/x86/apple-gmux.c | 26 +++++++++++++++++++++++++-
+ 1 file changed, 25 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/platform/x86/apple-gmux.c b/drivers/platform/x86/apple-gmux.c
+index 760434a527c1..c605f036ea0b 100644
+--- a/drivers/platform/x86/apple-gmux.c
++++ b/drivers/platform/x86/apple-gmux.c
+@@ -494,8 +494,29 @@ static const struct apple_gmux_config apple_gmux_index = {
+  * MCP79, on all following generations it's GPIO pin 6 of the Intel PCH.
+  * The GPE merely signals that an interrupt occurred, the actual type of event
+  * is identified by reading a gmux register.
++ *
++ * On MMIO gmux's, we also need to call the acpi method GMSP to properly clear
++ * interrupts. TODO: Do other types need this? Does this break other types?
+  */
+ 
++static int gmux_call_acpi_gmsp(struct apple_gmux_data *gmux_data, int arg)
++{
++	acpi_status status = AE_OK;
++	union acpi_object arg0 = { ACPI_TYPE_INTEGER };
++	struct acpi_object_list arg_list = { 1, &arg0 };
++
++	arg0.integer.value = arg;
++
++	status = acpi_evaluate_object(gmux_data->dhandle, "GMSP", &arg_list, NULL);
++	if (ACPI_FAILURE(status)) {
++		pr_err("GMSP call failed: %s\n",
++		       acpi_format_exception(status));
++		return -ENODEV;
++	}
++
++	return 0;
++}
++
+ static inline void gmux_disable_interrupts(struct apple_gmux_data *gmux_data)
+ {
+ 	gmux_write8(gmux_data, GMUX_PORT_INTERRUPT_ENABLE,
+@@ -519,7 +540,10 @@ static void gmux_clear_interrupts(struct apple_gmux_data *gmux_data)
+ 
+ 	/* to clear interrupts write back current status */
+ 	status = gmux_interrupt_get_status(gmux_data);
+-	gmux_write8(gmux_data, GMUX_PORT_INTERRUPT_STATUS, status);
++	if (status) {
++		gmux_write8(gmux_data, GMUX_PORT_INTERRUPT_STATUS, status);
++		gmux_call_acpi_gmsp(gmux_data, 0);
++	}
+ }
+ 
+ static void gmux_notify_handler(acpi_handle device, u32 value, void *context)
+-- 
+2.39.1
+
