@@ -1,0 +1,78 @@
+From 3dae1400637aeeee72f299729174c8ccc8a85d27 Mon Sep 17 00:00:00 2001
+From: Orlando Chamberlain <orlandoch.dev@gmail.com>
+Date: Wed, 25 Jan 2023 17:24:10 +1100
+Subject: [RFC PATCH 2/9] apple-gmux: consolidate version reading
+
+Read gmux version in one go as 32 bits on both indexed and classic
+gmux's.
+
+Classic gmux's used to read the version as
+
+major = inb(base + 0x4);
+minor = inb(base + 0x5);
+release = inb(base + 0x6);
+
+but this can instead be done the same way as indexed gmux's with
+gmux_read32(), so the same version reading code is used for classic
+and indexed gmux's (as well as mmio gmux's that will be added to this
+driver).
+
+Signed-off-by: Orlando Chamberlain <orlandoch.dev@gmail.com>
+---
+ drivers/platform/x86/apple-gmux.c | 14 ++++++--------
+ include/linux/apple-gmux.h        |  6 +-----
+ 2 files changed, 7 insertions(+), 13 deletions(-)
+
+diff --git a/drivers/platform/x86/apple-gmux.c b/drivers/platform/x86/apple-gmux.c
+index e8cb084cb81f..67628104f31a 100644
+--- a/drivers/platform/x86/apple-gmux.c
++++ b/drivers/platform/x86/apple-gmux.c
+@@ -580,15 +580,13 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
+ 	if (indexed) {
+ 		mutex_init(&gmux_data->index_lock);
+ 		gmux_data->indexed = true;
+-		version = gmux_read32(gmux_data, GMUX_PORT_VERSION_MAJOR);
+-		ver_major = (version >> 24) & 0xff;
+-		ver_minor = (version >> 16) & 0xff;
+-		ver_release = (version >> 8) & 0xff;
+-	} else {
+-		ver_major = gmux_read8(gmux_data, GMUX_PORT_VERSION_MAJOR);
+-		ver_minor = gmux_read8(gmux_data, GMUX_PORT_VERSION_MINOR);
+-		ver_release = gmux_read8(gmux_data, GMUX_PORT_VERSION_RELEASE);
+ 	}
++
++	version = gmux_read32(gmux_data, GMUX_PORT_VERSION_MAJOR);
++	ver_major = (version >> 24) & 0xff;
++	ver_minor = (version >> 16) & 0xff;
++	ver_release = (version >> 8) & 0xff;
++
+ 	pr_info("Found gmux version %d.%d.%d [%s]\n", ver_major, ver_minor,
+ 		ver_release, (gmux_data->indexed ? "indexed" : "classic"));
+ 
+diff --git a/include/linux/apple-gmux.h b/include/linux/apple-gmux.h
+index 1f68b49bcd68..eb2caee04abd 100644
+--- a/include/linux/apple-gmux.h
++++ b/include/linux/apple-gmux.h
+@@ -67,7 +67,6 @@ static inline bool apple_gmux_is_indexed(unsigned long iostart)
+  */
+ static inline bool apple_gmux_detect(struct pnp_dev *pnp_dev, bool *indexed_ret)
+ {
+-	u8 ver_major, ver_minor, ver_release;
+ 	struct device *dev = NULL;
+ 	struct acpi_device *adev;
+ 	struct resource *res;
+@@ -95,10 +94,7 @@ static inline bool apple_gmux_detect(struct pnp_dev *pnp_dev, bool *indexed_ret)
+ 	 * Invalid version information may indicate either that the gmux
+ 	 * device isn't present or that it's a new one that uses indexed io.
+ 	 */
+-	ver_major = inb(res->start + GMUX_PORT_VERSION_MAJOR);
+-	ver_minor = inb(res->start + GMUX_PORT_VERSION_MINOR);
+-	ver_release = inb(res->start + GMUX_PORT_VERSION_RELEASE);
+-	if (ver_major == 0xff && ver_minor == 0xff && ver_release == 0xff) {
++	if (!(~inl(res->start + GMUX_PORT_VERSION_MAJOR))) {
+ 		indexed = apple_gmux_is_indexed(res->start);
+ 		if (!indexed)
+ 			goto out;
+-- 
+2.39.1
+

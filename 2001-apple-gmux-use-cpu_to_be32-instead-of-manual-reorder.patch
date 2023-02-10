@@ -1,0 +1,53 @@
+From ed44f9c8e214533b73a481d8703999d76147bf12 Mon Sep 17 00:00:00 2001
+From: Orlando Chamberlain <orlandoch.dev@gmail.com>
+Date: Sun, 30 Oct 2022 14:54:23 +1100
+Subject: [RFC PATCH 1/9] apple-gmux: use cpu_to_be32 instead of manual reorder
+
+Currently it manually flips the byte order, but we can instead use
+cpu_to_be32(val) for this.
+
+Signed-off-by: Orlando Chamberlain <orlandoch.dev@gmail.com>
+---
+ drivers/platform/x86/apple-gmux.c | 18 ++----------------
+ 1 file changed, 2 insertions(+), 16 deletions(-)
+
+diff --git a/drivers/platform/x86/apple-gmux.c b/drivers/platform/x86/apple-gmux.c
+index 9333f82cfa8a..e8cb084cb81f 100644
+--- a/drivers/platform/x86/apple-gmux.c
++++ b/drivers/platform/x86/apple-gmux.c
+@@ -94,13 +94,7 @@ static u32 gmux_pio_read32(struct apple_gmux_data *gmux_data, int port)
+ static void gmux_pio_write32(struct apple_gmux_data *gmux_data, int port,
+ 			     u32 val)
+ {
+-	int i;
+-	u8 tmpval;
+-
+-	for (i = 0; i < 4; i++) {
+-		tmpval = (val >> (i * 8)) & 0xff;
+-		outb(tmpval, gmux_data->iostart + port + i);
+-	}
++	outl(cpu_to_be32(val), gmux_data->iostart + port);
+ }
+ 
+ static int gmux_index_wait_ready(struct apple_gmux_data *gmux_data)
+@@ -177,16 +171,8 @@ static u32 gmux_index_read32(struct apple_gmux_data *gmux_data, int port)
+ static void gmux_index_write32(struct apple_gmux_data *gmux_data, int port,
+ 			       u32 val)
+ {
+-	int i;
+-	u8 tmpval;
+-
+ 	mutex_lock(&gmux_data->index_lock);
+-
+-	for (i = 0; i < 4; i++) {
+-		tmpval = (val >> (i * 8)) & 0xff;
+-		outb(tmpval, gmux_data->iostart + GMUX_PORT_VALUE + i);
+-	}
+-
++	outl(cpu_to_be32(val), gmux_data->iostart + GMUX_PORT_VALUE);
+ 	gmux_index_wait_ready(gmux_data);
+ 	outb(port & 0xff, gmux_data->iostart + GMUX_PORT_WRITE);
+ 	gmux_index_wait_complete(gmux_data);
+-- 
+2.39.1
+
