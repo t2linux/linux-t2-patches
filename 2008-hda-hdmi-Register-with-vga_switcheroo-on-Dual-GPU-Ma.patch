@@ -1,0 +1,74 @@
+From b294ce90ae359695d9d49c1f447dd7e6ba008b6a Mon Sep 17 00:00:00 2001
+From: Orlando Chamberlain <orlandoch.dev@gmail.com>
+Date: Fri, 10 Feb 2023 12:48:58 +1100
+Subject: [RFC PATCH 8/9] hda/hdmi: Register with vga_switcheroo on Dual GPU
+ Macbooks
+
+Commit 586bc4aab878 ("ALSA: hda/hdmi - fix vgaswitcheroo detection for
+AMD") caused only AMD gpu's with PX to have their audio component register
+with vga_switcheroo. This meant that Apple Macbooks with apple-gmux as the
+gpu switcher no longer had the audio client registering, so when the gpu is
+powered off by vga_switcheroo snd_hda_intel is unaware that it should have
+suspended the device:
+
+amdgpu: switched off
+snd_hda_intel 0000:03:00.1:
+    Unable to change power state from D3hot to D0, device inaccessible
+snd_hda_intel 0000:03:00.1: CORB reset timeout#2, CORBRP = 65535
+
+Simialar to ATPX, we use the presence of an acpi method (PWRD in this
+case) to ensure we only register with the correct devices.
+
+Fixes: 586bc4aab878 ("ALSA: hda/hdmi - fix vgaswitcheroo detection for AMD")
+Signed-off-by: Orlando Chamberlain <orlandoch.dev@gmail.com>
+---
+ sound/pci/hda/hda_intel.c | 19 ++++++++++++++++++-
+ 1 file changed, 18 insertions(+), 1 deletion(-)
+
+diff --git a/sound/pci/hda/hda_intel.c b/sound/pci/hda/hda_intel.c
+index 87002670c0c9..c97bbe60e603 100644
+--- a/sound/pci/hda/hda_intel.c
++++ b/sound/pci/hda/hda_intel.c
+@@ -1435,11 +1435,25 @@ static bool atpx_present(void)
+ 	}
+ 	return false;
+ }
++
++static bool pwrd_present(struct pci_dev *pci)
++{
++	acpi_handle pwrd_handle;
++	acpi_status status;
++
++	status = acpi_get_handle(ACPI_HANDLE(&pci->dev), "PWRD", &pwrd_handle);
++	return ACPI_FAILURE(status) ? false : true;
++}
+ #else
+ static bool atpx_present(void)
+ {
+ 	return false;
+ }
++
++static bool pwrd_present(struct pci_dev *pci)
++{
++	return false;
++}
+ #endif
+ 
+ /*
+@@ -1461,9 +1475,12 @@ static struct pci_dev *get_bound_vga(struct pci_dev *pci)
+ 				 * rather than the dGPU's namespace. However,
+ 				 * the dGPU is the one who is involved in
+ 				 * vgaswitcheroo.
++				 *
++				 * PWRD is in the dGPU's ACPI namespace on Apple
++				 * Macbooks with dual gpu's.
+ 				 */
+ 				if (((p->class >> 16) == PCI_BASE_CLASS_DISPLAY) &&
+-				    atpx_present())
++						(atpx_present() || pwrd_present(p)))
+ 					return p;
+ 				pci_dev_put(p);
+ 			}
+-- 
+2.39.1
+
