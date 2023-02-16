@@ -1,4 +1,4 @@
-From aab85120bfd26ce06c199a7d8c319392df7e3d47 Mon Sep 17 00:00:00 2001
+From 7dd5ce6d1f42bc06500d7c8e697654059a7916e9 Mon Sep 17 00:00:00 2001
 From: Orlando Chamberlain <orlandoch.dev@gmail.com>
 Date: Wed, 25 Jan 2023 18:16:29 +1100
 Subject: [PATCH 1/8] apple-gmux: use first bit to check switch state
