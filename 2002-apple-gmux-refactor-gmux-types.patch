@@ -1,7 +1,7 @@
-From 17c4eaed76666c7f4fa7201528fd4540bd3b5d5b Mon Sep 17 00:00:00 2001
+From 4ec88fd40990204ed70f5b1d414044232158d2f8 Mon Sep 17 00:00:00 2001
 From: Orlando Chamberlain <orlandoch.dev@gmail.com>
 Date: Wed, 25 Jan 2023 18:07:41 +1100
-Subject: [RFC PATCH 4/9] apple-gmux: refactor gmux types
+Subject: [PATCH 2/8] apple-gmux: refactor gmux types
 
 Add apple_gmux_config struct containing operations and data specific to
 each mux type.
@@ -10,12 +10,12 @@ This is in preparation for adding a third, MMIO based, gmux type.
 
 Signed-off-by: Orlando Chamberlain <orlandoch.dev@gmail.com>
 ---
- drivers/platform/x86/apple-gmux.c | 91 ++++++++++++++++++++-----------
+ drivers/platform/x86/apple-gmux.c | 93 ++++++++++++++++++++-----------
  include/linux/apple-gmux.h        | 18 ++++--
- 2 files changed, 70 insertions(+), 39 deletions(-)
+ 2 files changed, 74 insertions(+), 37 deletions(-)
 
 diff --git a/drivers/platform/x86/apple-gmux.c b/drivers/platform/x86/apple-gmux.c
-index 6109f4c2867c..760434a527c1 100644
+index ec99e05e532c..36208e93d745 100644
 --- a/drivers/platform/x86/apple-gmux.c
 +++ b/drivers/platform/x86/apple-gmux.c
 @@ -5,6 +5,7 @@
@@ -40,7 +40,7 @@ index 6109f4c2867c..760434a527c1 100644
  	struct mutex index_lock;
  
  	struct backlight_device *bdev;
-@@ -64,6 +67,17 @@ struct apple_gmux_data {
+@@ -64,6 +67,18 @@ struct apple_gmux_data {
  
  static struct apple_gmux_data *apple_gmux_data;
  
@@ -52,13 +52,14 @@ index 6109f4c2867c..760434a527c1 100644
 +	const struct vga_switcheroo_handler *gmux_handler;
 +	enum vga_switcheroo_handler_flags_t handler_flags;
 +	unsigned long resource_type;
++	bool read_version_as_u32;
 +	char *name;
 +};
 +
  #define GMUX_INTERRUPT_ENABLE		0xff
  #define GMUX_INTERRUPT_DISABLE		0x00
  
-@@ -181,35 +195,23 @@ static void gmux_index_write32(struct apple_gmux_data *gmux_data, int port,
+@@ -195,35 +210,23 @@ static void gmux_index_write32(struct apple_gmux_data *gmux_data, int port,
  
  static u8 gmux_read8(struct apple_gmux_data *gmux_data, int port)
  {
@@ -98,7 +99,7 @@ index 6109f4c2867c..760434a527c1 100644
  }
  
  /**
-@@ -449,19 +451,41 @@ static enum vga_switcheroo_client_id gmux_get_client_id(struct pci_dev *pdev)
+@@ -463,19 +466,43 @@ static enum vga_switcheroo_client_id gmux_get_client_id(struct pci_dev *pdev)
  		return VGA_SWITCHEROO_DIS;
  }
  
@@ -125,6 +126,7 @@ index 6109f4c2867c..760434a527c1 100644
 +	.gmux_handler = &gmux_handler_ddc,
 +	.handler_flags = VGA_SWITCHEROO_CAN_SWITCH_DDC,
 +	.resource_type = IORESOURCE_IO,
++	.read_version_as_u32 = false,
 +	.name = "classic"
 +};
 +
@@ -136,13 +138,14 @@ index 6109f4c2867c..760434a527c1 100644
 +	.gmux_handler = &gmux_handler_no_ddc,
 +	.handler_flags = VGA_SWITCHEROO_NEEDS_EDP_CONFIG,
 +	.resource_type = IORESOURCE_IO,
++	.read_version_as_u32 = true,
 +	.name = "indexed"
 +};
 +
  /**
   * DOC: Interrupt
   *
-@@ -551,13 +575,13 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
+@@ -565,13 +592,13 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
  	int ret = -ENXIO;
  	acpi_status status;
  	unsigned long long gpe;
@@ -158,7 +161,7 @@ index 6109f4c2867c..760434a527c1 100644
  		pr_info("gmux device not present\n");
  		return -ENODEV;
  	}
-@@ -567,6 +591,16 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
+@@ -581,6 +608,16 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
  		return -ENOMEM;
  	pnp_set_drvdata(pnp, gmux_data);
  
@@ -175,27 +178,27 @@ index 6109f4c2867c..760434a527c1 100644
  	res = pnp_get_resource(pnp, IORESOURCE_IO, 0);
  	gmux_data->iostart = res->start;
  	gmux_data->iolen = resource_size(res);
-@@ -577,18 +611,13 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
+@@ -591,9 +628,7 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
  		goto err_free;
  	}
  
 -	if (indexed) {
 -		mutex_init(&gmux_data->index_lock);
 -		gmux_data->indexed = true;
--	}
--
- 	version = gmux_read32(gmux_data, GMUX_PORT_VERSION_MAJOR);
- 	ver_major = (version >> 24) & 0xff;
- 	ver_minor = (version >> 16) & 0xff;
- 	ver_release = (version >> 8) & 0xff;
- 
++	if (gmux_data->config->read_version_as_u32) {
+ 		version = gmux_read32(gmux_data, GMUX_PORT_VERSION_MAJOR);
+ 		ver_major = (version >> 24) & 0xff;
+ 		ver_minor = (version >> 16) & 0xff;
+@@ -604,7 +639,7 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
+ 		ver_release = gmux_read8(gmux_data, GMUX_PORT_VERSION_RELEASE);
+ 	}
  	pr_info("Found gmux version %d.%d.%d [%s]\n", ver_major, ver_minor,
 -		ver_release, (gmux_data->indexed ? "indexed" : "classic"));
-+			ver_release, gmux_data->config->name);
++		ver_release, gmux_data->config->name);
  
  	memset(&props, 0, sizeof(props));
  	props.type = BACKLIGHT_PLATFORM;
-@@ -678,12 +707,8 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
+@@ -694,12 +729,8 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
  	 *
  	 * Pre-retina MacBook Pros can switch the panel's DDC separately.
  	 */
@@ -211,7 +214,7 @@ index 6109f4c2867c..760434a527c1 100644
  		pr_err("Failed to register vga_switcheroo handler\n");
  		goto err_register_handler;
 diff --git a/include/linux/apple-gmux.h b/include/linux/apple-gmux.h
-index eb2caee04abd..25c1de4a716e 100644
+index 1f68b49bcd68..187e15196b24 100644
 --- a/include/linux/apple-gmux.h
 +++ b/include/linux/apple-gmux.h
 @@ -36,6 +36,11 @@
@@ -226,13 +229,14 @@ index eb2caee04abd..25c1de4a716e 100644
  #if IS_ENABLED(CONFIG_APPLE_GMUX)
  static inline bool apple_gmux_is_indexed(unsigned long iostart)
  {
-@@ -65,12 +70,12 @@ static inline bool apple_gmux_is_indexed(unsigned long iostart)
+@@ -65,13 +70,13 @@ static inline bool apple_gmux_is_indexed(unsigned long iostart)
   * Return: %true if a supported gmux ACPI device is detected and the kernel
   * was configured with CONFIG_APPLE_GMUX, %false otherwise.
   */
 -static inline bool apple_gmux_detect(struct pnp_dev *pnp_dev, bool *indexed_ret)
 +static inline bool apple_gmux_detect(struct pnp_dev *pnp_dev, enum apple_gmux_type *type_ret)
  {
+ 	u8 ver_major, ver_minor, ver_release;
  	struct device *dev = NULL;
  	struct acpi_device *adev;
  	struct resource *res;
@@ -241,14 +245,14 @@ index eb2caee04abd..25c1de4a716e 100644
  	bool ret = false;
  
  	if (!pnp_dev) {
-@@ -95,13 +100,14 @@ static inline bool apple_gmux_detect(struct pnp_dev *pnp_dev, bool *indexed_ret)
- 	 * device isn't present or that it's a new one that uses indexed io.
- 	 */
- 	if (!(~inl(res->start + GMUX_PORT_VERSION_MAJOR))) {
+@@ -99,13 +104,14 @@ static inline bool apple_gmux_detect(struct pnp_dev *pnp_dev, bool *indexed_ret)
+ 	ver_minor = inb(res->start + GMUX_PORT_VERSION_MINOR);
+ 	ver_release = inb(res->start + GMUX_PORT_VERSION_RELEASE);
+ 	if (ver_major == 0xff && ver_minor == 0xff && ver_release == 0xff) {
 -		indexed = apple_gmux_is_indexed(res->start);
 -		if (!indexed)
 +		if (apple_gmux_is_indexed(res->start))
-+			type = APPLE_GMUX_TYPE_INDEXED;
++		    type = APPLE_GMUX_TYPE_INDEXED;
 +		else
  			goto out;
  	}

@@ -1,7 +1,7 @@
-From b294ce90ae359695d9d49c1f447dd7e6ba008b6a Mon Sep 17 00:00:00 2001
+From 4bdf339b585e223eb873022ec594f402377f30e9 Mon Sep 17 00:00:00 2001
 From: Orlando Chamberlain <orlandoch.dev@gmail.com>
-Date: Fri, 10 Feb 2023 12:48:58 +1100
-Subject: [RFC PATCH 8/9] hda/hdmi: Register with vga_switcheroo on Dual GPU
+Date: Thu, 16 Feb 2023 19:30:31 +1100
+Subject: [PATCH 8/8] hda/hdmi: Register with vga_switcheroo on Dual GPU
  Macbooks
 
 Commit 586bc4aab878 ("ALSA: hda/hdmi - fix vgaswitcheroo detection for
@@ -16,56 +16,33 @@ snd_hda_intel 0000:03:00.1:
     Unable to change power state from D3hot to D0, device inaccessible
 snd_hda_intel 0000:03:00.1: CORB reset timeout#2, CORBRP = 65535
 
-Simialar to ATPX, we use the presence of an acpi method (PWRD in this
-case) to ensure we only register with the correct devices.
+To resolve this, we use apple_gmux_detect() and register a
+vga_switcheroo audio client when apple-gmux is detected.
 
 Fixes: 586bc4aab878 ("ALSA: hda/hdmi - fix vgaswitcheroo detection for AMD")
 Signed-off-by: Orlando Chamberlain <orlandoch.dev@gmail.com>
 ---
- sound/pci/hda/hda_intel.c | 19 ++++++++++++++++++-
- 1 file changed, 18 insertions(+), 1 deletion(-)
+ sound/pci/hda/hda_intel.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
 
 diff --git a/sound/pci/hda/hda_intel.c b/sound/pci/hda/hda_intel.c
-index 87002670c0c9..c97bbe60e603 100644
+index 87002670c0c9..cfd2ddfde112 100644
 --- a/sound/pci/hda/hda_intel.c
 +++ b/sound/pci/hda/hda_intel.c
-@@ -1435,11 +1435,25 @@ static bool atpx_present(void)
- 	}
- 	return false;
- }
-+
-+static bool pwrd_present(struct pci_dev *pci)
-+{
-+	acpi_handle pwrd_handle;
-+	acpi_status status;
-+
-+	status = acpi_get_handle(ACPI_HANDLE(&pci->dev), "PWRD", &pwrd_handle);
-+	return ACPI_FAILURE(status) ? false : true;
-+}
- #else
- static bool atpx_present(void)
- {
- 	return false;
- }
-+
-+static bool pwrd_present(struct pci_dev *pci)
-+{
-+	return false;
-+}
- #endif
- 
- /*
-@@ -1461,9 +1475,12 @@ static struct pci_dev *get_bound_vga(struct pci_dev *pci)
- 				 * rather than the dGPU's namespace. However,
- 				 * the dGPU is the one who is involved in
+@@ -50,6 +50,7 @@
+ #include <sound/intel-dsp-config.h>
+ #include <linux/vgaarb.h>
+ #include <linux/vga_switcheroo.h>
++#include <linux/apple-gmux.h>
+ #include <linux/firmware.h>
+ #include <sound/hda_codec.h>
+ #include "hda_controller.h"
+@@ -1463,7 +1464,7 @@ static struct pci_dev *get_bound_vga(struct pci_dev *pci)
  				 * vgaswitcheroo.
-+				 *
-+				 * PWRD is in the dGPU's ACPI namespace on Apple
-+				 * Macbooks with dual gpu's.
  				 */
  				if (((p->class >> 16) == PCI_BASE_CLASS_DISPLAY) &&
 -				    atpx_present())
-+						(atpx_present() || pwrd_present(p)))
++				    (atpx_present() || apple_gmux_detect(NULL, NULL)))
  					return p;
  				pci_dev_put(p);
  			}
