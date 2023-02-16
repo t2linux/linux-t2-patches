@@ -1,4 +1,4 @@
-From 4ec88fd40990204ed70f5b1d414044232158d2f8 Mon Sep 17 00:00:00 2001
+From 6d62b85e0d3af9715933c708edb629da0b02c2ef Mon Sep 17 00:00:00 2001
 From: Orlando Chamberlain <orlandoch.dev@gmail.com>
 Date: Wed, 25 Jan 2023 18:07:41 +1100
 Subject: [PATCH 2/8] apple-gmux: refactor gmux types
@@ -214,7 +214,7 @@ index ec99e05e532c..36208e93d745 100644
  		pr_err("Failed to register vga_switcheroo handler\n");
  		goto err_register_handler;
 diff --git a/include/linux/apple-gmux.h b/include/linux/apple-gmux.h
-index 1f68b49bcd68..187e15196b24 100644
+index 1f68b49bcd68..5f658439f7f8 100644
 --- a/include/linux/apple-gmux.h
 +++ b/include/linux/apple-gmux.h
 @@ -36,6 +36,11 @@
@@ -252,7 +252,7 @@ index 1f68b49bcd68..187e15196b24 100644
 -		indexed = apple_gmux_is_indexed(res->start);
 -		if (!indexed)
 +		if (apple_gmux_is_indexed(res->start))
-+		    type = APPLE_GMUX_TYPE_INDEXED;
++			type = APPLE_GMUX_TYPE_INDEXED;
 +		else
  			goto out;
  	}

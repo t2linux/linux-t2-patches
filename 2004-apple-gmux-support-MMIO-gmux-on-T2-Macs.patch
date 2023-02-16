@@ -1,6 +1,6 @@
-From 63af9e6576aa0fea586f08d880d1ad73555f757e Mon Sep 17 00:00:00 2001
+From 023b7e558983667bb47ac14e2dfdfe984ede2195 Mon Sep 17 00:00:00 2001
 From: Orlando Chamberlain <orlandoch.dev@gmail.com>
-Date: Wed, 25 Jan 2023 18:40:15 +1100
+Date: Thu, 16 Feb 2023 21:12:28 +1100
 Subject: [PATCH 4/8] apple-gmux: support MMIO gmux on T2 Macs
 
 In some newer dual gpu MacBooks, gmux is controlled by the T2 security
@@ -258,7 +258,7 @@ index 12a93fc49c36..a0ccdf2aa9cf 100644
  	kfree(gmux_data);
  
 diff --git a/include/linux/apple-gmux.h b/include/linux/apple-gmux.h
-index 187e15196b24..647702c3a907 100644
+index 5f658439f7f8..b7532f26b756 100644
 --- a/include/linux/apple-gmux.h
 +++ b/include/linux/apple-gmux.h
 @@ -34,11 +34,18 @@
@@ -297,7 +297,7 @@ index 187e15196b24..647702c3a907 100644
 -	ver_release = inb(res->start + GMUX_PORT_VERSION_RELEASE);
 -	if (ver_major == 0xff && ver_minor == 0xff && ver_release == 0xff) {
 -		if (apple_gmux_is_indexed(res->start))
--		    type = APPLE_GMUX_TYPE_INDEXED;
+-			type = APPLE_GMUX_TYPE_INDEXED;
 +	if (res && resource_size(res) >= GMUX_MIN_IO_LEN) {
 +		/*
 +		 * Invalid version information may indicate either that the gmux
@@ -308,7 +308,7 @@ index 187e15196b24..647702c3a907 100644
 +		ver_release = inb(res->start + GMUX_PORT_VERSION_RELEASE);
 +		if (ver_major == 0xff && ver_minor == 0xff && ver_release == 0xff) {
 +			if (apple_gmux_is_indexed(res->start))
-+			    type = APPLE_GMUX_TYPE_INDEXED;
++				type = APPLE_GMUX_TYPE_INDEXED;
 +			else
 +				goto out;
 +		}

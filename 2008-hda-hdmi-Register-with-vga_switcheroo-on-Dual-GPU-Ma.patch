@@ -1,4 +1,4 @@
-From 4bdf339b585e223eb873022ec594f402377f30e9 Mon Sep 17 00:00:00 2001
+From 034dec654fe123ce11092f8057cef2ed20ff1509 Mon Sep 17 00:00:00 2001
 From: Orlando Chamberlain <orlandoch.dev@gmail.com>
 Date: Thu, 16 Feb 2023 19:30:31 +1100
 Subject: [PATCH 8/8] hda/hdmi: Register with vga_switcheroo on Dual GPU
