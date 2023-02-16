@@ -1,4 +1,4 @@
-From f36b04ed509d90e0d928f0bfc2738287b921d726 Mon Sep 17 00:00:00 2001
+From 4efdf7db67bb409336503cfef636a5b67f6ff7c9 Mon Sep 17 00:00:00 2001
 From: Orlando Chamberlain <orlandoch.dev@gmail.com>
 Date: Thu, 16 Feb 2023 19:28:31 +1100
 Subject: [PATCH 7/8] drm/amdgpu: register a vga_switcheroo client for MacBooks
