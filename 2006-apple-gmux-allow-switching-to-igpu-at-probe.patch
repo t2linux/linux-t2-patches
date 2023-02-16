@@ -1,4 +1,4 @@
-From 4d198c2f9baf0e6f10a45609862ca96c0f2c5fea Mon Sep 17 00:00:00 2001
+From 62deb0c5d040fd193889b11a88b295a78ccda650 Mon Sep 17 00:00:00 2001
 From: Orlando Chamberlain <orlandoch.dev@gmail.com>
 Date: Fri, 10 Feb 2023 22:45:00 +1100
 Subject: [PATCH 6/8] apple-gmux: allow switching to igpu at probe
@@ -62,7 +62,7 @@ index f80b6ec88dc3..952652944fbd 100644
  /**
   * vga_remove_vgacon - deactivete vga console
 diff --git a/drivers/platform/x86/apple-gmux.c b/drivers/platform/x86/apple-gmux.c
-index 27f931aff4e1..4de3c2311b24 100644
+index e2a6ada34078..e2dd7ab8bceb 100644
 --- a/drivers/platform/x86/apple-gmux.c
 +++ b/drivers/platform/x86/apple-gmux.c
 @@ -22,6 +22,7 @@
@@ -84,7 +84,7 @@ index 27f931aff4e1..4de3c2311b24 100644
  static u8 gmux_pio_read8(struct apple_gmux_data *gmux_data, int port)
  {
  	return inb(gmux_data->iostart + port);
-@@ -945,6 +950,20 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
+@@ -946,6 +951,20 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
  	gmux_enable_interrupts(gmux_data);
  	gmux_read_switch_state(gmux_data);
  

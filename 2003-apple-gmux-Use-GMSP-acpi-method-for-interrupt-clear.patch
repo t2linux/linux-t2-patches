@@ -1,4 +1,4 @@
-From 88dd739525af553f5eb37b4e8fbe9dace41484fc Mon Sep 17 00:00:00 2001
+From 864df26e00fa72903842db1f02a1960fd717d45f Mon Sep 17 00:00:00 2001
 From: Orlando Chamberlain <orlandoch.dev@gmail.com>
 Date: Mon, 30 Jan 2023 15:14:41 +1100
 Subject: [PATCH 3/8] apple-gmux: Use GMSP acpi method for interrupt clear
