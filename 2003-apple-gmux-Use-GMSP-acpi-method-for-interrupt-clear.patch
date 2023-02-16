@@ -1,15 +1,11 @@
-From c610d5f7581d3ad2616245a75e8fd7876167061d Mon Sep 17 00:00:00 2001
+From 88dd739525af553f5eb37b4e8fbe9dace41484fc Mon Sep 17 00:00:00 2001
 From: Orlando Chamberlain <orlandoch.dev@gmail.com>
 Date: Mon, 30 Jan 2023 15:14:41 +1100
-Subject: [RFC PATCH 5/9] apple-gmux: Use GMSP acpi method for interrupt clear
+Subject: [PATCH 3/8] apple-gmux: Use GMSP acpi method for interrupt clear
 
 This is needed for interrupts to be cleared correctly on MMIO based
-gmux's. It is untested if this helps/hinders other gmux types, but I
-have seen the GMSP method in the acpi tables of a MacBook with an
-indexed gmux.
-
-If this turns out to break support for older gmux's, this can instead
-be only done on MMIO gmux's.
+gmux's. It is untested if this helps/hinders other gmux types, so
+currently this is only enabled for the MMIO gmux's.
 
 There is also a "GMLV" acpi method, and the "GMSP" method can be called
 with 1 as its argument, but the purposes of these aren't known and they
@@ -17,20 +13,44 @@ don't seem to be needed.
 
 Signed-off-by: Orlando Chamberlain <orlandoch.dev@gmail.com>
 ---
- drivers/platform/x86/apple-gmux.c | 26 +++++++++++++++++++++++++-
- 1 file changed, 25 insertions(+), 1 deletion(-)
+ drivers/platform/x86/apple-gmux.c | 30 +++++++++++++++++++++++++++++-
+ 1 file changed, 29 insertions(+), 1 deletion(-)
 
 diff --git a/drivers/platform/x86/apple-gmux.c b/drivers/platform/x86/apple-gmux.c
-index 760434a527c1..c605f036ea0b 100644
+index 36208e93d745..12a93fc49c36 100644
 --- a/drivers/platform/x86/apple-gmux.c
 +++ b/drivers/platform/x86/apple-gmux.c
-@@ -494,8 +494,29 @@ static const struct apple_gmux_config apple_gmux_index = {
+@@ -76,6 +76,7 @@ struct apple_gmux_config {
+ 	enum vga_switcheroo_handler_flags_t handler_flags;
+ 	unsigned long resource_type;
+ 	bool read_version_as_u32;
++	bool use_acpi_gmsp;
+ 	char *name;
+ };
+ 
+@@ -488,6 +489,7 @@ static const struct apple_gmux_config apple_gmux_pio = {
+ 	.handler_flags = VGA_SWITCHEROO_CAN_SWITCH_DDC,
+ 	.resource_type = IORESOURCE_IO,
+ 	.read_version_as_u32 = false,
++	.use_acpi_gmsp = false,
+ 	.name = "classic"
+ };
+ 
+@@ -500,6 +502,7 @@ static const struct apple_gmux_config apple_gmux_index = {
+ 	.handler_flags = VGA_SWITCHEROO_NEEDS_EDP_CONFIG,
+ 	.resource_type = IORESOURCE_IO,
+ 	.read_version_as_u32 = true,
++	.use_acpi_gmsp = false,
+ 	.name = "indexed"
+ };
+ 
+@@ -511,8 +514,29 @@ static const struct apple_gmux_config apple_gmux_index = {
   * MCP79, on all following generations it's GPIO pin 6 of the Intel PCH.
   * The GPE merely signals that an interrupt occurred, the actual type of event
   * is identified by reading a gmux register.
 + *
 + * On MMIO gmux's, we also need to call the acpi method GMSP to properly clear
-+ * interrupts. TODO: Do other types need this? Does this break other types?
++ * interrupts.
   */
  
 +static int gmux_call_acpi_gmsp(struct apple_gmux_data *gmux_data, int arg)
@@ -54,14 +74,15 @@ index 760434a527c1..c605f036ea0b 100644
  static inline void gmux_disable_interrupts(struct apple_gmux_data *gmux_data)
  {
  	gmux_write8(gmux_data, GMUX_PORT_INTERRUPT_ENABLE,
-@@ -519,7 +540,10 @@ static void gmux_clear_interrupts(struct apple_gmux_data *gmux_data)
+@@ -536,7 +560,11 @@ static void gmux_clear_interrupts(struct apple_gmux_data *gmux_data)
  
  	/* to clear interrupts write back current status */
  	status = gmux_interrupt_get_status(gmux_data);
 -	gmux_write8(gmux_data, GMUX_PORT_INTERRUPT_STATUS, status);
 +	if (status) {
 +		gmux_write8(gmux_data, GMUX_PORT_INTERRUPT_STATUS, status);
-+		gmux_call_acpi_gmsp(gmux_data, 0);
++		if (gmux_data->config->use_acpi_gmsp)
++			gmux_call_acpi_gmsp(gmux_data, 0);
 +	}
  }
  

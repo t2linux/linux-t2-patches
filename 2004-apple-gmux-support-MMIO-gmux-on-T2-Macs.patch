@@ -1,7 +1,7 @@
-From 8b58eb184ceb6fb9199b778f2b8731cb9d9daa69 Mon Sep 17 00:00:00 2001
+From 63af9e6576aa0fea586f08d880d1ad73555f757e Mon Sep 17 00:00:00 2001
 From: Orlando Chamberlain <orlandoch.dev@gmail.com>
 Date: Wed, 25 Jan 2023 18:40:15 +1100
-Subject: [RFC PATCH 6/9] apple-gmux: support MMIO gmux on T2 Macs
+Subject: [PATCH 4/8] apple-gmux: support MMIO gmux on T2 Macs
 
 In some newer dual gpu MacBooks, gmux is controlled by the T2 security
 chip, and acessed with MMIO. Add support for these gmux controllers
@@ -18,28 +18,23 @@ Reading and writing from ports:
     read, where data_length is 1, 2 or 4. Once byte base+0xf is 0, the
     command is done.
 
-Interrupts:
-    Clearing interrupts on T2 macs seems different to older models,
-    0 has to be written for them to stop, but this isn't what macOS
-    does and further investigation may be needed.
-
 Issues:
     As with other retina models, we can't switch DDC lines so
     switching at runtime doesn't work if the inactive gpu driver
     already disabled eDP due to it not being connected when that
     driver loaded.
 
-    Additionally, turning on the dgpu back on T2 macs doesn't work,
-    and it fails in amdgpu's code for bringing the gpu back online.
+    Additionally, turning on the dgpu back on the MacBookPro16,1 does
+    not work.
 
 Signed-off-by: Orlando Chamberlain <orlandoch.dev@gmail.com>
 ---
- drivers/platform/x86/apple-gmux.c | 134 ++++++++++++++++++++++++++++--
- include/linux/apple-gmux.h        |  34 +++++---
- 2 files changed, 149 insertions(+), 19 deletions(-)
+ drivers/platform/x86/apple-gmux.c | 136 ++++++++++++++++++++++++++++--
+ include/linux/apple-gmux.h        |  40 ++++++---
+ 2 files changed, 154 insertions(+), 22 deletions(-)
 
 diff --git a/drivers/platform/x86/apple-gmux.c b/drivers/platform/x86/apple-gmux.c
-index c605f036ea0b..c38d6ef0c15a 100644
+index 12a93fc49c36..a0ccdf2aa9cf 100644
 --- a/drivers/platform/x86/apple-gmux.c
 +++ b/drivers/platform/x86/apple-gmux.c
 @@ -28,15 +28,17 @@
@@ -71,7 +66,7 @@ index c605f036ea0b..c38d6ef0c15a 100644
  	unsigned long iostart;
  	unsigned long iolen;
  	const struct apple_gmux_config *config;
-@@ -193,6 +196,79 @@ static void gmux_index_write32(struct apple_gmux_data *gmux_data, int port,
+@@ -209,6 +212,79 @@ static void gmux_index_write32(struct apple_gmux_data *gmux_data, int port,
  	mutex_unlock(&gmux_data->index_lock);
  }
  
@@ -151,7 +146,7 @@ index c605f036ea0b..c38d6ef0c15a 100644
  static u8 gmux_read8(struct apple_gmux_data *gmux_data, int port)
  {
  	return gmux_data->config->read8(gmux_data, port);
-@@ -486,6 +562,18 @@ static const struct apple_gmux_config apple_gmux_index = {
+@@ -506,6 +582,20 @@ static const struct apple_gmux_config apple_gmux_index = {
  	.name = "indexed"
  };
  
@@ -163,6 +158,8 @@ index c605f036ea0b..c38d6ef0c15a 100644
 +	.gmux_handler = &gmux_handler_no_ddc,
 +	.handler_flags = VGA_SWITCHEROO_NEEDS_EDP_CONFIG,
 +	.resource_type = IORESOURCE_MEM,
++	.read_version_as_u32 = true,
++	.use_acpi_gmsp = true,
 +	.name = "T2"
 +};
 +
@@ -170,7 +167,7 @@ index c605f036ea0b..c38d6ef0c15a 100644
  /**
   * DOC: Interrupt
   *
-@@ -538,7 +626,7 @@ static void gmux_clear_interrupts(struct apple_gmux_data *gmux_data)
+@@ -558,7 +648,7 @@ static void gmux_clear_interrupts(struct apple_gmux_data *gmux_data)
  {
  	u8 status;
  
@@ -179,7 +176,7 @@ index c605f036ea0b..c38d6ef0c15a 100644
  	status = gmux_interrupt_get_status(gmux_data);
  	if (status) {
  		gmux_write8(gmux_data, GMUX_PORT_INTERRUPT_STATUS, status);
-@@ -616,6 +704,25 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
+@@ -637,6 +727,25 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
  	pnp_set_drvdata(pnp, gmux_data);
  
  	switch (type) {
@@ -205,15 +202,15 @@ index c605f036ea0b..c38d6ef0c15a 100644
  	case APPLE_GMUX_TYPE_INDEXED:
  		gmux_data->config = &apple_gmux_index;
  		mutex_init(&gmux_data->index_lock);
-@@ -635,6 +742,7 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
+@@ -656,6 +765,7 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
  		goto err_free;
  	}
  
 +get_version:
- 	version = gmux_read32(gmux_data, GMUX_PORT_VERSION_MAJOR);
- 	ver_major = (version >> 24) & 0xff;
- 	ver_minor = (version >> 16) & 0xff;
-@@ -660,7 +768,7 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
+ 	if (gmux_data->config->read_version_as_u32) {
+ 		version = gmux_read32(gmux_data, GMUX_PORT_VERSION_MAJOR);
+ 		ver_major = (version >> 24) & 0xff;
+@@ -686,7 +796,7 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
  					 gmux_data, &gmux_bl_ops, &props);
  	if (IS_ERR(bdev)) {
  		ret = PTR_ERR(bdev);
@@ -222,7 +219,7 @@ index c605f036ea0b..c38d6ef0c15a 100644
  	}
  
  	gmux_data->bdev = bdev;
-@@ -727,7 +835,7 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
+@@ -753,7 +863,7 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
  	/*
  	 * Retina MacBook Pros cannot switch the panel's AUX separately
  	 * and need eDP pre-calibration. They are distinguishable from
@@ -231,7 +228,7 @@ index c605f036ea0b..c38d6ef0c15a 100644
  	 *
  	 * Pre-retina MacBook Pros can switch the panel's DDC separately.
  	 */
-@@ -752,8 +860,14 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
+@@ -778,8 +888,14 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
  					   &gmux_notify_handler);
  err_notify:
  	backlight_device_unregister(bdev);
@@ -247,7 +244,7 @@ index c605f036ea0b..c38d6ef0c15a 100644
  err_free:
  	kfree(gmux_data);
  	return ret;
-@@ -774,7 +888,11 @@ static void gmux_remove(struct pnp_dev *pnp)
+@@ -800,7 +916,11 @@ static void gmux_remove(struct pnp_dev *pnp)
  
  	backlight_device_unregister(gmux_data->bdev);
  
@@ -261,7 +258,7 @@ index c605f036ea0b..c38d6ef0c15a 100644
  	kfree(gmux_data);
  
 diff --git a/include/linux/apple-gmux.h b/include/linux/apple-gmux.h
-index 25c1de4a716e..55b18f0f320d 100644
+index 187e15196b24..647702c3a907 100644
 --- a/include/linux/apple-gmux.h
 +++ b/include/linux/apple-gmux.h
 @@ -34,11 +34,18 @@
@@ -284,7 +281,7 @@ index 25c1de4a716e..55b18f0f320d 100644
  };
  
  #if IS_ENABLED(CONFIG_APPLE_GMUX)
-@@ -92,16 +99,21 @@ static inline bool apple_gmux_detect(struct pnp_dev *pnp_dev, enum apple_gmux_ty
+@@ -93,19 +100,24 @@ static inline bool apple_gmux_detect(struct pnp_dev *pnp_dev, enum apple_gmux_ty
  	}
  
  	res = pnp_get_resource(pnp_dev, IORESOURCE_IO, 0);
@@ -295,17 +292,23 @@ index 25c1de4a716e..55b18f0f320d 100644
 -	 * Invalid version information may indicate either that the gmux
 -	 * device isn't present or that it's a new one that uses indexed io.
 -	 */
--	if (!(~inl(res->start + GMUX_PORT_VERSION_MAJOR))) {
+-	ver_major = inb(res->start + GMUX_PORT_VERSION_MAJOR);
+-	ver_minor = inb(res->start + GMUX_PORT_VERSION_MINOR);
+-	ver_release = inb(res->start + GMUX_PORT_VERSION_RELEASE);
+-	if (ver_major == 0xff && ver_minor == 0xff && ver_release == 0xff) {
 -		if (apple_gmux_is_indexed(res->start))
--			type = APPLE_GMUX_TYPE_INDEXED;
+-		    type = APPLE_GMUX_TYPE_INDEXED;
 +	if (res && resource_size(res) >= GMUX_MIN_IO_LEN) {
 +		/*
 +		 * Invalid version information may indicate either that the gmux
 +		 * device isn't present or that it's a new one that uses indexed io.
 +		 */
-+		if (!(~inl(res->start + GMUX_PORT_VERSION_MAJOR))) {
++		ver_major = inb(res->start + GMUX_PORT_VERSION_MAJOR);
++		ver_minor = inb(res->start + GMUX_PORT_VERSION_MINOR);
++		ver_release = inb(res->start + GMUX_PORT_VERSION_RELEASE);
++		if (ver_major == 0xff && ver_minor == 0xff && ver_release == 0xff) {
 +			if (apple_gmux_is_indexed(res->start))
-+				type = APPLE_GMUX_TYPE_INDEXED;
++			    type = APPLE_GMUX_TYPE_INDEXED;
 +			else
 +				goto out;
 +		}
