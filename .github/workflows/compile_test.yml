@@ -18,6 +18,11 @@ jobs:
         fi
         
         curl $KSRC_URL | tar -xJ
+    - name: Install Build Dependencies
+      run: |
+        apt-get install -y build-essential fakeroot libncurses-dev bison flex libssl-dev libelf-dev \
+            openssl dkms libudev-dev libpci-dev libiberty-dev autoconf wget xz-utils git \
+            libcap-dev bc rsync cpio dh-modaliases debhelper kernel-wedge curl gawk dwarves zstd
     - name: Checkpatch
       run: |
         KVER="6.1.12" #FIXME
@@ -35,7 +40,7 @@ jobs:
           echo "Applying patch $patch..."
           patch -Np1 < $patch
         done
-        
+
     - name: Setting Config
       run: |
         KVER="6.1.12" #FIXME
@@ -45,7 +50,7 @@ jobs:
         cat ../extra_config >> .config
         make olddefconfig
         
-    - name: Setting Config
+    - name: Building Kernel
       run: |
         KVER="6.1.12" #FIXME
         cd linux-$KVER
