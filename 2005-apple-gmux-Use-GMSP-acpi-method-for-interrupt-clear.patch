@@ -1,7 +1,7 @@
-From 864df26e00fa72903842db1f02a1960fd717d45f Mon Sep 17 00:00:00 2001
+From d956389467cff5a4c1ce90a8551f7de149dbd77f Mon Sep 17 00:00:00 2001
 From: Orlando Chamberlain <orlandoch.dev@gmail.com>
 Date: Mon, 30 Jan 2023 15:14:41 +1100
-Subject: [PATCH 3/8] apple-gmux: Use GMSP acpi method for interrupt clear
+Subject: [PATCH 5/9] apple-gmux: Use GMSP acpi method for interrupt clear
 
 This is needed for interrupts to be cleared correctly on MMIO based
 gmux's. It is untested if this helps/hinders other gmux types, so
@@ -12,12 +12,14 @@ with 1 as its argument, but the purposes of these aren't known and they
 don't seem to be needed.
 
 Signed-off-by: Orlando Chamberlain <orlandoch.dev@gmail.com>
+
+v2->v3: remove status != 0 check
 ---
- drivers/platform/x86/apple-gmux.c | 30 +++++++++++++++++++++++++++++-
- 1 file changed, 29 insertions(+), 1 deletion(-)
+ drivers/platform/x86/apple-gmux.c | 26 ++++++++++++++++++++++++++
+ 1 file changed, 26 insertions(+)
 
 diff --git a/drivers/platform/x86/apple-gmux.c b/drivers/platform/x86/apple-gmux.c
-index 36208e93d745..12a93fc49c36 100644
+index 36208e93d745..8dfa1c02be64 100644
 --- a/drivers/platform/x86/apple-gmux.c
 +++ b/drivers/platform/x86/apple-gmux.c
 @@ -76,6 +76,7 @@ struct apple_gmux_config {
@@ -74,16 +76,12 @@ index 36208e93d745..12a93fc49c36 100644
  static inline void gmux_disable_interrupts(struct apple_gmux_data *gmux_data)
  {
  	gmux_write8(gmux_data, GMUX_PORT_INTERRUPT_ENABLE,
-@@ -536,7 +560,11 @@ static void gmux_clear_interrupts(struct apple_gmux_data *gmux_data)
- 
+@@ -537,6 +561,8 @@ static void gmux_clear_interrupts(struct apple_gmux_data *gmux_data)
  	/* to clear interrupts write back current status */
  	status = gmux_interrupt_get_status(gmux_data);
--	gmux_write8(gmux_data, GMUX_PORT_INTERRUPT_STATUS, status);
-+	if (status) {
-+		gmux_write8(gmux_data, GMUX_PORT_INTERRUPT_STATUS, status);
-+		if (gmux_data->config->use_acpi_gmsp)
-+			gmux_call_acpi_gmsp(gmux_data, 0);
-+	}
+ 	gmux_write8(gmux_data, GMUX_PORT_INTERRUPT_STATUS, status);
++	if (gmux_data->config->use_acpi_gmsp)
++		gmux_call_acpi_gmsp(gmux_data, 0);
  }
  
  static void gmux_notify_handler(acpi_handle device, u32 value, void *context)
