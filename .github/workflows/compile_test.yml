@@ -1,0 +1,54 @@
+name: Compile Test
+on: [push, pull_request]
+jobs:
+  compiletest:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Repo
+      uses: actions/checkout@v2
+    - name: Download Kernel Source
+      run: |
+        KVER="6.1.12" #FIXME
+        _RC=$(echo $KVER | tr -d 1234567890.)
+        
+        if [ -n "$_RC" ]; then
+          KSRC_URL=https://git.kernel.org/torvalds/t/linux-${KVER}.tar.gz
+        else
+          KSRC_URL=https://cdn.kernel.org/pub/linux/kernel/v${KVER//.*}.x/linux-${KVER}.tar.xz
+        fi
+        
+        curl $KSRC_URL | tar -xJ
+    - name: Checkpatch
+      run: |
+        KVER="6.1.12" #FIXME
+        cd linux-$KVER
+        # Skip apple-bce because it needs a lot of formatting changes, and
+        # asahi because they are handling that.
+        scripts/checkpatch.pl --no-signoff --terse --no-summary \
+            $(echo ../*.patch | tr " " "\n" | grep -v -e "apple-bce" -e asahi)
+    - name: Apply Patches
+      run: |
+        KVER="6.1.12" #FIXME
+        cd linux-$KVER
+        
+        for patch in ../*.patch; do
+          echo "Applying patch $patch..."
+          patch -Np1 < $patch
+        done
+        
+    - name: Setting Config
+      run: |
+        KVER="6.1.12" #FIXME
+        cd linux-$KVER
+        
+        cp arch/x86/configs/x86_64_defconfig ./.config
+        cat ../extra_config >> .config
+        make olddefconfig
+        
+    - name: Setting Config
+      run: |
+        KVER="6.1.12" #FIXME
+        cd linux-$KVER
+        
+        make
+        
