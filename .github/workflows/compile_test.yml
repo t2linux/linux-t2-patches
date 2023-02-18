@@ -28,9 +28,9 @@ jobs:
         KVER=$(cat version)
         cd linux-$KVER
         # Skip apple-bce because it needs a lot of formatting changes, and
-        # asahi because they are handling that.
+        # modules that we won't be sending upstream.
         scripts/checkpatch.pl --no-signoff --terse --no-summary \
-            $(echo ../*.patch | tr " " "\n" | grep -v -e "apple-bce" -e asahi) || true
+            $(echo ../*.patch | tr " " "\n" | grep -v -e "apple-bce" -e asahi -e applesmc -e bcm5974 ) || true
     - name: Apply Patches
       run: |
         KVER=$(cat version)
