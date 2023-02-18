@@ -8,7 +8,7 @@ jobs:
       uses: actions/checkout@v2
     - name: Download Kernel Source
       run: |
-        KVER=$(cat version)
+        source ./version
         _RC=$(echo $KVER | tr -d 1234567890.)
         
         if [ -n "$_RC" ]; then
@@ -25,7 +25,7 @@ jobs:
             libcap-dev bc rsync cpio dh-modaliases debhelper kernel-wedge curl gawk dwarves zstd
     - name: Checkpatch
       run: |
-        KVER=$(cat version)
+        source ./version
         cd linux-$KVER
         # Skip apple-bce because it needs a lot of formatting changes, and
         # modules that we won't be sending upstream.
@@ -33,7 +33,7 @@ jobs:
             $(echo ../*.patch | tr " " "\n" | grep -v -e "apple-bce" -e asahi -e applesmc -e bcm5974 ) || true
     - name: Apply Patches
       run: |
-        KVER=$(cat version)
+        source ./version
         cd linux-$KVER
         
         for patch in ../*.patch; do
@@ -43,7 +43,7 @@ jobs:
 
     - name: Setting Config
       run: |
-        KVER=$(cat version)
+        source ./version
         cd linux-$KVER
         
         cp arch/x86/configs/x86_64_defconfig ./.config
@@ -52,7 +52,7 @@ jobs:
         
     - name: Building Kernel
       run: |
-        KVER=$(cat version)
+        source ./version
         cd linux-$KVER
         
         make
