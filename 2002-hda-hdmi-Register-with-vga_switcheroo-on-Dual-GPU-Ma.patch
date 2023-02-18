@@ -1,7 +1,7 @@
-From 034dec654fe123ce11092f8057cef2ed20ff1509 Mon Sep 17 00:00:00 2001
+From afb1b48bef34582e3162b57e46c4c8a24432c800 Mon Sep 17 00:00:00 2001
 From: Orlando Chamberlain <orlandoch.dev@gmail.com>
 Date: Thu, 16 Feb 2023 19:30:31 +1100
-Subject: [PATCH 8/8] hda/hdmi: Register with vga_switcheroo on Dual GPU
+Subject: [PATCH 2/9] hda/hdmi: Register with vga_switcheroo on Dual GPU
  Macbooks
 
 Commit 586bc4aab878 ("ALSA: hda/hdmi - fix vgaswitcheroo detection for
@@ -20,6 +20,7 @@ To resolve this, we use apple_gmux_detect() and register a
 vga_switcheroo audio client when apple-gmux is detected.
 
 Fixes: 586bc4aab878 ("ALSA: hda/hdmi - fix vgaswitcheroo detection for AMD")
+Link: https://lore.kernel.org/all/20230210044826.9834-9-orlandoch.dev@gmail.com/
 Signed-off-by: Orlando Chamberlain <orlandoch.dev@gmail.com>
 ---
  sound/pci/hda/hda_intel.c | 3 ++-

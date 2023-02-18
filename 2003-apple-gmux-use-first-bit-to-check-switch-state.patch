@@ -1,7 +1,7 @@
-From 7dd5ce6d1f42bc06500d7c8e697654059a7916e9 Mon Sep 17 00:00:00 2001
+From aca5f8b9f935191aa38d9f68ee18109a4bc8dd34 Mon Sep 17 00:00:00 2001
 From: Orlando Chamberlain <orlandoch.dev@gmail.com>
 Date: Wed, 25 Jan 2023 18:16:29 +1100
-Subject: [PATCH 1/8] apple-gmux: use first bit to check switch state
+Subject: [PATCH 3/9] apple-gmux: use first bit to check switch state
 
 On T2 Macs with MMIO gmux, when GMUX_PORT_SWITCH_DISPLAY is read, it can
 have values of 2, 3, 4, and 5. Odd values correspond to the discrete gpu,

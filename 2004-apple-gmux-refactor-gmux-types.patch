@@ -1,7 +1,7 @@
-From 6d62b85e0d3af9715933c708edb629da0b02c2ef Mon Sep 17 00:00:00 2001
+From a156d5b7aef4a1a49d9abb822780a02a596d83be Mon Sep 17 00:00:00 2001
 From: Orlando Chamberlain <orlandoch.dev@gmail.com>
 Date: Wed, 25 Jan 2023 18:07:41 +1100
-Subject: [PATCH 2/8] apple-gmux: refactor gmux types
+Subject: [PATCH 4/9] apple-gmux: refactor gmux types
 
 Add apple_gmux_config struct containing operations and data specific to
 each mux type.
@@ -214,7 +214,7 @@ index ec99e05e532c..36208e93d745 100644
  		pr_err("Failed to register vga_switcheroo handler\n");
  		goto err_register_handler;
 diff --git a/include/linux/apple-gmux.h b/include/linux/apple-gmux.h
-index 1f68b49bcd68..5f658439f7f8 100644
+index 1f68b49bcd68..147dc1c52e08 100644
 --- a/include/linux/apple-gmux.h
 +++ b/include/linux/apple-gmux.h
 @@ -36,6 +36,11 @@
@@ -223,7 +223,7 @@ index 1f68b49bcd68..5f658439f7f8 100644
  
 +enum apple_gmux_type {
 +	APPLE_GMUX_TYPE_PIO,
-+	APPLE_GMUX_TYPE_INDEXED
++	APPLE_GMUX_TYPE_INDEXED,
 +};
 +
  #if IS_ENABLED(CONFIG_APPLE_GMUX)
