@@ -1,7 +1,7 @@
-From 7bde56de7b4e61ea2cd1367e1bf6e6df3c50d9b1 Mon Sep 17 00:00:00 2001
+From 8885f1aca3a6d9d3404e3f6292f7b3760c8f7e80 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Ronald=20Tschal=C3=A4r?= <ronald@innovation.ch>
 Date: Sat, 27 Feb 2021 17:26:43 -0800
-Subject: [PATCH 2/3] HID: apple-touchbar: Add driver for the Touch Bar on
+Subject: [PATCH 8/8] HID: apple-touchbar: Add driver for the Touch Bar on
  MacBook Pro's.
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -17,7 +17,7 @@ Signed-off-by: Ronald Tschalär <ronald@innovation.ch>
 [Kerem Karabay: update Kconfig description]
 Signed-off-by: Kerem Karabay <kekrby@gmail.com>
 [Orlando Chamberlain: add usage check to not bind to keyboard backlight interface]
-Not-signed-off-yet-by: Orlando Chamberlain <orlandoch.dev@gmail.com>
+Signed-off-by: Orlando Chamberlain <orlandoch.dev@gmail.com>
 [Aditya Garg: check if apple-touchbar is enabled in the special driver list]
 [Aditya Garg: fix suspend on T2 Macs]
 Signed-off-by: Aditya Garg <gargaditya08@live.com>
@@ -30,7 +30,7 @@ Signed-off-by: Aditya Garg <gargaditya08@live.com>
  create mode 100644 drivers/hid/apple-touchbar.c
 
 diff --git a/drivers/hid/Kconfig b/drivers/hid/Kconfig
-index 460c9b160cb9..5bcdda7ea809 100644
+index 072d71a5d354..c13486d62f7c 100644
 --- a/drivers/hid/Kconfig
 +++ b/drivers/hid/Kconfig
 @@ -134,6 +134,7 @@ config HID_APPLE_IBRIDGE
@@ -55,11 +55,11 @@ index 460c9b160cb9..5bcdda7ea809 100644
 +	To compile this driver as a module, choose M here: the
 +	module will be called apple-touchbar.
 +
- config HID_APPLEIR
- 	tristate "Apple infrared receiver"
- 	depends on (USB_HID)
+ config HID_APPLE_MAGIC_BACKLIGHT
+ 	tristate "Apple Magic Keyboard Backlight"
+ 	depends on USB_HID
 diff --git a/drivers/hid/Makefile b/drivers/hid/Makefile
-index b61373cd82e8..c792e42fe43f 100644
+index cc2a4f4b17ae..058b70e588d0 100644
 --- a/drivers/hid/Makefile
 +++ b/drivers/hid/Makefile
 @@ -27,6 +27,7 @@ obj-$(CONFIG_HID_ALPS)		+= hid-alps.o
@@ -67,9 +67,9 @@ index b61373cd82e8..c792e42fe43f 100644
  obj-$(CONFIG_HID_APPLE)		+= hid-apple.o
  obj-$(CONFIG_HID_APPLE_IBRIDGE)	+= apple-ibridge.o
 +obj-$(CONFIG_HID_APPLE_TOUCHBAR)	+= apple-touchbar.o
+ obj-$(CONFIG_HID_APPLE_MAGIC_BACKLIGHT)	+= hid-apple-magic-backlight.o
  obj-$(CONFIG_HID_APPLEIR)	+= hid-appleir.o
  obj-$(CONFIG_HID_CREATIVE_SB0540)	+= hid-creative-sb0540.o
- obj-$(CONFIG_HID_ASUS)		+= hid-asus.o
 diff --git a/drivers/hid/apple-touchbar.c b/drivers/hid/apple-touchbar.c
 new file mode 100644
 index 000000000000..ff6a8493b7c9
@@ -1577,10 +1577,10 @@ index 000000000000..ff6a8493b7c9
 +MODULE_DESCRIPTION("MacBookPro Touch Bar driver");
 +MODULE_LICENSE("GPL");
 diff --git a/drivers/hid/hid-quirks.c b/drivers/hid/hid-quirks.c
-index 695d4a0e964b..530c9ee6c304 100644
+index e9b591fdacdc..b26aadfe5f26 100644
 --- a/drivers/hid/hid-quirks.c
 +++ b/drivers/hid/hid-quirks.c
-@@ -317,12 +317,14 @@ static const struct hid_device_id hid_have_special_driver[] = {
+@@ -316,12 +316,14 @@ static const struct hid_device_id hid_have_special_driver[] = {
  	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_GEYSER1_TP_ONLY) },
  	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_2021) },
  	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_FINGERPRINT_2021) },
@@ -1598,5 +1598,5 @@ index 695d4a0e964b..530c9ee6c304 100644
  	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_IRCONTROL) },
  	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_IRCONTROL2) },
 -- 
-2.38.1
+2.39.1
 

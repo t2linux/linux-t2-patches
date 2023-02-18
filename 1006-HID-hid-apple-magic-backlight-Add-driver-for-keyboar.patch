@@ -1,28 +1,33 @@
-From 8602df7360b91ab1505e23f82ba50709e4908ef2 Mon Sep 17 00:00:00 2001
+From c124f5401040d02abd6d349979be29acd1e88545 Mon Sep 17 00:00:00 2001
 From: Orlando Chamberlain <orlandoch.dev@gmail.com>
-Date: Mon, 14 Nov 2022 17:29:52 +0300
-Subject: [PATCH 3/3] HID: apple-magic-backlight: Add driver for keyboard
+Date: Fri, 10 Feb 2023 23:14:31 +1100
+Subject: [PATCH 6/8] HID: hid-apple-magic-backlight: Add driver for keyboard
  backlight on internal Magic Keyboards
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
 
 This driver adds support for the keyboard backlight on Intel T2 Macs
 with internal Magic Keyboards (MacBookPro16,x and MacBookAir9,1)
 
-Signed-off-by: Orlando Chamberlain <orlandoch.dev@gmail.com>
 Co-developed-by: Kerem Karabay <kekrby@gmail.com>
 Signed-off-by: Kerem Karabay <kekrby@gmail.com>
+Signed-off-by: Orlando Chamberlain <orlandoch.dev@gmail.com>
+Reviewed-by: Andy Shevchenko <andy.shevchenko@gmail.com>
+Reviewed-by: Thomas Weißschuh <linux@weissschuh.net>
 ---
- MAINTAINERS                         |   6 ++
- drivers/hid/Kconfig                 |  13 +++
- drivers/hid/Makefile                |   1 +
- drivers/hid/apple-magic-backlight.c | 143 ++++++++++++++++++++++++++++
- 4 files changed, 163 insertions(+)
- create mode 100644 drivers/hid/apple-magic-backlight.c
+ MAINTAINERS                             |   6 ++
+ drivers/hid/Kconfig                     |  13 +++
+ drivers/hid/Makefile                    |   1 +
+ drivers/hid/hid-apple-magic-backlight.c | 120 ++++++++++++++++++++++++
+ 4 files changed, 140 insertions(+)
+ create mode 100644 drivers/hid/hid-apple-magic-backlight.c
 
 diff --git a/MAINTAINERS b/MAINTAINERS
-index 886d3f69ee64..3d6496c81d92 100644
+index 6a47510d1592..b93c68158be3 100644
 --- a/MAINTAINERS
 +++ b/MAINTAINERS
-@@ -9087,6 +9087,12 @@ F:	include/linux/pm.h
+@@ -9201,6 +9201,12 @@ F:	include/linux/pm.h
  F:	include/linux/suspend.h
  F:	kernel/power/
  
@@ -36,12 +41,12 @@ index 886d3f69ee64..3d6496c81d92 100644
  M:	Jiri Kosina <jikos@kernel.org>
  M:	Benjamin Tissoires <benjamin.tissoires@redhat.com>
 diff --git a/drivers/hid/Kconfig b/drivers/hid/Kconfig
-index 5bcdda7ea809..fb055800ab95 100644
+index e2a5d30c8895..fe489632bfd9 100644
 --- a/drivers/hid/Kconfig
 +++ b/drivers/hid/Kconfig
-@@ -156,6 +156,19 @@ config HID_APPLE_TOUCHBAR
- 	To compile this driver as a module, choose M here: the
- 	module will be called apple-touchbar.
+@@ -130,6 +130,19 @@ config HID_APPLE
+ 	Say Y here if you want support for keyboards of	Apple iBooks, PowerBooks,
+ 	MacBooks, MacBook Pros and Apple Aluminum.
  
 +config HID_APPLE_MAGIC_BACKLIGHT
 +	tristate "Apple Magic Keyboard Backlight"
@@ -54,29 +59,29 @@ index 5bcdda7ea809..fb055800ab95 100644
 +	driver is not for external magic keyboards.
 +
 +	To compile this driver as a module, choose M here: the
-+	module will be called apple-magic-backlight.
++	module will be called hid-apple-magic-backlight.
 +
  config HID_APPLEIR
  	tristate "Apple infrared receiver"
  	depends on (USB_HID)
 diff --git a/drivers/hid/Makefile b/drivers/hid/Makefile
-index c792e42fe43f..a961914ec399 100644
+index e8014c1a2f8b..dc8df002bc86 100644
 --- a/drivers/hid/Makefile
 +++ b/drivers/hid/Makefile
-@@ -28,6 +28,7 @@ obj-$(CONFIG_HID_ACRUX)		+= hid-axff.o
+@@ -26,6 +26,7 @@ obj-$(CONFIG_HID_ACCUTOUCH)	+= hid-accutouch.o
+ obj-$(CONFIG_HID_ALPS)		+= hid-alps.o
+ obj-$(CONFIG_HID_ACRUX)		+= hid-axff.o
  obj-$(CONFIG_HID_APPLE)		+= hid-apple.o
- obj-$(CONFIG_HID_APPLE_IBRIDGE)	+= apple-ibridge.o
- obj-$(CONFIG_HID_APPLE_TOUCHBAR)	+= apple-touchbar.o
-+obj-$(CONFIG_HID_APPLE_MAGIC_BACKLIGHT)	+= apple-magic-backlight.o
++obj-$(CONFIG_HID_APPLE_MAGIC_BACKLIGHT)	+= hid-apple-magic-backlight.o
  obj-$(CONFIG_HID_APPLEIR)	+= hid-appleir.o
  obj-$(CONFIG_HID_CREATIVE_SB0540)	+= hid-creative-sb0540.o
  obj-$(CONFIG_HID_ASUS)		+= hid-asus.o
-diff --git a/drivers/hid/apple-magic-backlight.c b/drivers/hid/apple-magic-backlight.c
+diff --git a/drivers/hid/hid-apple-magic-backlight.c b/drivers/hid/hid-apple-magic-backlight.c
 new file mode 100644
-index 000000000000..9b128f6df18e
+index 000000000000..f0fc02ff3b2d
 --- /dev/null
-+++ b/drivers/hid/apple-magic-backlight.c
-@@ -0,0 +1,143 @@
++++ b/drivers/hid/hid-apple-magic-backlight.c
+@@ -0,0 +1,120 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Apple Magic Keyboard Backlight Driver
@@ -88,52 +93,39 @@ index 000000000000..9b128f6df18e
 + */
 +
 +#include <linux/hid.h>
-+#include <linux/usb.h>
++#include <linux/leds.h>
++#include <linux/device.h>
++#include <linux/errno.h>
++#include <dt-bindings/leds/common.h>
 +
 +#include "hid-ids.h"
 +
-+#define USAGE_MAGIC_BL	0xff00000f
++#define HID_USAGE_MAGIC_BL	0xff00000f
 +
 +#define APPLE_MAGIC_REPORT_ID_POWER 3
 +#define APPLE_MAGIC_REPORT_ID_BRIGHTNESS 1
 +
 +struct apple_magic_backlight {
 +	struct led_classdev cdev;
-+	struct hid_device *hdev;
 +	struct hid_report *brightness;
 +	struct hid_report *power;
 +};
 +
-+static void apple_magic_backlight_power_set(struct apple_magic_backlight *backlight,
-+					   char power, char rate)
++static void apple_magic_backlight_report_set(struct hid_report *rep, s32 value, u8 rate)
 +{
-+	struct hid_report *rep = backlight->power;
-+
-+	rep->field[0]->value[0] = power ? 1 : 0;
++	rep->field[0]->value[0] = value;
 +	rep->field[1]->value[0] = 0x5e; /* Mimic Windows */
 +	rep->field[1]->value[0] |= rate << 8;
 +
-+	hid_hw_request(backlight->hdev, backlight->power, HID_REQ_SET_REPORT);
-+}
-+
-+static void apple_magic_backlight_brightness_set(struct apple_magic_backlight *backlight,
-+						int brightness, char rate)
-+{
-+	struct hid_report *rep = backlight->brightness;
-+
-+	rep->field[0]->value[0] = brightness;
-+	rep->field[1]->value[0] = 0x5e; /* Mimic Windows */
-+	rep->field[1]->value[0] |= rate << 8;
-+
-+	hid_hw_request(backlight->hdev, backlight->brightness, HID_REQ_SET_REPORT);
++	hid_hw_request(rep->device, rep, HID_REQ_SET_REPORT);
 +}
 +
 +static void apple_magic_backlight_set(struct apple_magic_backlight *backlight,
 +				     int brightness, char rate)
 +{
-+	apple_magic_backlight_power_set(backlight, brightness, rate);
++	apple_magic_backlight_report_set(backlight->power, brightness ? 1 : 0, rate);
 +	if (brightness)
-+		apple_magic_backlight_brightness_set(backlight, brightness, rate);
++		apple_magic_backlight_report_set(backlight->brightness, brightness, rate);
 +}
 +
 +static int apple_magic_backlight_led_set(struct led_classdev *led_cdev,
@@ -156,18 +148,16 @@ index 000000000000..9b128f6df18e
 +	if (rc)
 +		return rc;
 +
-+	/* Ensure this usb endpoint is for the keyboard backlight, not touchbar
++	/*
++	 * Ensure this usb endpoint is for the keyboard backlight, not touchbar
 +	 * backlight.
 +	 */
-+	if (!(hdev->collection && hdev->collection[0].usage == USAGE_MAGIC_BL))
++	if (hdev->collection[0].usage != HID_USAGE_MAGIC_BL)
 +		return -ENODEV;
 +
 +	backlight = devm_kzalloc(&hdev->dev, sizeof(*backlight), GFP_KERNEL);
-+
 +	if (!backlight)
 +		return -ENOMEM;
-+
-+	hid_set_drvdata(hdev, backlight);
 +
 +	rc = hid_hw_start(hdev, HID_CONNECT_DEFAULT);
 +	if (rc)
@@ -183,8 +173,7 @@ index 000000000000..9b128f6df18e
 +		goto hw_stop;
 +	}
 +
-+	backlight->hdev = hdev;
-+	backlight->cdev.name = "apple::kbd_backlight";
++	backlight->cdev.name = ":white:" LED_FUNCTION_KBD_BACKLIGHT;
 +	backlight->cdev.max_brightness = backlight->brightness->field[0]->logical_maximum;
 +	backlight->cdev.brightness_set_blocking = apple_magic_backlight_led_set;
 +
@@ -197,11 +186,6 @@ index 000000000000..9b128f6df18e
 +	return rc;
 +}
 +
-+static void apple_magic_backlight_remove(struct hid_device *hdev)
-+{
-+	hid_hw_stop(hdev);
-+}
-+
 +static const struct hid_device_id apple_magic_backlight_hid_ids[] = {
 +	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_TOUCHBAR_BACKLIGHT) },
 +	{ }
@@ -209,17 +193,15 @@ index 000000000000..9b128f6df18e
 +MODULE_DEVICE_TABLE(hid, apple_magic_backlight_hid_ids);
 +
 +static struct hid_driver apple_magic_backlight_hid_driver = {
-+	.name = "apple-magic-backlight",
++	.name = "hid-apple-magic-backlight",
 +	.id_table = apple_magic_backlight_hid_ids,
 +	.probe = apple_magic_backlight_probe,
-+	.remove = apple_magic_backlight_remove,
 +};
-+
 +module_hid_driver(apple_magic_backlight_hid_driver);
 +
 +MODULE_DESCRIPTION("MacBook Magic Keyboard Backlight");
 +MODULE_AUTHOR("Orlando Chamberlain <orlandoch.dev@gmail.com>");
 +MODULE_LICENSE("GPL");
 -- 
-2.38.1
+2.39.1
 
