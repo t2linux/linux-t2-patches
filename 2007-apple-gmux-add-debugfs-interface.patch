@@ -1,7 +1,7 @@
-From 2755390cc676c899b4df21b929fa33e6804dd665 Mon Sep 17 00:00:00 2001
+From 6690f0abebaf185fb5434bd2e6bd98a3ec7d0dec Mon Sep 17 00:00:00 2001
 From: Orlando Chamberlain <orlandoch.dev@gmail.com>
 Date: Fri, 27 Jan 2023 17:23:55 +1100
-Subject: [PATCH 5/8] apple-gmux: add debugfs interface
+Subject: [PATCH 7/9] apple-gmux: add debugfs interface
 
 Allow reading and writing gmux ports from userspace.
 
@@ -14,11 +14,11 @@ Will show the gmux version information (00000005 in this case)
 
 Signed-off-by: Orlando Chamberlain <orlandoch.dev@gmail.com>
 ---
- drivers/platform/x86/apple-gmux.c | 88 +++++++++++++++++++++++++++++++
- 1 file changed, 88 insertions(+)
+ drivers/platform/x86/apple-gmux.c | 82 +++++++++++++++++++++++++++++++
+ 1 file changed, 82 insertions(+)
 
 diff --git a/drivers/platform/x86/apple-gmux.c b/drivers/platform/x86/apple-gmux.c
-index a0ccdf2aa9cf..e2a6ada34078 100644
+index 01e7b1939916..4cbdc9f9bd10 100644
 --- a/drivers/platform/x86/apple-gmux.c
 +++ b/drivers/platform/x86/apple-gmux.c
 @@ -22,6 +22,7 @@
@@ -40,7 +40,7 @@ index a0ccdf2aa9cf..e2a6ada34078 100644
  };
  
  static struct apple_gmux_data *apple_gmux_data;
-@@ -674,6 +679,87 @@ static void gmux_notify_handler(acpi_handle device, u32 value, void *context)
+@@ -672,6 +677,81 @@ static void gmux_notify_handler(acpi_handle device, u32 value, void *context)
  		complete(&gmux_data->powerchange_done);
  }
  
@@ -106,17 +106,11 @@ index a0ccdf2aa9cf..e2a6ada34078 100644
 +
 +static void gmux_init_debugfs(struct apple_gmux_data *gmux_data)
 +{
-+	struct dentry *debug_dentry;
++	gmux_data->debug_dentry = debugfs_create_dir(KBUILD_MODNAME, NULL);
 +
-+	debug_dentry = debugfs_create_dir(KBUILD_MODNAME, NULL);
-+
-+	if (IS_ERR(debug_dentry))
-+		return;
-+
-+	gmux_data->debug_dentry = debug_dentry;
-+
-+	debugfs_create_u8("selected_port", 0644, debug_dentry, &gmux_data->selected_port);
-+	debugfs_create_file("selected_port_data", 0644, debug_dentry,
++	debugfs_create_u8("selected_port", 0644, gmux_data->debug_dentry,
++			&gmux_data->selected_port);
++	debugfs_create_file("selected_port_data", 0644, gmux_data->debug_dentry,
 +			gmux_data, &gmux_port_data_ops);
 +}
 +
@@ -128,7 +122,7 @@ index a0ccdf2aa9cf..e2a6ada34078 100644
  static int gmux_suspend(struct device *dev)
  {
  	struct pnp_dev *pnp = to_pnp_dev(dev);
-@@ -874,6 +960,7 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
+@@ -872,6 +952,7 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
  		goto err_register_handler;
  	}
  
@@ -136,7 +130,7 @@ index a0ccdf2aa9cf..e2a6ada34078 100644
  	return 0;
  
  err_register_handler:
-@@ -905,6 +992,7 @@ static void gmux_remove(struct pnp_dev *pnp)
+@@ -903,6 +984,7 @@ static void gmux_remove(struct pnp_dev *pnp)
  {
  	struct apple_gmux_data *gmux_data = pnp_get_drvdata(pnp);
  
