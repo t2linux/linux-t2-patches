@@ -12,7 +12,7 @@ jobs:
         _RC=$(echo $KVER | tr -d 1234567890.)
         
         if [ -n "$_RC" ]; then
-          KSRC_URL=https://git.kernel.org/torvalds/t/linux-${KVER}.tar.gz
+          KSRC_URL=https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/snapshot/linux-${KVER}.tar.gz
           curl $KSRC_URL | tar -xz
         else
           KSRC_URL=https://cdn.kernel.org/pub/linux/kernel/v${KVER//.*}.x/linux-${KVER}.tar.xz
