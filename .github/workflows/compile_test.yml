@@ -1,5 +1,5 @@
 name: Compile Test
-on: [push, pull_request]
+on: [push]
 jobs:
   compiletest:
     runs-on: ubuntu-latest
