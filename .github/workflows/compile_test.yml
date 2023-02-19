@@ -13,11 +13,13 @@ jobs:
         
         if [ -n "$_RC" ]; then
           KSRC_URL=https://git.kernel.org/torvalds/t/linux-${KVER}.tar.gz
+          curl $KSRC_URL | tar -xz
         else
           KSRC_URL=https://cdn.kernel.org/pub/linux/kernel/v${KVER//.*}.x/linux-${KVER}.tar.xz
+          curl $KSRC_URL | tar -xJ
         fi
         
-        curl $KSRC_URL | tar -xJ
+
     - name: Install Build Dependencies
       run: |
         sudo apt-get install -y build-essential fakeroot libncurses-dev bison flex libssl-dev libelf-dev \
