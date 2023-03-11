@@ -50,9 +50,9 @@ index 6e48d3bcdfec..a8c55e165b46 100644
  {
  	intel_set_quirk(i915, QUIRK_NO_PPS_BACKLIGHT_POWER_HOOK);
 @@ -199,6 +211,9 @@ static struct intel_quirk intel_quirks[] = {
- 	/* ECS Liva Q2 */
- 	{ 0x3185, 0x1019, 0xa94d, quirk_increase_ddi_disabled_time },
  	{ 0x3184, 0x1019, 0xa94d, quirk_increase_ddi_disabled_time },
+ 	/* HP Notebook - 14-r206nv */
+ 	{ 0x0f31, 0x103c, 0x220f, quirk_invert_brightness },
 +
 +	/* Apple MacBookPro15,1 */
 +	{ 0x3e9b, 0x106b, 0x0176, quirk_ddi_a_force_4_lanes },
