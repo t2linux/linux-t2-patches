@@ -1,0 +1,13 @@
+diff --git a/net/wireless/sme.c b/net/wireless/sme.c
+index 28ce13840a88..7bdeb8eea92d 100644
+--- a/net/wireless/sme.c
++++ b/net/wireless/sme.c
+@@ -1500,8 +1500,6 @@ int cfg80211_connect(struct cfg80211_registered_device *rdev,
+ 		connect->key = NULL;
+ 		connect->key_len = 0;
+ 		connect->key_idx = 0;
+-		connect->crypto.cipher_group = 0;
+-		connect->crypto.n_ciphers_pairwise = 0;
+ 	}
+
+ 	wdev->connect_keys = connkeys;
