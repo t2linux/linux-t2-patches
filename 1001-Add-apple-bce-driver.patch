@@ -490,7 +490,7 @@ index 000000000..4f733a0fa
 +    int result;
 +    if ((result = alloc_chrdev_region(&bce_chrdev, 0, 1, "apple-bce")))
 +        goto fail_chrdev;
-+    bce_class = class_create(THIS_MODULE, "apple-bce");
++    bce_class = class_create("apple-bce");
 +    if (IS_ERR(bce_class)) {
 +        result = PTR_ERR(bce_class);
 +        goto fail_class;
@@ -1250,7 +1250,7 @@ index 000000000..2e0f75f2d
 +    int result;
 +    if ((result = alloc_chrdev_region(&aaudio_chrdev, 0, 1, "aaudio")))
 +        goto fail_chrdev;
-+    aaudio_class = class_create(THIS_MODULE, "aaudio");
++    aaudio_class = class_create("aaudio");
 +    if (IS_ERR(aaudio_class)) {
 +        result = PTR_ERR(aaudio_class);
 +        goto fail_class;
@@ -5795,7 +5795,7 @@ index 000000000..ae6abcf76
 +    int result;
 +    if ((result = alloc_chrdev_region(&bce_vhci_chrdev, 0, 1, "bce-vhci")))
 +        goto fail_chrdev;
-+    bce_vhci_class = class_create(THIS_MODULE, "bce-vhci");
++    bce_vhci_class = class_create("bce-vhci");
 +    if (IS_ERR(bce_vhci_class)) {
 +        result = PTR_ERR(bce_vhci_class);
 +        goto fail_class;
