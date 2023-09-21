@@ -24,12 +24,12 @@ Reviewed-by: Thomas Weißschuh <linux@weissschuh.net>
  create mode 100644 drivers/hid/hid-apple-magic-backlight.c
 
 diff --git a/MAINTAINERS b/MAINTAINERS
-index 6a47510d1592..b93c68158be3 100644
+index dfc63d257..9148bda0a 100644
 --- a/MAINTAINERS
 +++ b/MAINTAINERS
-@@ -9201,6 +9201,12 @@ F:	include/linux/pm.h
- F:	include/linux/suspend.h
- F:	kernel/power/
+@@ -9169,6 +9169,12 @@ L:	linux-input@vger.kernel.org
+ S:	Maintained
+ F:	drivers/hid/hid-appletb-*
  
 +HID APPLE MAGIC BACKLIGHT DRIVER
 +M:	Orlando Chamberlain <orlandoch.dev@gmail.com>
@@ -41,12 +41,12 @@ index 6a47510d1592..b93c68158be3 100644
  M:	Jiri Kosina <jikos@kernel.org>
  M:	Benjamin Tissoires <benjamin.tissoires@redhat.com>
 diff --git a/drivers/hid/Kconfig b/drivers/hid/Kconfig
-index e2a5d30c8895..fe489632bfd9 100644
+index 4e238df87..83fbab6d4 100644
 --- a/drivers/hid/Kconfig
 +++ b/drivers/hid/Kconfig
-@@ -130,6 +130,19 @@ config HID_APPLE
- 	Say Y here if you want support for keyboards of	Apple iBooks, PowerBooks,
- 	MacBooks, MacBook Pros and Apple Aluminum.
+@@ -169,6 +169,19 @@ config HID_APPLETB_KBD
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called hid-appletb-kbd.
  
 +config HID_APPLE_MAGIC_BACKLIGHT
 +	tristate "Apple Magic Keyboard Backlight"
@@ -61,24 +61,24 @@ index e2a5d30c8895..fe489632bfd9 100644
 +	To compile this driver as a module, choose M here: the
 +	module will be called hid-apple-magic-backlight.
 +
- config HID_APPLEIR
- 	tristate "Apple infrared receiver"
- 	depends on (USB_HID)
+ config HID_ASUS
+ 	tristate "Asus"
+ 	depends on USB_HID
 diff --git a/drivers/hid/Makefile b/drivers/hid/Makefile
-index e8014c1a2f8b..dc8df002bc86 100644
+index 5b60015fd..581f5e720 100644
 --- a/drivers/hid/Makefile
 +++ b/drivers/hid/Makefile
-@@ -26,6 +26,7 @@ obj-$(CONFIG_HID_ACCUTOUCH)	+= hid-accutouch.o
- obj-$(CONFIG_HID_ALPS)		+= hid-alps.o
- obj-$(CONFIG_HID_ACRUX)		+= hid-axff.o
- obj-$(CONFIG_HID_APPLE)		+= hid-apple.o
-+obj-$(CONFIG_HID_APPLE_MAGIC_BACKLIGHT)	+= hid-apple-magic-backlight.o
+@@ -31,6 +31,7 @@ obj-$(CONFIG_HID_APPLE)		+= hid-apple.o
  obj-$(CONFIG_HID_APPLEIR)	+= hid-appleir.o
+ obj-$(CONFIG_HID_APPLETB_BL)	+= hid-appletb-bl.o
+ obj-$(CONFIG_HID_APPLETB_KBD)	+= hid-appletb-kbd.o
++obj-$(CONFIG_HID_APPLE_MAGIC_BACKLIGHT)	+= hid-apple-magic-backlight.o
  obj-$(CONFIG_HID_CREATIVE_SB0540)	+= hid-creative-sb0540.o
  obj-$(CONFIG_HID_ASUS)		+= hid-asus.o
+ obj-$(CONFIG_HID_AUREAL)	+= hid-aureal.o
 diff --git a/drivers/hid/hid-apple-magic-backlight.c b/drivers/hid/hid-apple-magic-backlight.c
 new file mode 100644
-index 000000000000..f0fc02ff3b2d
+index 000000000..f0fc02ff3
 --- /dev/null
 +++ b/drivers/hid/hid-apple-magic-backlight.c
 @@ -0,0 +1,120 @@
@@ -203,5 +203,5 @@ index 000000000000..f0fc02ff3b2d
 +MODULE_AUTHOR("Orlando Chamberlain <orlandoch.dev@gmail.com>");
 +MODULE_LICENSE("GPL");
 -- 
-2.39.1
+2.39.2
 
