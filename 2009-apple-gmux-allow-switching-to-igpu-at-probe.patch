@@ -74,8 +74,8 @@ index e02b4ae..71b5cb38 100644
  #include <acpi/video.h>
  #include <asm/io.h>
 @@ -105,6 +106,10 @@ struct apple_gmux_config {
- #define GMUX_BRIGHTNESS_MASK		0x00ffffff
- #define GMUX_MAX_BRIGHTNESS		GMUX_BRIGHTNESS_MASK
+ 
+ # define MMIO_GMUX_MAX_BRIGHTNESS	0xffff
  
 +static bool force_igd;
 +module_param(force_igd, bool, 0);
