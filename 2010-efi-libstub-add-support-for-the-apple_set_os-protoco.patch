@@ -72,8 +72,8 @@ index a0bfd31358ba..ec0100683d9f 100644
 +	}
 +}
 +
- static void
- adjust_memory_range_protection(unsigned long start, unsigned long size)
+ void efi_adjust_memory_range_protection(unsigned long start,
+ 					unsigned long size)
  {
 @@ -322,6 +346,8 @@ static void setup_quirks(struct boot_params *boot_params,
  	if (!memcmp(fw_vendor, apple, sizeof(apple))) {
