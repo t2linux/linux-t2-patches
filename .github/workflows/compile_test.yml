@@ -35,6 +35,7 @@ jobs:
         scripts/checkpatch.pl --no-signoff --terse --no-summary \
             $(echo ../*.patch | tr " " "\n" | grep -v -e "apple-bce" -e asahi -e applesmc -e bcm5974 ) || true
     - name: Apply Patches
+      id: apply-patches
       run: |
         source ./version
         cd linux-$KVER
@@ -43,6 +44,12 @@ jobs:
           echo "Applying patch $patch..."
           patch -Np1 < $patch
         done
+    - name: Print reject hunks
+      run: |
+            source ./version
+            cd linux-$KVER
+            cat $(find . -type f -name '*.rej') /dev/null
+      if: always() && (steps.apply-patches.outcome == 'failure')
 
     - name: Setting Config
       run: |
