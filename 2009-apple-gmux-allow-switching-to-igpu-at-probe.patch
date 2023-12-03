@@ -1,4 +1,4 @@
-From c91bbcc2aa30f0e41d758726e68107921dd68bed Mon Sep 17 00:00:00 2001
+From bd8e785c74e22978648ced004552eb9c137f1eb6 Mon Sep 17 00:00:00 2001
 From: Orlando Chamberlain <orlandoch.dev@gmail.com>
 Date: Fri, 10 Feb 2023 22:45:00 +1100
 Subject: [PATCH 9/9] apple-gmux: allow switching to igpu at probe
@@ -14,14 +14,14 @@ Based off of work by Kerem Karabay <kekrby@gmail.com>
  drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c |  3 +++
  drivers/gpu/vga/vga_switcheroo.c        |  7 +------
  drivers/pci/vgaarb.c                    |  1 +
- drivers/platform/x86/apple-gmux.c       | 19 +++++++++++++++++++
- 4 files changed, 24 insertions(+), 6 deletions(-)
+ drivers/platform/x86/apple-gmux.c       | 18 ++++++++++++++++++
+ 4 files changed, 23 insertions(+), 6 deletions(-)
 
 diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
-index 3fe277bc233f..ee7792a350e5 100644
+index 81edf66dbea8..8f3daf28665b 100644
 --- a/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
 +++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
-@@ -2058,6 +2058,9 @@ static int amdgpu_pci_probe(struct pci_dev *pdev,
+@@ -2051,6 +2051,9 @@ static int amdgpu_pci_probe(struct pci_dev *pdev,
  	int ret, retry = 0, i;
  	bool supports_atomic = false;
  
@@ -50,19 +50,19 @@ index 365e6ddbe90f..cf357cd3389d 100644
  	}
  
 diff --git a/drivers/pci/vgaarb.c b/drivers/pci/vgaarb.c
-index f80b6ec88dc3..952652944fbd 100644
+index 5e6b1eb54c64..1f11701d37d1 100644
 --- a/drivers/pci/vgaarb.c
 +++ b/drivers/pci/vgaarb.c
-@@ -145,6 +145,7 @@ void vga_set_default_device(struct pci_dev *pdev)
+@@ -143,6 +143,7 @@ void vga_set_default_device(struct pci_dev *pdev)
  	pci_dev_put(vga_default);
  	vga_default = pci_dev_get(pdev);
  }
 +EXPORT_SYMBOL_GPL(vga_set_default_device);
  
  /**
-  * vga_remove_vgacon - deactivete vga console
+  * vga_remove_vgacon - deactivate VGA console
 diff --git a/drivers/platform/x86/apple-gmux.c b/drivers/platform/x86/apple-gmux.c
-index e02b4ae..71b5cb38 100644
+index 1417e230edbd..e69785af8e1d 100644
 --- a/drivers/platform/x86/apple-gmux.c
 +++ b/drivers/platform/x86/apple-gmux.c
 @@ -21,6 +21,7 @@
@@ -73,7 +73,7 @@ index e02b4ae..71b5cb38 100644
  #include <linux/debugfs.h>
  #include <acpi/video.h>
  #include <asm/io.h>
-@@ -105,6 +106,10 @@ struct apple_gmux_config {
+@@ -107,6 +108,10 @@ struct apple_gmux_config {
  
  # define MMIO_GMUX_MAX_BRIGHTNESS	0xffff
  
@@ -84,7 +84,7 @@ index e02b4ae..71b5cb38 100644
  static u8 gmux_pio_read8(struct apple_gmux_data *gmux_data, int port)
  {
  	return inb(gmux_data->iostart + port);
-@@ -933,6 +938,19 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
+@@ -945,6 +950,19 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
  	gmux_enable_interrupts(gmux_data);
  	gmux_read_switch_state(gmux_data);
  
@@ -105,5 +105,5 @@ index e02b4ae..71b5cb38 100644
  	 * Retina MacBook Pros cannot switch the panel's AUX separately
  	 * and need eDP pre-calibration. They are distinguishable from
 -- 
-1.8.3.1
+2.43.0
 
