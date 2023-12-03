@@ -42,7 +42,7 @@ jobs:
         
         for patch in ../*.patch; do
           echo "Applying patch $patch..."
-          patch -Np1 < $patch
+          git apply $patch
         done
     - name: Print reject hunks
       run: |
