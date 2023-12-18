@@ -1,0 +1,31 @@
+commit a5de8fb8f493eab83fab7af6a4170833bd1cd239
+Author: Steven Kreitzer <skre@skre.me>
+Date:   Mon Dec 18 14:20:59 2023 -0600
+
+The NVMe disks in apple devices are quite slow when it comes to fsync and fdatasync.
+This allows us to disable the calls, which will help speed up many latency-sensative applications.
+This isn't safe unless you have some power-loss protection against your storage devices, so you must assume risk applying this patch.
+
+Signed-off-by: Steven Kreitzer <skre@skre.me>
+
+diff --git a/fs/sync.c b/fs/sync.c
+index dc725914e1ed..f78ad028ac87 100644
+--- a/fs/sync.c
++++ b/fs/sync.c
+@@ -217,11 +217,15 @@ static int do_fsync(unsigned int fd, int datasync)
+
+ SYSCALL_DEFINE1(fsync, unsigned int, fd)
+ {
++	if (unlikely(laptop_mode))
++		return 0;
+ 	return do_fsync(fd, 0);
+ }
+
+ SYSCALL_DEFINE1(fdatasync, unsigned int, fd)
+ {
++	if (unlikely(laptop_mode))
++		return 0;
+ 	return do_fsync(fd, 1);
+ }
+
+
