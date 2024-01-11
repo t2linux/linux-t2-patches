@@ -109,33 +109,33 @@ index 474bb7a1c..dff7fabd9 100644
  	struct convert_to_xrgb2101010_result xrgb2101010_result;
  	struct convert_to_argb2101010_result argb2101010_result;
 @@ -125,6 +131,10 @@ static struct convert_xrgb8888_case convert_xrgb8888_cases[] = {
- 			.dst_pitch = 0,
+ 			.dst_pitch = TEST_USE_DEFAULT_PITCH,
  			.expected = { 0x00, 0x00, 0xFF },
  		},
 +		.bgr888_result = {
-+			.dst_pitch = 0,
++			.dst_pitch = TEST_USE_DEFAULT_PITCH,
 +			.expected = { 0xFF, 0x00, 0x00 },
 +		},
  		.argb8888_result = {
- 			.dst_pitch = 0,
+ 			.dst_pitch = TEST_USE_DEFAULT_PITCH,
  			.expected = { 0xFFFF0000 },
 @@ -179,6 +189,10 @@ static struct convert_xrgb8888_case convert_xrgb8888_cases[] = {
- 			.dst_pitch = 0,
+ 			.dst_pitch = TEST_USE_DEFAULT_PITCH,
  			.expected = { 0x00, 0x00, 0xFF },
  		},
 +		.bgr888_result = {
-+			.dst_pitch = 0,
++			.dst_pitch = TEST_USE_DEFAULT_PITCH,
 +			.expected = { 0xFF, 0x00, 0x00 },
 +		},
  		.argb8888_result = {
- 			.dst_pitch = 0,
+ 			.dst_pitch = TEST_USE_DEFAULT_PITCH,
  			.expected = { 0xFFFF0000 },
 @@ -280,6 +294,15 @@ static struct convert_xrgb8888_case convert_xrgb8888_cases[] = {
  				0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0x00,
  			},
  		},
 +		.bgr888_result = {
-+			.dst_pitch = 0,
++			.dst_pitch = TEST_USE_DEFAULT_PITCH,
 +			.expected = {
 +				0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00,
 +				0xFF, 0x00, 0x00, 0x00, 0xFF, 0x00,
@@ -144,7 +144,7 @@ index 474bb7a1c..dff7fabd9 100644
 +			},
 +		},
  		.argb8888_result = {
- 			.dst_pitch = 0,
+ 			.dst_pitch = TEST_USE_DEFAULT_PITCH,
  			.expected = {
 @@ -391,6 +414,17 @@ static struct convert_xrgb8888_case convert_xrgb8888_cases[] = {
  				0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
