@@ -183,7 +183,7 @@ index 474bb7a1c..dff7fabd9 100644
 +	};
 +
 +	dst_size = conversion_buf_size(DRM_FORMAT_BGR888, result->dst_pitch,
-+				       &params->clip);
++				       &params->clip, 0);
 +	KUNIT_ASSERT_GT(test, dst_size, 0);
 +
 +	buf = kunit_kzalloc(test, dst_size, GFP_KERNEL);
