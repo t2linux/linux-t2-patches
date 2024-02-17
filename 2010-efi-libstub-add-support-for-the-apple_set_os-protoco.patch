@@ -114,8 +114,8 @@ index 70b325a2f..2131f8543 100644
 +	}
 +}
 +
- void efi_adjust_memory_range_protection(unsigned long start,
- 					unsigned long size)
+ efi_status_t efi_adjust_memory_range_protection(unsigned long start,
+ 						unsigned long size)
  {
 @@ -321,6 +345,9 @@ static void setup_quirks(struct boot_params *boot_params)
  	if (IS_ENABLED(CONFIG_APPLE_PROPERTIES) &&
