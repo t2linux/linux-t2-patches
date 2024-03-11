@@ -69,7 +69,7 @@ index b1be458ed4dda5..24836384554a47 100644
 +	};
 +
 +	drm_fb_xfrm(dst, dst_pitch, dst_pixsize, src, fb, clip, false,
-+		    drm_fb_xrgb8888_to_bgr888_line);
++		    state, drm_fb_xrgb8888_to_bgr888_line);
 +}
 +EXPORT_SYMBOL(drm_fb_xrgb8888_to_bgr888);
 +
