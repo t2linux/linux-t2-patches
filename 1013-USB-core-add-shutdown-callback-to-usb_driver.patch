@@ -37,13 +37,13 @@ index f58a0299f..dc0f86376 100644
   * usb_driver_claim_interface - bind a driver to an interface
   * @driver: the driver to be bound
 @@ -1053,6 +1066,7 @@ int usb_register_driver(struct usb_driver *new_driver, struct module *owner,
- 	new_driver->drvwrap.driver.bus = &usb_bus_type;
- 	new_driver->drvwrap.driver.probe = usb_probe_interface;
- 	new_driver->drvwrap.driver.remove = usb_unbind_interface;
-+	new_driver->drvwrap.driver.shutdown = usb_shutdown_interface;
- 	new_driver->drvwrap.driver.owner = owner;
- 	new_driver->drvwrap.driver.mod_name = mod_name;
- 	new_driver->drvwrap.driver.dev_groups = new_driver->dev_groups;
+ 	new_driver->driver.bus = &usb_bus_type;
+ 	new_driver->driver.probe = usb_probe_interface;
+ 	new_driver->driver.remove = usb_unbind_interface;
++	new_driver->driver.shutdown = usb_shutdown_interface;
+ 	new_driver->driver.owner = owner;
+ 	new_driver->driver.mod_name = mod_name;
+ 	new_driver->driver.dev_groups = new_driver->dev_groups;
 diff --git a/drivers/usb/storage/uas.c b/drivers/usb/storage/uas.c
 index 2583ee981..591fa0379 100644
 --- a/drivers/usb/storage/uas.c
@@ -63,7 +63,7 @@ index 2583ee981..591fa0379 100644
  	.suspend = uas_suspend,
  	.resume = uas_resume,
  	.reset_resume = uas_reset_resume,
--	.drvwrap.driver.shutdown = uas_shutdown,
+-	.driver.shutdown = uas_shutdown,
 +	.shutdown = uas_shutdown,
  	.id_table = uas_usb_ids,
  };
