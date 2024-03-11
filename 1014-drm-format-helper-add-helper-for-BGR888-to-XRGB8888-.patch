@@ -14,10 +14,10 @@ Signed-off-by: Kerem Karabay <kekrby@gmail.com>
  3 files changed, 125 insertions(+)
 
 diff --git a/drivers/gpu/drm/drm_format_helper.c b/drivers/gpu/drm/drm_format_helper.c
-index f93a4efce..5508fbde1 100644
+index b1be458ed4dda5..24836384554a47 100644
 --- a/drivers/gpu/drm/drm_format_helper.c
 +++ b/drivers/gpu/drm/drm_format_helper.c
-@@ -601,6 +601,56 @@ void drm_fb_xrgb8888_to_rgb888(struct iosys_map *dst, const unsigned int *dst_pi
+@@ -702,6 +702,58 @@ void drm_fb_xrgb8888_to_rgb888(struct iosys_map *dst, const unsigned int *dst_pi
  }
  EXPORT_SYMBOL(drm_fb_xrgb8888_to_rgb888);
  
@@ -45,6 +45,7 @@ index f93a4efce..5508fbde1 100644
 + * @src: Array of XRGB8888 source buffers
 + * @fb: DRM framebuffer
 + * @clip: Clip rectangle area to copy
++ * @state: Transform and conversion state
 + *
 + * This function copies parts of a framebuffer to display memory and converts the
 + * color format during the process. Destination and framebuffer formats must match. The
@@ -60,7 +61,8 @@ index f93a4efce..5508fbde1 100644
 + */
 +void drm_fb_xrgb8888_to_bgr888(struct iosys_map *dst, const unsigned int *dst_pitch,
 +			       const struct iosys_map *src, const struct drm_framebuffer *fb,
-+			       const struct drm_rect *clip)
++			       const struct drm_rect *clip,
++			       struct drm_format_conv_state *state)
 +{
 +	static const u8 dst_pixsize[DRM_FORMAT_MAX_PLANES] = {
 +		3,
@@ -74,15 +76,15 @@ index f93a4efce..5508fbde1 100644
  static void drm_fb_xrgb8888_to_argb8888_line(void *dbuf, const void *sbuf, unsigned int pixels)
  {
  	__le32 *dbuf32 = dbuf;
-@@ -925,6 +975,9 @@ int drm_fb_blit(struct iosys_map *dst, const unsigned int *dst_pitch, uint32_t d
+@@ -1035,6 +1087,9 @@ int drm_fb_blit(struct iosys_map *dst, const unsigned int *dst_pitch, uint32_t d
  		} else if (dst_format == DRM_FORMAT_RGB888) {
- 			drm_fb_xrgb8888_to_rgb888(dst, dst_pitch, src, fb, clip);
+ 			drm_fb_xrgb8888_to_rgb888(dst, dst_pitch, src, fb, clip, state);
  			return 0;
 +		} else if (dst_format == DRM_FORMAT_BGR888) {
-+			drm_fb_xrgb8888_to_bgr888(dst, dst_pitch, src, fb, clip);
++			drm_fb_xrgb8888_to_bgr888(dst, dst_pitch, src, fb, clip, state);
 +			return 0;
  		} else if (dst_format == DRM_FORMAT_ARGB8888) {
- 			drm_fb_xrgb8888_to_argb8888(dst, dst_pitch, src, fb, clip);
+ 			drm_fb_xrgb8888_to_argb8888(dst, dst_pitch, src, fb, clip, state);
  			return 0;
 diff --git a/drivers/gpu/drm/tests/drm_format_helper_test.c b/drivers/gpu/drm/tests/drm_format_helper_test.c
 index 474bb7a1c..dff7fabd9 100644
@@ -220,13 +222,13 @@ index 291deb094..7fc553318 100644
 @@ -42,6 +42,9 @@ void drm_fb_xrgb8888_to_rgba5551(struct iosys_map *dst, const unsigned int *dst_
  void drm_fb_xrgb8888_to_rgb888(struct iosys_map *dst, const unsigned int *dst_pitch,
  			       const struct iosys_map *src, const struct drm_framebuffer *fb,
- 			       const struct drm_rect *clip);
+ 			       const struct drm_rect *clip, struct drm_format_conv_state *state);
 +void drm_fb_xrgb8888_to_bgr888(struct iosys_map *dst, const unsigned int *dst_pitch,
 +			       const struct iosys_map *src, const struct drm_framebuffer *fb,
-+			       const struct drm_rect *clip);
++			       const struct drm_rect *clip, struct drm_format_conv_state *state);
  void drm_fb_xrgb8888_to_argb8888(struct iosys_map *dst, const unsigned int *dst_pitch,
  				 const struct iosys_map *src, const struct drm_framebuffer *fb,
- 				 const struct drm_rect *clip);
+ 				 const struct drm_rect *clip, struct drm_format_conv_state *state);
 -- 
 2.42.0
 
