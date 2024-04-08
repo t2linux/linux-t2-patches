@@ -40,8 +40,8 @@ index 519b3b736..dfc63d257 100644
 +F:	drivers/gpu/drm/tiny/appletbdrm.c
 +
  DRM DRIVER FOR ARM PL111 CLCD
- M:	Emma Anholt <emma@anholt.net>
- S:	Supported
+ S:	Orphan
+ T:	git git://anongit.freedesktop.org/drm/drm-misc
 diff --git a/drivers/gpu/drm/tiny/Kconfig b/drivers/gpu/drm/tiny/Kconfig
 index f6889f649..559a97bce 100644
 --- a/drivers/gpu/drm/tiny/Kconfig
