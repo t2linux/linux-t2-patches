@@ -49,19 +49,19 @@ index bfa30625f..3d99acc1a 100644
 +			efi_apple_set_os = true;
  		} else if (IS_ENABLED(CONFIG_X86_64) && !strcmp(param, "no5lvl")) {
  			efi_no5lvl = true;
- 		} else if (!strcmp(param, "efi") && val) {
+ 		} else if (IS_ENABLED(CONFIG_ARCH_HAS_MEM_ENCRYPT) &&
 diff --git a/drivers/firmware/efi/libstub/efistub.h b/drivers/firmware/efi/libstub/efistub.h
 index 212687c30..21b414d09 100644
 --- a/drivers/firmware/efi/libstub/efistub.h
 +++ b/drivers/firmware/efi/libstub/efistub.h
 @@ -38,6 +38,7 @@ extern bool efi_nochunk;
- extern bool efi_nokaslr;
  extern int efi_loglevel;
+ extern int efi_mem_encrypt;
  extern bool efi_novamap;
 +extern bool efi_apple_set_os;
- 
  extern const efi_system_table_t *efi_system_table;
  
+ typedef union efi_dxe_services_table efi_dxe_services_table_t;
 @@ -825,6 +826,19 @@ union apple_properties_protocol {
  	} mixed_mode;
  };
