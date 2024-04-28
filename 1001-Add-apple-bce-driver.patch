@@ -1,6 +1,6 @@
-From 80093f92d42d77f27de6b204550baf4622070732 Mon Sep 17 00:00:00 2001
+From fb72b7575a091284a3e2bd0a955aa2c61a6f5bc4 Mon Sep 17 00:00:00 2001
 From: Aditya Garg <gargaditya08@live.com>
-Date: Tue, 12 Sep 2023 12:26:12 +0530
+Date: Thu, 14 Mar 2024 06:51:34 +0000
 Subject: [PATCH] Add apple-bce driver
 
 ---
@@ -8,7 +8,7 @@ Subject: [PATCH] Add apple-bce driver
  drivers/staging/apple-bce/apple_bce.c         | 443 ++++++++++
  drivers/staging/apple-bce/apple_bce.h         |  38 +
  drivers/staging/apple-bce/audio/audio.c       | 711 ++++++++++++++++
- drivers/staging/apple-bce/audio/audio.h       | 123 +++
+ drivers/staging/apple-bce/audio/audio.h       | 125 +++
  drivers/staging/apple-bce/audio/description.h |  42 +
  drivers/staging/apple-bce/audio/pcm.c         | 308 +++++++
  drivers/staging/apple-bce/audio/pcm.h         |  16 +
@@ -26,10 +26,10 @@ Subject: [PATCH] Add apple-bce driver
  drivers/staging/apple-bce/vhci/queue.c        | 268 +++++++
  drivers/staging/apple-bce/vhci/queue.h        |  76 ++
  drivers/staging/apple-bce/vhci/transfer.c     | 661 +++++++++++++++
- drivers/staging/apple-bce/vhci/transfer.h     |  71 ++
+ drivers/staging/apple-bce/vhci/transfer.h     |  73 ++
  drivers/staging/apple-bce/vhci/vhci.c         | 759 ++++++++++++++++++
- drivers/staging/apple-bce/vhci/vhci.h         |  48 ++
- 25 files changed, 5629 insertions(+)
+ drivers/staging/apple-bce/vhci/vhci.h         |  52 ++
+ 25 files changed, 5637 insertions(+)
  create mode 100644 drivers/staging/apple-bce/Makefile
  create mode 100644 drivers/staging/apple-bce/apple_bce.c
  create mode 100644 drivers/staging/apple-bce/apple_bce.h
@@ -1303,10 +1303,10 @@ index 000000000..bd16ddd16
 +MODULE_PARM_DESC(id, "ID string for Apple Internal Audio soundcard.");
 diff --git a/drivers/staging/apple-bce/audio/audio.h b/drivers/staging/apple-bce/audio/audio.h
 new file mode 100644
-index 000000000..693006e93
+index 000000000..004bc1e22
 --- /dev/null
 +++ b/drivers/staging/apple-bce/audio/audio.h
-@@ -0,0 +1,123 @@
+@@ -0,0 +1,125 @@
 +#ifndef AAUDIO_H
 +#define AAUDIO_H
 +
@@ -1422,6 +1422,8 @@ index 000000000..693006e93
 +};
 +
 +void aaudio_handle_notification(struct aaudio_device *a, struct aaudio_msg *msg);
++void aaudio_handle_prop_change_work(struct work_struct *ws);
++void aaudio_handle_cmd_timestamp(struct aaudio_device *a, struct aaudio_msg *msg);
 +void aaudio_handle_command(struct aaudio_device *a, struct aaudio_msg *msg);
 +
 +int aaudio_module_init(void);
@@ -4946,10 +4948,10 @@ index 000000000..8226363d6
 +}
 diff --git a/drivers/staging/apple-bce/vhci/transfer.h b/drivers/staging/apple-bce/vhci/transfer.h
 new file mode 100644
-index 000000000..6a62a00b2
+index 000000000..89ecad6bc
 --- /dev/null
 +++ b/drivers/staging/apple-bce/vhci/transfer.h
-@@ -0,0 +1,71 @@
+@@ -0,0 +1,73 @@
 +#ifndef BCEDRIVER_TRANSFER_H
 +#define BCEDRIVER_TRANSFER_H
 +
@@ -5013,6 +5015,8 @@ index 000000000..6a62a00b2
 +        struct usb_host_endpoint *endp, bce_vhci_device_t dev_addr, enum dma_data_direction dir);
 +void bce_vhci_destroy_transfer_queue(struct bce_vhci *vhci, struct bce_vhci_transfer_queue *q);
 +void bce_vhci_transfer_queue_event(struct bce_vhci_transfer_queue *q, struct bce_vhci_message *msg);
++int bce_vhci_transfer_queue_do_pause(struct bce_vhci_transfer_queue *q);
++int bce_vhci_transfer_queue_do_resume(struct bce_vhci_transfer_queue *q);
 +int bce_vhci_transfer_queue_pause(struct bce_vhci_transfer_queue *q, enum bce_vhci_pause_source src);
 +int bce_vhci_transfer_queue_resume(struct bce_vhci_transfer_queue *q, enum bce_vhci_pause_source src);
 +void bce_vhci_transfer_queue_request_reset(struct bce_vhci_transfer_queue *q);
@@ -5023,7 +5027,7 @@ index 000000000..6a62a00b2
 +#endif //BCEDRIVER_TRANSFER_H
 diff --git a/drivers/staging/apple-bce/vhci/vhci.c b/drivers/staging/apple-bce/vhci/vhci.c
 new file mode 100644
-index 000000000..053a9f39e
+index 000000000..eb26f5500
 --- /dev/null
 +++ b/drivers/staging/apple-bce/vhci/vhci.c
 @@ -0,0 +1,759 @@
@@ -5269,7 +5273,7 @@ index 000000000..053a9f39e
 +    return 0;
 +}
 +
-+static int bce_vhci_address_device(struct usb_hcd *hcd, struct usb_device *udev)
++static int bce_vhci_address_device(struct usb_hcd *hcd, struct usb_device *udev, unsigned int timeout_ms) //TODO: follow timeout
 +{
 +    /* This is the same as enable_device, but instead in the old scheme */
 +    return bce_vhci_enable_device(hcd, udev);
@@ -5788,10 +5792,10 @@ index 000000000..053a9f39e
 +MODULE_PARM_DESC(vhci_port_mask, "Specifies which VHCI ports are enabled");
 diff --git a/drivers/staging/apple-bce/vhci/vhci.h b/drivers/staging/apple-bce/vhci/vhci.h
 new file mode 100644
-index 000000000..90641d1ba
+index 000000000..6c2e22622
 --- /dev/null
 +++ b/drivers/staging/apple-bce/vhci/vhci.h
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,52 @@
 +#ifndef BCE_VHCI_H
 +#define BCE_VHCI_H
 +
@@ -5838,8 +5842,12 @@ index 000000000..90641d1ba
 +
 +int bce_vhci_create(struct apple_bce_device *dev, struct bce_vhci *vhci);
 +void bce_vhci_destroy(struct bce_vhci *vhci);
++int bce_vhci_start(struct usb_hcd *hcd);
++void bce_vhci_stop(struct usb_hcd *hcd);
++
++struct bce_vhci *bce_vhci_from_hcd(struct usb_hcd *hcd);
 +
 +#endif //BCE_VHCI_H
 -- 
-2.39.2
+2.43.2
 
