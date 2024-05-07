@@ -200,7 +200,7 @@ index 08992636e..e54f0f6e7 100644
 +	 * order, so there's no need to convert the test output.
 +	 */
 +	drm_fb_xrgb8888_to_bgr888(&dst, &result->dst_pitch, &src, &fb, &params->clip,
-+				  &fmtcnv_state, true);
++				  &fmtcnv_state);
 +	KUNIT_EXPECT_MEMEQ(test, buf, result->expected, dst_size);
 +
 +	buf = dst.vaddr; /* restore original value of buf */
