@@ -208,7 +208,7 @@ index 08992636e..e54f0f6e7 100644
 +
 +	int blit_result = 0;
 +
-+	blit_result = drm_fb_blit(&dst, dst_pitch, DRM_FORMAT_BGR888, &src, &fb, &params->clip,
++	blit_result = drm_fb_blit(&dst, &result->dst_pitch, DRM_FORMAT_BGR888, &src, &fb, &params->clip,
 +				  &fmtcnv_state);
 +
 +	KUNIT_EXPECT_FALSE(test, blit_result);
