@@ -1,6 +1,6 @@
-From 569f96eba578be078477b2ccd35c6ddd67c4f727 Mon Sep 17 00:00:00 2001
+From fb72b7575a091284a3e2bd0a955aa2c61a6f5bc4 Mon Sep 17 00:00:00 2001
 From: Aditya Garg <gargaditya08@live.com>
-Date: Wed, 1 May 2024 10:18:20 +0000
+Date: Thu, 14 Mar 2024 06:51:34 +0000
 Subject: [PATCH] Add apple-bce driver
 
 ---
@@ -25,11 +25,11 @@ Subject: [PATCH] Add apple-bce driver
  drivers/staging/apple-bce/vhci/command.h      | 204 +++++
  drivers/staging/apple-bce/vhci/queue.c        | 268 +++++++
  drivers/staging/apple-bce/vhci/queue.h        |  76 ++
- drivers/staging/apple-bce/vhci/transfer.c     | 699 ++++++++++++++++
- drivers/staging/apple-bce/vhci/transfer.h     |  80 ++
+ drivers/staging/apple-bce/vhci/transfer.c     | 661 +++++++++++++++
+ drivers/staging/apple-bce/vhci/transfer.h     |  73 ++
  drivers/staging/apple-bce/vhci/vhci.c         | 759 ++++++++++++++++++
  drivers/staging/apple-bce/vhci/vhci.h         |  52 ++
- 25 files changed, 5682 insertions(+)
+ 25 files changed, 5637 insertions(+)
  create mode 100644 drivers/staging/apple-bce/Makefile
  create mode 100644 drivers/staging/apple-bce/apple_bce.c
  create mode 100644 drivers/staging/apple-bce/apple_bce.h
@@ -4281,10 +4281,10 @@ index 000000000..adb705b6b
 +#endif //BCE_VHCI_QUEUE_H
 diff --git a/drivers/staging/apple-bce/vhci/transfer.c b/drivers/staging/apple-bce/vhci/transfer.c
 new file mode 100644
-index 000000000..be80c0bed
+index 000000000..8226363d6
 --- /dev/null
 +++ b/drivers/staging/apple-bce/vhci/transfer.c
-@@ -0,0 +1,699 @@
+@@ -0,0 +1,661 @@
 +#include "transfer.h"
 +#include "../queue.h"
 +#include "vhci.h"
@@ -4682,79 +4682,41 @@ index 000000000..be80c0bed
 +    list_add_tail(&real_urb->urb_list, &q->giveback_urb_list);
 +}
 +
-+static int bce_vhci_urb_dequeue_unlink(struct bce_vhci_transfer_queue *q, struct urb *urb, int status)
-+{
-+    struct bce_vhci_urb *vurb;
-+    int ret = 0;
-+    if ((ret = usb_hcd_check_unlink_urb(q->vhci->hcd, urb, status)))
-+        return ret;
-+    usb_hcd_unlink_urb_from_ep(q->vhci->hcd, urb);
-+
-+    vurb = urb->hcpriv;
-+    if (vurb->state != BCE_VHCI_URB_INIT_PENDING)
-+        ++q->remaining_active_requests;
-+    return ret;
-+}
-+
-+static int bce_vhci_urb_remove(struct bce_vhci_transfer_queue *q, struct urb *urb, int status)
-+{
-+    unsigned long flags;
-+    int ret;
-+    struct bce_vhci_urb *vurb;
-+    spin_lock_irqsave(&q->urb_lock, flags);
-+    ret = bce_vhci_urb_dequeue_unlink(q, urb, status);
-+    spin_unlock_irqrestore(&q->urb_lock, flags);
-+    if (ret)
-+        return ret;
-+    vurb = urb->hcpriv;
-+    kfree(vurb);
-+    usb_hcd_giveback_urb(q->vhci->hcd, urb, status);
-+    return 0;
-+}
-+
-+static void bce_vhci_urb_cancel_w(struct work_struct *ws)
-+{
-+    struct bce_vhci_transfer_queue_urb_cancel_work *w =
-+            container_of(ws, struct bce_vhci_transfer_queue_urb_cancel_work, ws);
-+
-+    pr_debug("bce-vhci: [%02x] Cancelling URB\n", w->q->endp_addr);
-+    bce_vhci_transfer_queue_pause(w->q, BCE_VHCI_PAUSE_INTERNAL_WQ);
-+    bce_vhci_urb_remove(w->q, w->urb, w->status);
-+    bce_vhci_transfer_queue_resume(w->q, BCE_VHCI_PAUSE_INTERNAL_WQ);
-+    kfree(w);
-+}
-+
 +int bce_vhci_urb_request_cancel(struct bce_vhci_transfer_queue *q, struct urb *urb, int status)
 +{
-+    struct bce_vhci_transfer_queue_urb_cancel_work *w;
 +    struct bce_vhci_urb *vurb;
 +    unsigned long flags;
 +    int ret;
 +
-+    /* Quick check to try to avoid pausing; must past 0 as status we won't be able to call it again. */
 +    spin_lock_irqsave(&q->urb_lock, flags);
-+    if ((ret = usb_hcd_check_unlink_urb(q->vhci->hcd, urb, 0))) {
++    if ((ret = usb_hcd_check_unlink_urb(q->vhci->hcd, urb, status))) {
 +        spin_unlock_irqrestore(&q->urb_lock, flags);
 +        return ret;
 +    }
 +
 +    vurb = urb->hcpriv;
 +    /* If the URB wasn't posted to the device yet, we can still remove it on the host without pausing the queue. */
-+    if (vurb->state == BCE_VHCI_URB_INIT_PENDING) {
-+        bce_vhci_urb_dequeue_unlink(q, urb, status);
++    if (vurb->state != BCE_VHCI_URB_INIT_PENDING) {
++        pr_debug("bce-vhci: [%02x] Cancelling URB\n", q->endp_addr);
++
 +        spin_unlock_irqrestore(&q->urb_lock, flags);
-+        kfree(vurb);
-+        usb_hcd_giveback_urb(q->vhci->hcd, urb, status);
-+        return 0;
++        bce_vhci_transfer_queue_pause(q, BCE_VHCI_PAUSE_INTERNAL_WQ);
++        spin_lock_irqsave(&q->urb_lock, flags);
++
++        ++q->remaining_active_requests;
 +    }
++
++    usb_hcd_unlink_urb_from_ep(q->vhci->hcd, urb);
++
 +    spin_unlock_irqrestore(&q->urb_lock, flags);
 +
-+    w = kzalloc(sizeof(struct bce_vhci_transfer_queue_urb_cancel_work), GFP_KERNEL);
-+    INIT_WORK(&w->ws, bce_vhci_urb_cancel_w);
-+    w->q = q;
-+    w->urb = urb;
-+    w->status = status;
-+    queue_work(q->vhci->tq_state_wq, &w->ws);
++    usb_hcd_giveback_urb(q->vhci->hcd, urb, status);
++
++    if (vurb->state != BCE_VHCI_URB_INIT_PENDING)
++        bce_vhci_transfer_queue_resume(q, BCE_VHCI_PAUSE_INTERNAL_WQ);
++
++    kfree(vurb);
++
 +    return 0;
 +}
 +
@@ -4986,10 +4948,10 @@ index 000000000..be80c0bed
 +}
 diff --git a/drivers/staging/apple-bce/vhci/transfer.h b/drivers/staging/apple-bce/vhci/transfer.h
 new file mode 100644
-index 000000000..8a02c4f03
+index 000000000..89ecad6bc
 --- /dev/null
 +++ b/drivers/staging/apple-bce/vhci/transfer.h
-@@ -0,0 +1,80 @@
+@@ -0,0 +1,73 @@
 +#ifndef BCEDRIVER_TRANSFER_H
 +#define BCEDRIVER_TRANSFER_H
 +
@@ -5047,13 +5009,6 @@ index 000000000..8a02c4f03
 +    int received_status;
 +    u32 send_offset;
 +    u32 receive_offset;
-+};
-+
-+struct bce_vhci_transfer_queue_urb_cancel_work {
-+    struct work_struct ws;
-+    struct bce_vhci_transfer_queue *q;
-+    struct urb *urb;
-+    int status;
 +};
 +
 +void bce_vhci_create_transfer_queue(struct bce_vhci *vhci, struct bce_vhci_transfer_queue *q,
