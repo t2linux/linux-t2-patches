@@ -1,6 +1,6 @@
-From 5832ef25589bd06d9625f3e5c000961007a7eada Mon Sep 17 00:00:00 2001
+From d0d82d251bbdd32428dba774618700cb7ad43a11 Mon Sep 17 00:00:00 2001
 From: Aditya Garg <gargaditya08@live.com>
-Date: Sat, 8 Jun 2024 17:37:54 +0530
+Date: Sat, 8 Jun 2024 18:09:36 +0530
 Subject: [PATCH] Add APFS driver
 
 ---
@@ -42,9 +42,10 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/transaction.c               |  978 +++++++++
  fs/apfs/unicode.c                   | 3157 +++++++++++++++++++++++++++
  fs/apfs/unicode.h                   |   27 +
+ fs/apfs/version.h                   |    1 +
  fs/apfs/xattr.c                     |  922 ++++++++
  fs/apfs/xfield.c                    |  171 ++
- 40 files changed, 28948 insertions(+)
+ 41 files changed, 28949 insertions(+)
  create mode 100644 fs/apfs/Makefile
  create mode 100644 fs/apfs/apfs.h
  create mode 100644 fs/apfs/apfs_raw.h
@@ -83,6 +84,7 @@ Subject: [PATCH] Add APFS driver
  create mode 100644 fs/apfs/transaction.c
  create mode 100644 fs/apfs/unicode.c
  create mode 100644 fs/apfs/unicode.h
+ create mode 100644 fs/apfs/version.h
  create mode 100644 fs/apfs/xattr.c
  create mode 100644 fs/apfs/xfield.c
 
@@ -28169,6 +28171,13 @@ index 000000000..e3b7edc51
 +				     bool case_fold);
 +
 +#endif	/* _APFS_UNICODE_H */
+diff --git a/fs/apfs/version.h b/fs/apfs/version.h
+new file mode 100644
+index 000000000..10c2f7cc0
+--- /dev/null
++++ b/fs/apfs/version.h
+@@ -0,0 +1 @@
++#define GIT_COMMIT	"v0.3.9"
 diff --git a/fs/apfs/xattr.c b/fs/apfs/xattr.c
 new file mode 100644
 index 000000000..0de1db140
