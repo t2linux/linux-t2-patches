@@ -1,4 +1,4 @@
-From bdc9881b548752150cdbf9f952c58747fc256b9d Mon Sep 17 00:00:00 2001
+From a602442976fe87bb89628409444e384b4eb0531f Mon Sep 17 00:00:00 2001
 From: Aditya Garg <gargaditya08@live.com>
 Date: Sat, 8 Jun 2024 17:48:28 +0530
 Subject: [PATCH] Necessary modifications to build APFS with the kernel
@@ -6,9 +6,9 @@ Subject: [PATCH] Necessary modifications to build APFS with the kernel
 ---
  fs/Kconfig       |  1 +
  fs/Makefile      |  1 +
- fs/apfs/Kconfig  | 16 ++++++++++++++++
+ fs/apfs/Kconfig  | 13 +++++++++++++
  fs/apfs/Makefile | 17 ++---------------
- 4 files changed, 20 insertions(+), 15 deletions(-)
+ 4 files changed, 17 insertions(+), 15 deletions(-)
  create mode 100644 fs/apfs/Kconfig
 
 diff --git a/fs/Kconfig b/fs/Kconfig
@@ -37,19 +37,16 @@ index 6ecc9b0a5..0cfeacc98 100644
  obj-$(CONFIG_BCACHEFS_FS)	+= bcachefs/
 diff --git a/fs/apfs/Kconfig b/fs/apfs/Kconfig
 new file mode 100644
-index 000000000..3c209463d
+index 000000000..99caf203a
 --- /dev/null
 +++ b/fs/apfs/Kconfig
-@@ -0,0 +1,16 @@
+@@ -0,0 +1,13 @@
 +# SPDX-License-Identifier: GPL-2.0-only
 +config APFS_FS
 +	tristate "Apple file system support"
-+	select CRYPTO
-+	select CRYPTO_CRC32C
 +	select LIBCRC32C
-+	select CRYPTO_XXHASH
-+	select CRYPTO_SHA256
-+	select CRYPTO_BLAKE2B
++	select ZLIB_INFLATE
++	select NLS
 +	select BUFFER_HEAD
 +	select FS_IOMAP
 +	select LEGACY_DIRECT_IO
