@@ -39,7 +39,7 @@ index dfc63d257..9148bda0a 100644
 +
  HID CORE LAYER
  M:	Jiri Kosina <jikos@kernel.org>
- M:	Benjamin Tissoires <benjamin.tissoires@redhat.com>
+ M:	Benjamin Tissoires <bentiss@kernel.org>
 diff --git a/drivers/hid/Kconfig b/drivers/hid/Kconfig
 index 4e238df87..83fbab6d4 100644
 --- a/drivers/hid/Kconfig
