@@ -7,13 +7,90 @@ on:
   workflow_dispatch:
 
 jobs:
-  Publish:
+  Publish-Mainline:
     runs-on: ubuntu-latest
     steps:
 
       - name: 'Checkout Repo'
         uses: actions/checkout@v4
         with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Get the latest driver
+        id: publish
+        run: |
+          source ${{ github.workspace }}/apfs_ver
+          source ${{ github.workspace }}/version
+
+          echo "currenthash=${CURRENT_HASH}" >> $GITHUB_ENV
+          echo "releasever=${RELEASE_VER}" >> $GITHUB_ENV
+
+          git clone --depth 1 --single-branch --branch "v${KVER}" https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git
+          git clone --depth 1 https://github.com/linux-apfs/linux-apfs-rw.git ${{ github.workspace }}/linux-stable/fs/apfs
+          cd linux-stable/fs/apfs
+          LATEST_HASH=$(git rev-parse HEAD)
+          echo "latesthash=${LATEST_HASH}" >> $GITHUB_ENV
+          DKMS_VER=$(cat ./dkms.conf | grep PACKAGE_VERSION | cut -d "\"" -f 2)
+          DKMS_NAME=$(cat ./dkms.conf | grep PACKAGE_NAME | cut -d "\"" -f 2)
+          bash ./genver.sh
+          rm -r -v .git
+          rm -v .gitignore
+          rm -v README.rst
+          rm -v LICENSE
+          rm -v dkms.conf
+          rm -v genver.sh
+
+          if [[ ${CURRENT_HASH} = ${LATEST_HASH} ]]
+          then
+            echo "publish=no" >> $GITHUB_ENV
+            exit 0
+          else
+            echo "publish=yes" >> $GITHUB_ENV
+            RELEASE_VER_MAIN=$(echo ${RELEASE_VER} | cut -d "-" -f 1)
+            if [[ ${RELEASE_VER_MAIN} != ${DKMS_VER} ]]
+            then
+              NEW_RELEASE_VER=${DKMS_VER}-1
+            else
+              RELEASE_VER_SUB=$(echo ${RELEASE_VER} | cut -d "-" -f 2)
+              NEW_RELEASE_VER_SUB=$((${RELEASE_VER_SUB} + 1))
+              NEW_RELEASE_VER=${DKMS_VER}-${NEW_RELEASE_VER_SUB}  
+            fi
+            echo "ver=${NEW_RELEASE_VER}" >> $GITHUB_ENV
+            cd ${{ github.workspace }}/linux-stable
+            git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git config --local user.name "github-actions[bot]"
+            git add .
+            git commit -m "Add APFS driver"
+            git format-patch -1 HEAD
+            mv -v 0001-Add-APFS-driver.patch ${{ github.workspace }}/8001-Add-APFS-driver.patch
+          fi
+      - name: Cleanup and update the repo
+        if: env.publish == 'yes'
+        id: clean
+        run: |
+          cd ${{ github.workspace }}
+          rm -r linux-stable
+          sed -i "s/${{ env.releasever }}/${{ env.ver }}/g" ${{ github.workspace }}/apfs_ver
+          sed -i "s/${{ env.currenthash }}/${{ env.latesthash }}/g" ${{ github.workspace }}/apfs_ver
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add .
+          git commit -m "Update APFS driver to v${{ env.ver }}"
+      - name: Push changes to the repo
+        if: env.publish == 'yes'
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.ref }}
+  Publish-LTS:
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: 'Checkout Repo'
+        uses: actions/checkout@v4
+        with:
+          ref: 6.6
           persist-credentials: false
           fetch-depth: 0
 
