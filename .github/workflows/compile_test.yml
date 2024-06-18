@@ -1,5 +1,5 @@
 name: Compile Test
-on: [push]
+on: [push, workflow_dispatch]
 jobs:
   compiletest:
     runs-on: ubuntu-latest
