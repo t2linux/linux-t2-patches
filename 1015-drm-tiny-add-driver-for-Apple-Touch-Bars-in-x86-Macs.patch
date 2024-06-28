@@ -30,7 +30,7 @@ index 519b3b736..dfc63d257 100644
 --- a/MAINTAINERS
 +++ b/MAINTAINERS
 @@ -6372,6 +6372,12 @@ S:	Supported
- T:	git git://anongit.freedesktop.org/drm/drm-misc
+ T:	git https://gitlab.freedesktop.org/drm/misc/kernel.git
  F:	drivers/gpu/drm/sun4i/sun8i*
  
 +DRM DRIVER FOR APPLE TOUCH BARS
@@ -41,7 +41,7 @@ index 519b3b736..dfc63d257 100644
 +
  DRM DRIVER FOR ARM PL111 CLCD
  S:	Orphan
- T:	git git://anongit.freedesktop.org/drm/drm-misc
+ T:	git https://gitlab.freedesktop.org/drm/misc/kernel.git
 diff --git a/drivers/gpu/drm/tiny/Kconfig b/drivers/gpu/drm/tiny/Kconfig
 index f6889f649..559a97bce 100644
 --- a/drivers/gpu/drm/tiny/Kconfig

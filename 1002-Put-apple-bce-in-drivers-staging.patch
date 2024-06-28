@@ -26,8 +26,8 @@ diff --git a/drivers/staging/Makefile b/drivers/staging/Makefile
 index f8c3aa9c2..1e148d6c3 100644
 --- a/drivers/staging/Makefile
 +++ b/drivers/staging/Makefile
-@@ -29,3 +29,4 @@ obj-$(CONFIG_PI433)		+= pi433/
- obj-$(CONFIG_PI433)		+= pi433/
+@@ -29,3 +29,4 @@ obj-$(CONFIG_BCM2835_VCHIQ)	+= vc04_services/
+ obj-$(CONFIG_BCM2835_VCHIQ)	+= vc04_services/
  obj-$(CONFIG_XIL_AXIS_FIFO)	+= axis-fifo/
  obj-$(CONFIG_FIELDBUS_DEV)     += fieldbus/
 +obj-$(CONFIG_APPLE_BCE)		+= apple-bce/

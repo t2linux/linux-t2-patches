@@ -22177,7 +22177,7 @@ index 000000000..393a97239
 + */
 +static int apfs_sb_set_blocksize(struct super_block *sb, int size)
 +{
-+	if (set_blocksize(APFS_NXI(sb)->nx_bdev, size))
++	if (set_blocksize(APFS_NXI(sb)->nx_bdev_file, size))
 +		return 0;
 +	sb->s_blocksize = size;
 +	sb->s_blocksize_bits = blksize_bits(size);
@@ -24020,8 +24020,8 @@ index 000000000..a79a6a564
 +	struct apfs_nxsb_info *nxi = APFS_NXI(sb);
 +	struct apfs_obj_phys *obj = &nxi->nx_raw->nx_o;
 +	struct buffer_head *bh = NULL;
-+	struct inode *bdev_inode = nxi->nx_bdev->bd_inode;
-+	struct address_space *bdev_map = bdev_inode->i_mapping;
++	// struct inode *bdev_inode = nxi->nx_bdev->bd_inode;
++	struct address_space *bdev_map = nxi->nx_bdev->bd_mapping;
 +	int err;
 +
 +	ASSERT(!(sb->s_flags & SB_RDONLY));
