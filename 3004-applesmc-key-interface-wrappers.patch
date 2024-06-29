@@ -1,7 +1,7 @@
-From 43df89a1377782788760808d8ea4bcf0730effbb Mon Sep 17 00:00:00 2001
+From 1ce5dd27e4464383ddfba3ee0d7ffdc7020bd81c Mon Sep 17 00:00:00 2001
 From: Paul Pawlowski <paul@mrarm.io>
 Date: Sun, 17 Nov 2019 23:12:14 +0100
-Subject: [PATCH 4/6] applesmc: key interface wrappers
+Subject: [PATCH 4/9] applesmc: key interface wrappers
 
 This change replaces the read_smc and write_smc
 methods with wrappers, additionally removing the
@@ -20,7 +20,7 @@ Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
  1 file changed, 79 insertions(+), 40 deletions(-)
 
 diff --git a/drivers/hwmon/applesmc.c b/drivers/hwmon/applesmc.c
-index bdaaf696f7b6..3017d8ca2c79 100644
+index b4fe412c0..5442897e3 100644
 --- a/drivers/hwmon/applesmc.c
 +++ b/drivers/hwmon/applesmc.c
 @@ -172,7 +172,7 @@ static const int debug;
@@ -294,5 +294,5 @@ index bdaaf696f7b6..3017d8ca2c79 100644
  
  out:
 -- 
-2.30.0
+2.45.2
 

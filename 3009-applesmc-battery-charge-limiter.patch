@@ -1,17 +1,17 @@
-From 38786c7979c8ece013b5b7d5cb07dc2aa40198be Mon Sep 17 00:00:00 2001
+From add0db8b96c3f90b844586a3b9ea32041bae4b2c Mon Sep 17 00:00:00 2001
 From: Orlando Chamberlain <orlandoch.dev@gmail.com>
 Date: Mon, 30 Jan 2023 18:42:21 +1100
-Subject: [PATCH 1/1] applesmc: battery charge limiter
+Subject: [PATCH 9/9] applesmc: battery charge limiter
 
 ---
  drivers/hwmon/applesmc.c | 42 +++++++++++++++++++++++++++++++++++++++-
  1 file changed, 41 insertions(+), 1 deletion(-)
 
 diff --git a/drivers/hwmon/applesmc.c b/drivers/hwmon/applesmc.c
-index 12be9269a314..bc1eec74cfef 100644
+index 5f67d7362..698f44794 100644
 --- a/drivers/hwmon/applesmc.c
 +++ b/drivers/hwmon/applesmc.c
-@@ -1478,6 +1478,35 @@ static void applesmc_brightness_set(struct led_classdev *led_cdev,
+@@ -1477,6 +1477,35 @@ static void applesmc_brightness_set(struct led_classdev *led_cdev,
  		dev_dbg(led_cdev->dev, "work was already on the queue.\n");
  }
  
@@ -47,7 +47,7 @@ index 12be9269a314..bc1eec74cfef 100644
  static ssize_t applesmc_key_count_show(struct device *dev,
  				struct device_attribute *attr, char *sysfsbuf)
  {
-@@ -1612,6 +1641,11 @@ static struct applesmc_node_group temp_group[] = {
+@@ -1611,6 +1640,11 @@ static struct applesmc_node_group temp_group[] = {
  	{ }
  };
  
@@ -59,7 +59,7 @@ index 12be9269a314..bc1eec74cfef 100644
  /* Module stuff */
  
  /*
-@@ -1830,10 +1864,13 @@ static int applesmc_create_modules(struct applesmc_device *smc)
+@@ -1829,10 +1863,13 @@ static int applesmc_create_modules(struct applesmc_device *smc)
  	ret = applesmc_create_nodes(smc, info_group, 1);
  	if (ret)
  		goto out;
@@ -74,7 +74,7 @@ index 12be9269a314..bc1eec74cfef 100644
  
  	ret = applesmc_create_nodes(smc, temp_group, smc->reg.index_count);
  	if (ret)
-@@ -1869,6 +1906,8 @@ static int applesmc_create_modules(struct applesmc_device *smc)
+@@ -1868,6 +1905,8 @@ static int applesmc_create_modules(struct applesmc_device *smc)
  	applesmc_destroy_nodes(smc, temp_group);
  out_fans:
  	applesmc_destroy_nodes(smc, fan_group);
@@ -83,7 +83,7 @@ index 12be9269a314..bc1eec74cfef 100644
  out_info:
  	applesmc_destroy_nodes(smc, info_group);
  out:
-@@ -1883,6 +1922,7 @@ static void applesmc_destroy_modules(struct applesmc_device *smc)
+@@ -1882,6 +1921,7 @@ static void applesmc_destroy_modules(struct applesmc_device *smc)
  	applesmc_release_accelerometer(smc);
  	applesmc_destroy_nodes(smc, temp_group);
  	applesmc_destroy_nodes(smc, fan_group);
@@ -92,5 +92,5 @@ index 12be9269a314..bc1eec74cfef 100644
  }
  
 -- 
-2.39.1
+2.45.2
 

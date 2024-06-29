@@ -1,7 +1,7 @@
-From ee3d4bf4a01bc94553bde2ae3e806a63a13faa12 Mon Sep 17 00:00:00 2001
+From c405f826e30e0035581b350084d61457ddde6146 Mon Sep 17 00:00:00 2001
 From: Paul Pawlowski <paul@mrarm.io>
-Date: Sun, 17 Nov 2019 23:12:08 +0100
-Subject: [PATCH 3/6] applesmc: switch to acpi_device (from platform)
+Date: Sat, 29 Jun 2024 04:49:16 +0000
+Subject: [PATCH 3/9] applesmc: switch to acpi_device (from platform)
 
 This change makes the change from platform_device
 to acpi_device. The rationale for this change is
@@ -17,11 +17,11 @@ should not result in any incompatibilities.
 
 Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
- drivers/hwmon/applesmc.c | 125 ++++++++++++++++++++++++++-------------
- 1 file changed, 85 insertions(+), 40 deletions(-)
+ drivers/hwmon/applesmc.c | 124 ++++++++++++++++++++++++++-------------
+ 1 file changed, 84 insertions(+), 40 deletions(-)
 
 diff --git a/drivers/hwmon/applesmc.c b/drivers/hwmon/applesmc.c
-index 39ed0bb21365..bdaaf696f7b6 100644
+index a599db68b..b4fe412c0 100644
 --- a/drivers/hwmon/applesmc.c
 +++ b/drivers/hwmon/applesmc.c
 @@ -19,7 +19,7 @@
@@ -167,7 +167,7 @@ index 39ed0bb21365..bdaaf696f7b6 100644
  /* Synchronize device with memorized backlight state */
  static int applesmc_pm_resume(struct device *dev)
  {
-@@ -763,18 +820,28 @@ static int applesmc_pm_restore(struct device *dev)
+@@ -763,17 +820,26 @@ static int applesmc_pm_restore(struct device *dev)
  	return applesmc_pm_resume(dev);
  }
  
@@ -194,15 +194,13 @@ index 39ed0bb21365..bdaaf696f7b6 100644
 +	.ops = {
 +		.add = applesmc_add,
 +		.remove = applesmc_remove
- 	},
++	},
 +	.drv = {
 +		.pm = &applesmc_pm_ops
-+	},
-+	.owner = THIS_MODULE
+ 	},
  };
  
- /*
-@@ -1262,7 +1329,6 @@ static int applesmc_create_nodes(struct applesmc_device *smc,
+@@ -1262,7 +1328,6 @@ static int applesmc_create_nodes(struct applesmc_device *smc,
  static int applesmc_create_accelerometer(struct applesmc_device *smc)
  {
  	int ret;
@@ -210,7 +208,7 @@ index 39ed0bb21365..bdaaf696f7b6 100644
  	if (!smc->reg.has_accelerometer)
  		return 0;
  
-@@ -1463,8 +1529,6 @@ static void applesmc_destroy_modules(struct applesmc_device *smc)
+@@ -1467,8 +1532,6 @@ static void applesmc_destroy_modules(struct applesmc_device *smc)
  	applesmc_destroy_nodes(smc, info_group);
  }
  
@@ -219,7 +217,7 @@ index 39ed0bb21365..bdaaf696f7b6 100644
  static int __init applesmc_init(void)
  {
  	int ret;
-@@ -1475,29 +1539,12 @@ static int __init applesmc_init(void)
+@@ -1479,29 +1542,12 @@ static int __init applesmc_init(void)
  		goto out;
  	}
  
@@ -251,7 +249,7 @@ index 39ed0bb21365..bdaaf696f7b6 100644
  out:
  	pr_warn("driver init failed (ret=%d)!\n", ret);
  	return ret;
-@@ -1505,9 +1552,7 @@ static int __init applesmc_init(void)
+@@ -1509,9 +1555,7 @@ static int __init applesmc_init(void)
  
  static void __exit applesmc_exit(void)
  {
@@ -263,5 +261,5 @@ index 39ed0bb21365..bdaaf696f7b6 100644
  
  module_init(applesmc_init);
 -- 
-2.30.0
+2.45.2
 
