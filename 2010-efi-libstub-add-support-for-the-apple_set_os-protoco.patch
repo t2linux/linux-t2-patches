@@ -1,75 +1,38 @@
-From 6adb501c697cd0e3246e75237ee8e43eb5a92cc3 Mon Sep 17 00:00:00 2001
-From: Kerem Karabay <kekrby@gmail.com>
-Date: Thu, 23 Nov 2023 18:58:51 +0530
-Subject: [PATCH] efi: libstub: add support for the apple_set_os protocol
+From: Aditya Garg <gargaditya08@live.com>
 
-On dual GPU EFI Macs, the EFI stub needs to report that it is booting
-macOS in order to prevent the firmware from disabling the iGPU.
+0c18184de990 ("platform/x86: apple-gmux: support MMIO gmux on T2 Macs")
+brought support for T2 Macs in apple-gmux. But in order to use dual GPU,
+the integrated GPU has to be enabled. On such dual GPU EFI Macs, the EFI
+stub needs to report that it is booting macOS in order to prevent the
+firmware from disabling the iGPU.
 
-See also this patch for GRUB by Andreas Heider <andreas@heider.io>:
+This patch is also applicable for some non T2 Intel Macs.
+
+Based on this patch for GRUB by Andreas Heider <andreas@heider.io>:
 https://lists.gnu.org/archive/html/grub-devel/2013-12/msg00442.html
----
- .../admin-guide/kernel-parameters.txt         |  2 ++
- .../firmware/efi/libstub/efi-stub-helper.c    |  3 +++
- drivers/firmware/efi/libstub/efistub.h        | 14 ++++++++++
- drivers/firmware/efi/libstub/x86-stub.c       | 27 +++++++++++++++++++
- include/linux/efi.h                           |  1 +
- 5 files changed, 47 insertions(+)
 
-diff --git a/Documentation/admin-guide/kernel-parameters.txt b/Documentation/admin-guide/kernel-parameters.txt
-index 41644336e..cbd4697a5 100644
---- a/Documentation/admin-guide/kernel-parameters.txt
-+++ b/Documentation/admin-guide/kernel-parameters.txt
-@@ -399,6 +399,8 @@
- 			      useful so that a dump capture kernel won't be
- 			      shot down by NMI
- 
-+	apple_set_os	[KNL] Report that macOS is being booted to the firmware
-+
- 	autoconf=	[IPV6]
- 			See Documentation/networking/ipv6.rst.
- 
-diff --git a/drivers/firmware/efi/libstub/efi-stub-helper.c b/drivers/firmware/efi/libstub/efi-stub-helper.c
-index bfa30625f..3d99acc1a 100644
---- a/drivers/firmware/efi/libstub/efi-stub-helper.c
-+++ b/drivers/firmware/efi/libstub/efi-stub-helper.c
-@@ -19,6 +19,7 @@
- bool efi_nochunk;
- bool efi_nokaslr = !IS_ENABLED(CONFIG_RANDOMIZE_BASE);
- bool efi_novamap;
-+bool efi_apple_set_os;
- 
- static bool efi_noinitrd;
- static bool efi_nosoftreserve;
-@@ -73,6 +74,8 @@ efi_status_t efi_parse_options(char const *cmdline)
- 			efi_loglevel = CONSOLE_LOGLEVEL_QUIET;
- 		} else if (!strcmp(param, "noinitrd")) {
- 			efi_noinitrd = true;
-+		} else if (!strcmp(param, "apple_set_os")) {
-+			efi_apple_set_os = true;
- 		} else if (IS_ENABLED(CONFIG_X86_64) && !strcmp(param, "no5lvl")) {
- 			efi_no5lvl = true;
- 		} else if (IS_ENABLED(CONFIG_ARCH_HAS_MEM_ENCRYPT) &&
+Credits also goto Kerem Karabay <kekrby@gmail.com> for helping porting
+the patch to the Linux kernel.
+
+Signed-off-by: Aditya Garg <gargaditya08@live.com>
+---
+ drivers/firmware/efi/libstub/efistub.h  | 13 ++++++++++
+ drivers/firmware/efi/libstub/x86-stub.c | 32 ++++++++++++++++++++++---
+ include/linux/efi.h                     |  1 +
+ 3 files changed, 43 insertions(+), 3 deletions(-)
+
 diff --git a/drivers/firmware/efi/libstub/efistub.h b/drivers/firmware/efi/libstub/efistub.h
-index 212687c30..21b414d09 100644
+index 27abb4ce0..140b8f986 100644
 --- a/drivers/firmware/efi/libstub/efistub.h
 +++ b/drivers/firmware/efi/libstub/efistub.h
-@@ -38,6 +38,7 @@ extern bool efi_nochunk;
- extern int efi_loglevel;
- extern int efi_mem_encrypt;
- extern bool efi_novamap;
-+extern bool efi_apple_set_os;
- extern const efi_system_table_t *efi_system_table;
- 
- typedef union efi_dxe_services_table efi_dxe_services_table_t;
-@@ -825,6 +826,19 @@ union apple_properties_protocol {
+@@ -825,6 +825,19 @@ union apple_properties_protocol {
  	} mixed_mode;
  };
  
-+typedef struct apple_set_os_protocol apple_set_os_protocol_t;
++typedef union apple_set_os_protocol apple_set_os_protocol_t;
 +
-+struct apple_set_os_protocol {
-+	u64 version;
++union apple_set_os_protocol {
++	unsigned long version;
 +	efi_status_t (__efiapi *set_os_version) (const char *);
 +	efi_status_t (__efiapi *set_os_vendor) (const char *);
 +	struct {
@@ -83,10 +46,10 @@ index 212687c30..21b414d09 100644
  
  #define INITRD_EVENT_TAG_ID 0x8F3B22ECU
 diff --git a/drivers/firmware/efi/libstub/x86-stub.c b/drivers/firmware/efi/libstub/x86-stub.c
-index 70b325a2f..2131f8543 100644
+index 1983fd3bf..293ff24e7 100644
 --- a/drivers/firmware/efi/libstub/x86-stub.c
 +++ b/drivers/firmware/efi/libstub/x86-stub.c
-@@ -223,6 +223,30 @@ static void retrieve_apple_device_properties(struct boot_params *boot_params)
+@@ -225,6 +225,30 @@ static void retrieve_apple_device_properties(struct boot_params *boot_params)
  	}
  }
  
@@ -117,21 +80,26 @@ index 70b325a2f..2131f8543 100644
  efi_status_t efi_adjust_memory_range_protection(unsigned long start,
  						unsigned long size)
  {
-@@ -321,6 +345,9 @@ static void setup_quirks(struct boot_params *boot_params)
- 	if (IS_ENABLED(CONFIG_APPLE_PROPERTIES) &&
- 	    !memcmp(efistub_fw_vendor(), apple, sizeof(apple)))
- 		retrieve_apple_device_properties(boot_params);
-+
-+	if (efi_apple_set_os)
+@@ -335,9 +359,11 @@ static const efi_char16_t apple[] = L"Apple";
+ 
+ static void setup_quirks(struct boot_params *boot_params)
+ {
+-	if (IS_ENABLED(CONFIG_APPLE_PROPERTIES) &&
+-	    !memcmp(efistub_fw_vendor(), apple, sizeof(apple)))
+-		retrieve_apple_device_properties(boot_params);
++	if (!memcmp(efistub_fw_vendor(), apple, sizeof(apple))) {
++		if (IS_ENABLED(CONFIG_APPLE_PROPERTIES)
++			retrieve_apple_device_properties(boot_params);
 +		apple_set_os();
++	}
  }
  
  /*
 diff --git a/include/linux/efi.h b/include/linux/efi.h
-index 80b21d1c6..f1e58e027 100644
+index 418e55545..e28873eb1 100644
 --- a/include/linux/efi.h
 +++ b/include/linux/efi.h
-@@ -387,6 +387,7 @@ void efi_native_runtime_setup(void);
+@@ -385,6 +385,7 @@ void efi_native_runtime_setup(void);
  #define EFI_MEMORY_ATTRIBUTES_TABLE_GUID	EFI_GUID(0xdcfa911d, 0x26eb, 0x469f,  0xa2, 0x20, 0x38, 0xb7, 0xdc, 0x46, 0x12, 0x20)
  #define EFI_CONSOLE_OUT_DEVICE_GUID		EFI_GUID(0xd3b36f2c, 0xd551, 0x11d4,  0x9a, 0x46, 0x00, 0x90, 0x27, 0x3f, 0xc1, 0x4d)
  #define APPLE_PROPERTIES_PROTOCOL_GUID		EFI_GUID(0x91bd12fe, 0xf6c3, 0x44fb,  0xa5, 0xb7, 0x51, 0x22, 0xab, 0x30, 0x3a, 0xe0)
@@ -140,5 +108,5 @@ index 80b21d1c6..f1e58e027 100644
  #define EFI_TCG2_FINAL_EVENTS_TABLE_GUID	EFI_GUID(0x1e2ed096, 0x30e2, 0x4254,  0xbd, 0x89, 0x86, 0x3b, 0xbe, 0xf8, 0x23, 0x25)
  #define EFI_LOAD_FILE_PROTOCOL_GUID		EFI_GUID(0x56ec3091, 0x954c, 0x11d2,  0x8e, 0x3f, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b)
 -- 
-2.34.1
+2.39.3 (Apple Git-146)
 
