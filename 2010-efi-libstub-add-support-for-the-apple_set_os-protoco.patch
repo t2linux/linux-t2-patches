@@ -16,25 +16,27 @@ the patch to the Linux kernel.
 
 Signed-off-by: Aditya Garg <gargaditya08@live.com>
 ---
- drivers/firmware/efi/libstub/efistub.h  | 13 ++++++++++
+ drivers/firmware/efi/libstub/efistub.h  | 15 +++++++++++
  drivers/firmware/efi/libstub/x86-stub.c | 33 ++++++++++++++++++++++---
  include/linux/efi.h                     |  1 +
- 3 files changed, 44 insertions(+), 3 deletions(-)
+ 3 files changed, 46 insertions(+), 3 deletions(-)
 
 diff --git a/drivers/firmware/efi/libstub/efistub.h b/drivers/firmware/efi/libstub/efistub.h
-index 27abb4ce0..140b8f986 100644
+index 27abb4ce0..4257a8b7c 100644
 --- a/drivers/firmware/efi/libstub/efistub.h
 +++ b/drivers/firmware/efi/libstub/efistub.h
-@@ -825,6 +825,19 @@ union apple_properties_protocol {
+@@ -825,6 +825,21 @@ union apple_properties_protocol {
  	} mixed_mode;
  };
  
 +typedef union apple_set_os_protocol apple_set_os_protocol_t;
 +
 +union apple_set_os_protocol {
-+	unsigned long version;
-+	efi_status_t (__efiapi *set_os_version) (const char *);
-+	efi_status_t (__efiapi *set_os_vendor) (const char *);
++	struct {
++		unsigned long version;
++		efi_status_t (__efiapi *set_os_version) (const char *);
++		efi_status_t (__efiapi *set_os_vendor) (const char *);
++	};
 +	struct {
 +		u32 version;
 +		u32 set_os_version;
