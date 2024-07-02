@@ -144,13 +144,13 @@ index bd022e004356..2d1cd4456303 100644
  	if (quirks & APPLE_BACKLIGHT_CTL)
  		apple_backlight_init(hdev);
  
-+	if (quirks & APPLE_MAGIC_BACKLIGHT)
++	if (quirks & APPLE_MAGIC_BACKLIGHT) {
 +		ret = apple_magic_backlight_init(hdev);
-+
-+	if (ret) {
-+		del_timer_sync(&asc->battery_timer);
-+		hid_hw_stop(hdev);
-+		return ret;
++		if (ret) {
++			del_timer_sync(&asc->battery_timer);
++			hid_hw_stop(hdev);
++			return ret;
++		}
 +	}
 +
  	return 0;
