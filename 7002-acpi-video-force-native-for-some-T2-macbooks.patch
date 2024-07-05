@@ -1,14 +1,12 @@
 From 3d4a4a3d62815f90fc65a827a3e2de96c4571350 Mon Sep 17 00:00:00 2001
 From: Orlando Chamberlain <orlandoch.dev@gmail.com>
-Date: Mon, 20 Nov 2023 10:32:23 +1100
+Date: Fri, 7 Jul 2024 23:41:23 +1100
 Subject: [PATCH 1/1] acpi video: force native for some T2 macbooks
 
-The intel backlight is needed for these.
+The intel backlight is needed for these, previously users had nothing in
+/sys/class/backlight.
 
-MacBookPro15,2/4 or MacBookPro16,3 or MacBookAir8,1/2 might also need
-this so I'm not going to be submitting this upstream  yet
-
-mbp16,3 was reported not to have this issue for 6.5.8 at least.
+Signed-off-by: Orlando Chamberlain <orlandoch.dev@gmail.com>
 ---
  drivers/acpi/video_detect.c | 16 ++++++++++++++++
  1 file changed, 16 insertions(+)
