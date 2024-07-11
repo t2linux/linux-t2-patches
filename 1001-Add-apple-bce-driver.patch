@@ -1,11 +1,11 @@
-From fb72b7575a091284a3e2bd0a955aa2c61a6f5bc4 Mon Sep 17 00:00:00 2001
+From 54a49b19e01908431a429bd136dacd30c3db0d02 Mon Sep 17 00:00:00 2001
 From: Aditya Garg <gargaditya08@live.com>
-Date: Thu, 14 Mar 2024 06:51:34 +0000
+Date: Thu, 11 Jul 2024 10:59:04 +0000
 Subject: [PATCH] Add apple-bce driver
 
 ---
  drivers/staging/apple-bce/Makefile            |  28 +
- drivers/staging/apple-bce/apple_bce.c         | 443 ++++++++++
+ drivers/staging/apple-bce/apple_bce.c         | 445 ++++++++++
  drivers/staging/apple-bce/apple_bce.h         |  38 +
  drivers/staging/apple-bce/audio/audio.c       | 711 ++++++++++++++++
  drivers/staging/apple-bce/audio/audio.h       | 125 +++
@@ -29,7 +29,7 @@ Subject: [PATCH] Add apple-bce driver
  drivers/staging/apple-bce/vhci/transfer.h     |  73 ++
  drivers/staging/apple-bce/vhci/vhci.c         | 759 ++++++++++++++++++
  drivers/staging/apple-bce/vhci/vhci.h         |  52 ++
- 25 files changed, 5637 insertions(+)
+ 25 files changed, 5639 insertions(+)
  create mode 100644 drivers/staging/apple-bce/Makefile
  create mode 100644 drivers/staging/apple-bce/apple_bce.c
  create mode 100644 drivers/staging/apple-bce/apple_bce.h
@@ -92,10 +92,10 @@ index 000000000..a6a656f06
 +	$(MAKE) -C $(KDIR) M=$(PWD) modules_install
 diff --git a/drivers/staging/apple-bce/apple_bce.c b/drivers/staging/apple-bce/apple_bce.c
 new file mode 100644
-index 000000000..ad89632df
+index 000000000..4fd2415d7
 --- /dev/null
 +++ b/drivers/staging/apple-bce/apple_bce.c
-@@ -0,0 +1,443 @@
+@@ -0,0 +1,445 @@
 +#include "apple_bce.h"
 +#include <linux/module.h>
 +#include <linux/crc32.h>
@@ -470,6 +470,8 @@ index 000000000..ad89632df
 +        { PCI_DEVICE(PCI_VENDOR_ID_APPLE, 0x1801) },
 +        { 0, },
 +};
++
++MODULE_DEVICE_TABLE(pci, apple_bce_ids);
 +
 +struct dev_pm_ops apple_bce_pci_driver_pm = {
 +        .suspend = apple_bce_suspend,
@@ -5849,5 +5851,5 @@ index 000000000..6c2e22622
 +
 +#endif //BCE_VHCI_H
 -- 
-2.43.2
+2.45.2
 
