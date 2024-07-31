@@ -1,7 +1,7 @@
-From 214ccc3abc58f1add16f360dbd39a3bf6f3889e9 Mon Sep 17 00:00:00 2001
+From 34343bfbadaa6cfb938ab17bc95bf4b0598c861e Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Tue, 16 Jul 2024 18:41:27 +0000
+Date: Wed, 31 Jul 2024 18:42:16 +0000
 Subject: [PATCH] Add APFS driver
 
 ---
@@ -40,13 +40,13 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/spaceman.c                  | 1305 +++++++++++
  fs/apfs/super.c                     | 1795 +++++++++++++++
  fs/apfs/symlink.c                   |   80 +
- fs/apfs/transaction.c               |  976 +++++++++
+ fs/apfs/transaction.c               |  997 +++++++++
  fs/apfs/unicode.c                   | 3157 +++++++++++++++++++++++++++
  fs/apfs/unicode.h                   |   27 +
  fs/apfs/version.h                   |    1 +
  fs/apfs/xattr.c                     |  922 ++++++++
  fs/apfs/xfield.c                    |  171 ++
- 41 files changed, 29015 insertions(+)
+ 41 files changed, 29036 insertions(+)
  create mode 100644 fs/apfs/Makefile
  create mode 100644 fs/apfs/apfs.h
  create mode 100644 fs/apfs/apfs_raw.h
@@ -24062,10 +24062,10 @@ index 000000000..be4f9df8f
 +};
 diff --git a/fs/apfs/transaction.c b/fs/apfs/transaction.c
 new file mode 100644
-index 000000000..ab0d51d2d
+index 000000000..7dbd7850a
 --- /dev/null
 +++ b/fs/apfs/transaction.c
-@@ -0,0 +1,976 @@
+@@ -0,0 +1,997 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2019 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -24750,7 +24750,11 @@ index 000000000..ab0d51d2d
 +	}
 +	list_for_each_entry_safe(bhi, tmp, &nx_trans->t_buffers, list) {
 +		struct buffer_head *bh = bhi->bh;
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
++		struct folio *folio = NULL;
++#else
 +		struct page *page = NULL;
++#endif
 +		bool is_metadata;
 +
 +		ASSERT(buffer_trans(bh));
@@ -24770,27 +24774,44 @@ index 000000000..ab0d51d2d
 +		kfree(bhi);
 +		bhi = NULL;
 +
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
++		folio = page_folio(bh->b_page);
++		folio_get(folio);
++#else
 +		page = bh->b_page;
 +		get_page(page);
++#endif
 +
 +		is_metadata = buffer_csum(bh);
 +		clear_buffer_csum(bh);
 +		put_bh(bh);
 +		bh = NULL;
 +
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
++		folio_lock(folio);
++		folio_mkclean(folio);
++#else
 +		/* Future writes to mmapped areas should fault for CoW */
 +		lock_page(page);
 +		page_mkclean(page);
++#endif
 +		/* XXX: otherwise, the page cache fills up and crashes the machine */
 +		if (!is_metadata) {
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
++			try_to_free_buffers(folio);
++#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0)
 +			try_to_free_buffers(page_folio(page));
 +#else
 +			try_to_free_buffers(page);
 +#endif
 +		}
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
++		folio_unlock(folio);
++		folio_put(folio);
++#else
 +		unlock_page(page);
 +		put_page(page);
++#endif
 +	}
 +	err = apfs_checkpoint_end(sb);
 +	if (err) {
@@ -28240,11 +28261,11 @@ index 000000000..e3b7edc51
 +#endif	/* _APFS_UNICODE_H */
 diff --git a/fs/apfs/version.h b/fs/apfs/version.h
 new file mode 100644
-index 000000000..3a8789fc1
+index 000000000..e16b23c10
 --- /dev/null
 +++ b/fs/apfs/version.h
 @@ -0,0 +1 @@
-+#define GIT_COMMIT	"v0.3.10"
++#define GIT_COMMIT	""
 diff --git a/fs/apfs/xattr.c b/fs/apfs/xattr.c
 new file mode 100644
 index 000000000..0de1db140
