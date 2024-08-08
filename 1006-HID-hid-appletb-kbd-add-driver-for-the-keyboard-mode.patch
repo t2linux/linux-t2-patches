@@ -1,11 +1,4 @@
-From f94e8e0b275b22c94d0cf8277c33185ed405de87 Mon Sep 17 00:00:00 2001
 From: Kerem Karabay <kekrby@gmail.com>
-Date: Sun, 5 Mar 2023 18:17:23 +0300
-Subject: [PATCH 2/2] HID: hid-appletb-kbd: add driver for the keyboard mode of
- Apple Touch Bars
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
 
 The Touch Bars found on x86 Macs support two USB configurations: one
 where the device presents itself as a HID keyboard and can display
@@ -19,13 +12,15 @@ This driver is based on previous work done by Ronald Tschalär
 <ronald@innovation.ch>.
 
 Signed-off-by: Kerem Karabay <kekrby@gmail.com>
+Co-developed-by: Aditya Garg <gargaditya08@live.com>
+Signed-off-by: Aditya Garg <gargaditya08@live.com>
 ---
  .../ABI/testing/sysfs-driver-hid-appletb-kbd  |  13 +
  drivers/hid/Kconfig                           |  11 +
  drivers/hid/Makefile                          |   1 +
- drivers/hid/hid-appletb-kbd.c                 | 303 ++++++++++++++++++
+ drivers/hid/hid-appletb-kbd.c                 | 304 ++++++++++++++++++
  drivers/hid/hid-quirks.c                      |   4 +-
- 5 files changed, 331 insertions(+), 1 deletion(-)
+ 5 files changed, 332 insertions(+), 1 deletion(-)
  create mode 100644 Documentation/ABI/testing/sysfs-driver-hid-appletb-kbd
  create mode 100644 drivers/hid/hid-appletb-kbd.c
 
@@ -84,10 +79,10 @@ index 1d825a474..d903c9a26 100644
  obj-$(CONFIG_HID_AUREAL)	+= hid-aureal.o
 diff --git a/drivers/hid/hid-appletb-kbd.c b/drivers/hid/hid-appletb-kbd.c
 new file mode 100644
-index 000000000..0b6ac8c59
+index 000000000..e07d57573
 --- /dev/null
 +++ b/drivers/hid/hid-appletb-kbd.c
-@@ -0,0 +1,303 @@
+@@ -0,0 +1,304 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Apple Touch Bar Keyboard Mode Driver
@@ -132,7 +127,7 @@ index 000000000..0b6ac8c59
 +	u8 current_mode;
 +};
 +
-+static const struct key_entry appletb_kbd_keymap_spcl[] = {
++static const struct key_entry appletb_kbd_keymap[] = {
 +	{ KE_KEY, KEY_ESC, { KEY_ESC } },
 +	{ KE_KEY, KEY_F1,  { KEY_BRIGHTNESSDOWN } },
 +	{ KE_KEY, KEY_F2,  { KEY_BRIGHTNESSUP } },
@@ -264,6 +259,7 @@ index 000000000..0b6ac8c59
 +
 +static int appletb_kbd_input_configured(struct hid_device *hdev, struct hid_input *hidinput)
 +{
++	int idx;
 +	struct input_dev *input = hidinput->input;
 +
 +	/*
@@ -276,10 +272,10 @@ index 000000000..0b6ac8c59
 +
 +	__set_bit(EV_REP, input->evbit);
 +
-+	sparse_keymap_setup(input, appletb_kbd_keymap_spcl, NULL);
++	sparse_keymap_setup(input, appletb_kbd_keymap, NULL);
 +
-+	for (int i = KEY_F1; i <= KEY_F12; i++) {
-+		input_set_capability(input, EV_KEY, i);
++	for (idx = 0; appletb_kbd_keymap[idx].type != KE_END; idx++) {
++		input_set_capability(input, EV_KEY, appletb_kbd_keymap[idx].code);
 +	}
 +
 +	return 0;
@@ -414,5 +410,5 @@ index 818d41a35..7c576d654 100644
  	{ HID_I2C_DEVICE(USB_VENDOR_ID_ASUSTEK, USB_DEVICE_ID_ASUSTEK_I2C_KEYBOARD) },
  	{ HID_I2C_DEVICE(USB_VENDOR_ID_ASUSTEK, USB_DEVICE_ID_ASUSTEK_I2C_TOUCHPAD) },
 -- 
-2.39.3 (Apple Git-146)
+2.43.0
 
