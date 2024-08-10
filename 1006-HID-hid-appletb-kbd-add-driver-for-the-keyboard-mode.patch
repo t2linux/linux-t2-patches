@@ -79,7 +79,7 @@ index 1d825a474..d903c9a26 100644
  obj-$(CONFIG_HID_AUREAL)	+= hid-aureal.o
 diff --git a/drivers/hid/hid-appletb-kbd.c b/drivers/hid/hid-appletb-kbd.c
 new file mode 100644
-index 000000000..e07d57573
+index 000000000..ecac68fc7
 --- /dev/null
 +++ b/drivers/hid/hid-appletb-kbd.c
 @@ -0,0 +1,304 @@
@@ -113,12 +113,12 @@ index 000000000..e07d57573
 +
 +#define HID_USAGE_MODE		0x00ff0004
 +
-+static int appletb_tb_def_mode = APPLETB_KBD_MODE_FN;
++static int appletb_tb_def_mode = APPLETB_KBD_MODE_SPCL;
 +module_param_named(mode, appletb_tb_def_mode, int, 0444);
 +MODULE_PARM_DESC(mode, "Default touchbar mode:\n"
 +			 "    0 - escape key only\n"
-+			 "    [1] - function-keys only\n"
-+			 "    2 - special keys only");
++			 "    1 - function-keys\n"
++			 "    [2] - special keys");
 +
 +struct appletb_kbd {
 +	struct hid_field *mode_field;
