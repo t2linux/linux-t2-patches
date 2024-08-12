@@ -1,5 +1,9 @@
+From 006a51516285ebaa8333d19fb76efbc81e5cdb3e Mon Sep 17 00:00:00 2001
 From: Aditya Garg <gargaditya08@live.com>
-HID: hid-appletb-kbd: add support for fn toggle between media and function mode
+Date: Fri, 9 Aug 2024 19:40:53 +0530
+Subject: [PATCH] HID: hid-appletb-kbd: add support for fn toggle between media
+ and function mode
+ 
 This patch adds support for the switching between the Media and Function
 keys on the touchbar by pressing the Fn key on Apple Internal Keyboard.
 
