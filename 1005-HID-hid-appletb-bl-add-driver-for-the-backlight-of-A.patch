@@ -14,32 +14,16 @@ This driver is based on previous work done by Ronald Tschalär
 <ronald@innovation.ch>.
 
 Signed-off-by: Kerem Karabay <kekrby@gmail.com>
+Co-developed-by: Aditya Garg <gargaditya08@live.com>
+Signed-off-by: Aditya Garg <gargaditya08@live.com>
 ---
- MAINTAINERS                  |   6 +
  drivers/hid/Kconfig          |  10 ++
  drivers/hid/Makefile         |   1 +
- drivers/hid/hid-appletb-bl.c | 206 +++++++++++++++++++++++++++++++++++
+ drivers/hid/hid-appletb-bl.c | 207 +++++++++++++++++++++++++++++++++++
  drivers/hid/hid-quirks.c     |   4 +-
- 5 files changed, 226 insertions(+), 1 deletion(-)
+ 4 files changed, 221 insertions(+), 1 deletion(-)
  create mode 100644 drivers/hid/hid-appletb-bl.c
 
-diff --git a/MAINTAINERS b/MAINTAINERS
-index 8766f3e5e..ac27f41d4 100644
---- a/MAINTAINERS
-+++ b/MAINTAINERS
-@@ -9931,6 +9931,12 @@ F:	include/linux/pm.h
- F:	include/linux/suspend.h
- F:	kernel/power/
- 
-+HID APPLE TOUCH BAR DRIVERS
-+M:	Kerem Karabay <kekrby@gmail.com>
-+L:	linux-input@vger.kernel.org
-+S:	Maintained
-+F:	drivers/hid/hid-appletb-*
-+
- HID CORE LAYER
- M:	Jiri Kosina <jikos@kernel.org>
- M:	Benjamin Tissoires <bentiss@kernel.org>
 diff --git a/drivers/hid/Kconfig b/drivers/hid/Kconfig
 index 08446c89e..4988c1fb2 100644
 --- a/drivers/hid/Kconfig
@@ -75,10 +59,10 @@ index e40f1ddeb..1d825a474 100644
  obj-$(CONFIG_HID_AUREAL)	+= hid-aureal.o
 diff --git a/drivers/hid/hid-appletb-bl.c b/drivers/hid/hid-appletb-bl.c
 new file mode 100644
-index 000000000..00bbe45df
+index 000000000..819157686
 --- /dev/null
 +++ b/drivers/hid/hid-appletb-bl.c
-@@ -0,0 +1,206 @@
+@@ -0,0 +1,207 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Apple Touch Bar Backlight Driver
@@ -91,6 +75,7 @@ index 000000000..00bbe45df
 +
 +#include <linux/hid.h>
 +#include <linux/backlight.h>
++#include <linux/device.h>
 +
 +#include "hid-ids.h"
 +
@@ -118,10 +103,10 @@ index 000000000..00bbe45df
 +	bool full_on;
 +};
 +
-+const u8 appletb_bl_brightness_map[] = {
++static const u8 appletb_bl_brightness_map[] = {
 +	APPLETB_BL_OFF,
 +	APPLETB_BL_DIM,
-+	APPLETB_BL_ON
++	APPLETB_BL_ON,
 +};
 +
 +static int appletb_bl_set_brightness(struct appletb_bl *bl, u8 brightness)
@@ -165,14 +150,14 @@ index 000000000..00bbe45df
 +static int appletb_bl_update_status(struct backlight_device *bdev)
 +{
 +	struct appletb_bl *bl = bl_get_data(bdev);
-+	u16 brightness;
++	u8 brightness;
 +
-+	if (bdev->props.state & BL_CORE_SUSPENDED)
-+		brightness = 0;
++	if (backlight_is_blank(bdev))
++		brightness = APPLETB_BL_OFF;
 +	else
-+		brightness = backlight_get_brightness(bdev);
++		brightness = appletb_bl_brightness_map[backlight_get_brightness(bdev)];
 +
-+	return appletb_bl_set_brightness(bl, appletb_bl_brightness_map[brightness]);
++	return appletb_bl_set_brightness(bl, brightness);
 +}
 +
 +static const struct backlight_ops appletb_bl_backlight_ops = {
