@@ -1,4 +1,4 @@
-From 9f042a8ed567fbf52d612895fc09c70c60fc3877 Mon Sep 17 00:00:00 2001
+From 2da6d2e69ef783433a50cb8258bbf80a70ae88aa Mon Sep 17 00:00:00 2001
 From: Aditya Garg <gargaditya08@live.com>
 Date: Tue, 20 Aug 2024 18:37:19 +0530
 Subject: [PATCH] HID: hid-appletb-kbd: add support for automatic dimming of
@@ -14,11 +14,11 @@ dim_timeout and idle_timeout module parameters.
 
 Signed-off-by: Aditya Garg <gargaditya08@live.com>
 ---
- drivers/hid/hid-appletb-kbd.c | 71 +++++++++++++++++++++++++++++++++--
- 1 file changed, 67 insertions(+), 4 deletions(-)
+ drivers/hid/hid-appletb-kbd.c | 77 +++++++++++++++++++++++++++++++++--
+ 1 file changed, 73 insertions(+), 4 deletions(-)
 
 diff --git a/drivers/hid/hid-appletb-kbd.c b/drivers/hid/hid-appletb-kbd.c
-index 442c4d884..6465c6b4c 100644
+index 442c4d884..c26b7a19a 100644
 --- a/drivers/hid/hid-appletb-kbd.c
 +++ b/drivers/hid/hid-appletb-kbd.c
 @@ -16,6 +16,8 @@
@@ -38,10 +38,14 @@ index 442c4d884..6465c6b4c 100644
  
  #define HID_USAGE_MODE		0x00ff0004
  
-@@ -41,14 +44,25 @@ static bool appletb_tb_fn_toggle = true;
+@@ -41,14 +44,29 @@ static bool appletb_tb_fn_toggle = true;
  module_param_named(fntoggle, appletb_tb_fn_toggle, bool, 0644);
  MODULE_PARM_DESC(fntoggle, "Switch between Fn and media controls on pressing Fn key");
  
++static bool appletb_tb_autodim = true;
++module_param_named(autodim, appletb_tb_autodim, bool, 0644);
++MODULE_PARM_DESC(autodim, "Automatically dim touchbar if left idle");
++
 +static int appletb_tb_dim_timeout = 60;
 +module_param_named(dim_timeout, appletb_tb_dim_timeout, int, 0644);
 +MODULE_PARM_DESC(dim_timeout, "Dim timeout in sec");
@@ -68,7 +72,7 @@ index 442c4d884..6465c6b4c 100644
  };
  
  static const struct key_entry appletb_kbd_keymap[] = {
-@@ -146,6 +160,32 @@ static int appletb_tb_key_to_slot(unsigned int code)
+@@ -146,6 +164,34 @@ static int appletb_tb_key_to_slot(unsigned int code)
  	}
  }
  
@@ -76,7 +80,7 @@ index 442c4d884..6465c6b4c 100644
 +{
 +	struct appletb_kbd *kbd = from_timer(kbd, t, inactivity_timer);
 +
-+	if (kbd->backlight_dev) {
++	if (kbd->backlight_dev && appletb_tb_autodim) {
 +		if (!kbd->has_dimmed) {
 +			backlight_device_set_brightness(kbd->backlight_dev, 1);
 +			kbd->has_dimmed = true;
@@ -92,16 +96,18 @@ index 442c4d884..6465c6b4c 100644
 +{
 +	if ((kbd->has_dimmed || kbd->has_turned_off) && kbd->backlight_dev) {
 +		backlight_device_set_brightness(kbd->backlight_dev, 2);
-+		kbd->has_dimmed = false;
-+		kbd->has_turned_off = false;
-+		mod_timer(&kbd->inactivity_timer, jiffies + msecs_to_jiffies(appletb_tb_dim_timeout * 1000));
++		if (appletb_tb_autodim) {
++			kbd->has_dimmed = false;
++			kbd->has_turned_off = false;
++			mod_timer(&kbd->inactivity_timer, jiffies + msecs_to_jiffies(appletb_tb_dim_timeout * 1000));
++		}
 +	}
 +}
 +
  static int appletb_kbd_hid_event(struct hid_device *hdev, struct hid_field *field,
  				      struct hid_usage *usage, __s32 value)
  {
-@@ -170,6 +210,8 @@ static int appletb_kbd_hid_event(struct hid_device *hdev, struct hid_field *fiel
+@@ -170,6 +216,8 @@ static int appletb_kbd_hid_event(struct hid_device *hdev, struct hid_field *fiel
  	if (slot < 0)
  		return 0;
  
@@ -110,7 +116,7 @@ index 442c4d884..6465c6b4c 100644
  	translation = sparse_keymap_entry_from_scancode(input, usage->code);
  
  	if (translation && kbd->current_mode == APPLETB_KBD_MODE_SPCL) {
-@@ -186,6 +228,8 @@ static void appletb_kbd_inp_event(struct input_handle *handle, unsigned int type
+@@ -186,6 +234,8 @@ static void appletb_kbd_inp_event(struct input_handle *handle, unsigned int type
  {
  	struct appletb_kbd *kbd = handle->private;
  
@@ -119,7 +125,7 @@ index 442c4d884..6465c6b4c 100644
  	if (type == EV_KEY && code == KEY_FN && appletb_tb_fn_toggle) {
  		if (value == 1) {
  			kbd->saved_mode = kbd->current_mode;
-@@ -211,6 +255,9 @@ static int appletb_kbd_inp_connect(struct input_handler *handler,
+@@ -211,6 +261,9 @@ static int appletb_kbd_inp_connect(struct input_handler *handler,
  	if (id->driver_info == APPLETB_DEVID_KEYBOARD) {
  		handle = &kbd->kbd_handle;
  		handle->name = "tbkbd";
@@ -129,7 +135,7 @@ index 442c4d884..6465c6b4c 100644
  	} else {
  		return -ENOENT;
  	}
-@@ -284,6 +331,15 @@ static const struct input_device_id appletb_kbd_input_devices[] = {
+@@ -284,6 +337,15 @@ static const struct input_device_id appletb_kbd_input_devices[] = {
  		.keybit = { [BIT_WORD(KEY_FN)] = BIT_MASK(KEY_FN) },
  		.driver_info = APPLETB_DEVID_KEYBOARD,
  	},
@@ -145,7 +151,7 @@ index 442c4d884..6465c6b4c 100644
  	{ }
  };
  
-@@ -340,6 +396,12 @@ static int appletb_kbd_probe(struct hid_device *hdev, const struct hid_device_id
+@@ -340,6 +402,12 @@ static int appletb_kbd_probe(struct hid_device *hdev, const struct hid_device_id
  		goto stop_hw;
  	}
  
@@ -158,7 +164,7 @@ index 442c4d884..6465c6b4c 100644
  	kbd->inp_handler.event = appletb_kbd_inp_event;
  	kbd->inp_handler.connect = appletb_kbd_inp_connect;
  	kbd->inp_handler.disconnect = appletb_kbd_inp_disconnect;
-@@ -378,6 +440,7 @@ static void appletb_kbd_remove(struct hid_device *hdev)
+@@ -378,6 +446,7 @@ static void appletb_kbd_remove(struct hid_device *hdev)
  	appletb_kbd_set_mode(kbd, APPLETB_KBD_MODE_OFF);
  
  	input_unregister_handler(&kbd->inp_handler);
