@@ -1,17 +1,17 @@
-From 59f0061bac804a1d53aada580865d13d65cc7e13 Mon Sep 17 00:00:00 2001
+From b39e97f674ca3007d01ab898b282c6c626561212 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Fri, 13 Sep 2024 18:44:07 +0000
+Date: Wed, 31 Jul 2024 18:42:17 +0000
 Subject: [PATCH] Add APFS driver
 
 ---
  fs/apfs/Makefile                    |   23 +
- fs/apfs/apfs.h                      | 1185 ++++++++++
+ fs/apfs/apfs.h                      | 1180 ++++++++++
  fs/apfs/apfs_raw.h                  | 1562 +++++++++++++
  fs/apfs/btree.c                     | 1174 ++++++++++
  fs/apfs/compress.c                  |  474 ++++
  fs/apfs/dir.c                       | 1544 +++++++++++++
- fs/apfs/extents.c                   | 2394 ++++++++++++++++++++
+ fs/apfs/extents.c                   | 2392 ++++++++++++++++++++
  fs/apfs/file.c                      |  220 ++
  fs/apfs/inode.c                     | 2569 ++++++++++++++++++++++
  fs/apfs/key.c                       |  334 +++
@@ -38,15 +38,15 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/object.c                    |  315 +++
  fs/apfs/snapshot.c                  |  681 ++++++
  fs/apfs/spaceman.c                  | 1305 +++++++++++
- fs/apfs/super.c                     | 1946 +++++++++++++++++
+ fs/apfs/super.c                     | 1795 +++++++++++++++
  fs/apfs/symlink.c                   |   80 +
- fs/apfs/transaction.c               |  987 +++++++++
- fs/apfs/unicode.c                   | 3160 +++++++++++++++++++++++++++
+ fs/apfs/transaction.c               |  997 +++++++++
+ fs/apfs/unicode.c                   | 3157 +++++++++++++++++++++++++++
  fs/apfs/unicode.h                   |   27 +
  fs/apfs/version.h                   |    1 +
  fs/apfs/xattr.c                     |  922 ++++++++
  fs/apfs/xfield.c                    |  171 ++
- 41 files changed, 29187 insertions(+)
+ 41 files changed, 29036 insertions(+)
  create mode 100644 fs/apfs/Makefile
  create mode 100644 fs/apfs/apfs.h
  create mode 100644 fs/apfs/apfs_raw.h
@@ -120,10 +120,10 @@ index 000000000..ab4c49d55
 +	make -C $(KERNEL_DIR) M=$(PWD) clean
 diff --git a/fs/apfs/apfs.h b/fs/apfs/apfs.h
 new file mode 100644
-index 000000000..9ffa9f11b
+index 000000000..f09b3f6a5
 --- /dev/null
 +++ b/fs/apfs/apfs.h
-@@ -0,0 +1,1185 @@
+@@ -0,0 +1,1180 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -343,11 +343,6 @@ index 000000000..9ffa9f11b
 +/* Mount option flags for a container */
 +#define APFS_CHECK_NODES	1
 +#define APFS_READWRITE		2
-+/*
-+ * Mount options for a container are decided on its first mount. This flag lets
-+ * future mounts know that has happened already.
-+ */
-+#define APFS_FLAGS_SET		4
 +
 +/*
 + * Container superblock data in memory
@@ -6089,10 +6084,10 @@ index 000000000..416f42f02
 +}
 diff --git a/fs/apfs/extents.c b/fs/apfs/extents.c
 new file mode 100644
-index 000000000..11025f6b2
+index 000000000..c8ae4092a
 --- /dev/null
 +++ b/fs/apfs/extents.c
-@@ -0,0 +1,2394 @@
+@@ -0,0 +1,2392 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -6103,9 +6098,7 @@ index 000000000..11025f6b2
 +#include <linux/blk_types.h>
 +#include "apfs.h"
 +
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
-+#define MAX(X, Y)	((X) <= (Y) ? (Y) : (X))
-+#endif
++#define APFS_MAX(X, Y)	((X) <= (Y) ? (Y) : (X))
 +
 +/**
 + * apfs_ext_is_hole - Does this extent represent a hole in a sparse file?
@@ -8070,7 +8063,7 @@ index 000000000..11025f6b2
 +	prev_end = prev_ext.bno + prev_ext.blkcount;
 +	if (prev_end < *paddr_end) {
 +		/* The extent to put is part of a snapshot */
-+		tmp.phys_block_num = MAX(prev_end, paddr_min);
++		tmp.phys_block_num = APFS_MAX(prev_end, paddr_min);
 +		tmp.len = (*paddr_end - tmp.phys_block_num) << sb->s_blocksize_bits;
 +		ret = apfs_create_update_pext(query, &tmp, -1);
 +		*paddr_end = tmp.phys_block_num;
@@ -8210,7 +8203,7 @@ index 000000000..11025f6b2
 +	prev_end = prev_ext.bno + prev_ext.blkcount;
 +	if (prev_end < *paddr_end) {
 +		/* The extent to take is part of a snapshot */
-+		tmp.phys_block_num = MAX(prev_end, paddr_min);
++		tmp.phys_block_num = APFS_MAX(prev_end, paddr_min);
 +		tmp.len = (*paddr_end - tmp.phys_block_num) << sb->s_blocksize_bits;
 +		ret = apfs_create_update_pext(query, &tmp, +1);
 +		*paddr_end = tmp.phys_block_num;
@@ -11648,7 +11641,7 @@ index 000000000..74799d8b1
 +#include <linux/string.h>
 +#include "libzbitmap.h"
 +
-+#define MIN(x, y)   ((x) > (y) ? (y) : (x))
++#define APFS_MIN(x, y)   ((x) > (y) ? (y) : (x))
 +
 +#define ZBM_MAGIC       "ZBM\x09"
 +#define ZBM_MAGIC_SZ    4
@@ -22182,10 +22175,10 @@ index 000000000..b8d4b05f5
 +}
 diff --git a/fs/apfs/super.c b/fs/apfs/super.c
 new file mode 100644
-index 000000000..5fc2b2bf9
+index 000000000..993e9a000
 --- /dev/null
 +++ b/fs/apfs/super.c
-@@ -0,0 +1,1946 @@
+@@ -0,0 +1,1795 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -22211,26 +22204,8 @@ index 000000000..5fc2b2bf9
 +#endif
 +
 +/* Keep a list of mounted containers, so that their volumes can share them */
-+static LIST_HEAD(nxs);
-+/*
-+ * The main purpose of this mutex is to protect the list of containers and
-+ * their reference counts, but it also has other uses during mounts/unmounts:
-+ *   - it prevents new mounts from starting while an unmount is updating the
-+ *     backup superblock (apfs_attach_nxi vs apfs_make_super_copy)
-+ *   - it prevents a new container superblock read from starting while another
-+ *     is taking place, which could cause leaks and other issues if both
-+ *     containers are the same (apfs_read_main_super vs itself)
-+ *   - it protects the list of volumes for each container, and keeps it
-+ *     consistent with the reference count
-+ *   - it prevents two different snapshots for a single volume from trying to
-+ *     do the first read of their shared omap at the same time
-+ *     (apfs_first_read_omap vs itself)
-+ *   - it protects the reference count for that shared omap, keeping it
-+ *     consistent with the number of volumes that are set with that omap
-+ *   - it protects the container mount flags, so that they can only be set by
-+ *     the first volume mount to attempt it (apfs_set_nx_flags vs itself)
-+ */
 +DEFINE_MUTEX(nxs_mutex);
++static LIST_HEAD(nxs);
 +
 +/**
 + * apfs_nx_find_by_dev - Search for a device in the list of mounted containers
@@ -22345,11 +22320,7 @@ index 000000000..5fc2b2bf9
 +	if (!(nxi->nx_flags & APFS_READWRITE))
 +		return;
 +
-+	/*
-+	 * Only update the backup when the last volume is getting unmounted.
-+	 * Of course a new mounter could still come along before we actually
-+	 * release the nxi.
-+	 */
++	/* Only update the backup once all volumes are unmounted */
 +	mutex_lock(&nxs_mutex);
 +	if (nxi->nx_refcnt > 1)
 +		goto out_unlock;
@@ -22367,7 +22338,6 @@ index 000000000..5fc2b2bf9
 +}
 +
 +static int apfs_check_nx_features(struct super_block *sb);
-+static void apfs_set_trans_buffer_limit(struct super_block *sb);
 +
 +/**
 + * apfs_read_main_super - Find the container superblock and read it into memory
@@ -22379,7 +22349,7 @@ index 000000000..5fc2b2bf9
 +static int apfs_read_main_super(struct super_block *sb)
 +{
 +	struct apfs_nxsb_info *nxi = APFS_NXI(sb);
-+	struct buffer_head *bh = NULL;
++	struct buffer_head *bh;
 +	struct buffer_head *desc_bh = NULL;
 +	struct apfs_nx_superblock *msb_raw;
 +	u64 xid, bno = APFS_NX_BLOCK_NUM;
@@ -22388,24 +22358,19 @@ index 000000000..5fc2b2bf9
 +	int err = -EINVAL;
 +	int i;
 +
-+	mutex_lock(&nxs_mutex);
-+
-+	if (nxi->nx_blocksize) {
++	lockdep_assert_held(&nxs_mutex);
++	if (nxi->nx_refcnt > 1) {
 +		/* It's already mapped */
 +		sb->s_blocksize = nxi->nx_blocksize;
 +		sb->s_blocksize_bits = nxi->nx_blocksize_bits;
 +		sb->s_magic = le32_to_cpu(nxi->nx_raw->nx_magic);
-+		err = 0;
-+		goto out;
++		return 0;
 +	}
 +
 +	/* Read the superblock from the last clean unmount */
 +	bh = apfs_read_super_copy(sb);
-+	if (IS_ERR(bh)) {
-+		err = PTR_ERR(bh);
-+		bh = NULL;
-+		goto out;
-+	}
++	if (IS_ERR(bh))
++		return PTR_ERR(bh);
 +	msb_raw = (struct apfs_nx_superblock *)bh->b_data;
 +
 +	/* We want to mount the latest valid checkpoint among the descriptors */
@@ -22413,13 +22378,13 @@ index 000000000..5fc2b2bf9
 +	if (desc_base >> 63 != 0) {
 +		/* The highest bit is set when checkpoints are not contiguous */
 +		apfs_err(sb, "checkpoint descriptor tree not yet supported");
-+		goto out;
++		goto fail;
 +	}
 +	desc_blocks = le32_to_cpu(msb_raw->nx_xp_desc_blocks);
 +	if (desc_blocks > 10000) { /* Arbitrary loop limit, is it enough? */
 +		apfs_err(sb, "too many checkpoint descriptors?");
 +		err = -EFSCORRUPTED;
-+		goto out;
++		goto fail;
 +	}
 +
 +	/* Now we go through the checkpoints one by one */
@@ -22431,7 +22396,7 @@ index 000000000..5fc2b2bf9
 +		desc_bh = apfs_sb_bread(sb, desc_base + i);
 +		if (!desc_bh) {
 +			apfs_err(sb, "unable to read checkpoint descriptor");
-+			goto out;
++			goto fail;
 +		}
 +		desc_raw = (struct apfs_nx_superblock *)desc_bh->b_data;
 +
@@ -22453,7 +22418,7 @@ index 000000000..5fc2b2bf9
 +	nxi->nx_raw = kmalloc(sb->s_blocksize, GFP_KERNEL);
 +	if (!nxi->nx_raw) {
 +		err = -ENOMEM;
-+		goto out;
++		goto fail;
 +	}
 +	memcpy(nxi->nx_raw, bh->b_data, sb->s_blocksize);
 +	nxi->nx_bno = bno;
@@ -22462,12 +22427,10 @@ index 000000000..5fc2b2bf9
 +	/* For now we only support blocksize < PAGE_SIZE */
 +	nxi->nx_blocksize = sb->s_blocksize;
 +	nxi->nx_blocksize_bits = sb->s_blocksize_bits;
-+	apfs_set_trans_buffer_limit(sb);
 +
 +	err = apfs_check_nx_features(sb);
-+out:
++fail:
 +	brelse(bh);
-+	mutex_unlock(&nxs_mutex);
 +	return err;
 +}
 +
@@ -22518,7 +22481,7 @@ index 000000000..5fc2b2bf9
 +		mode |= FMODE_WRITE;
 +#endif
 +
-+	mutex_lock(&nxs_mutex);
++	lockdep_assert_held(&nxs_mutex);
 +
 +	list_del(&sbi->list);
 +	if (--nxi->nx_refcnt)
@@ -22555,7 +22518,6 @@ index 000000000..5fc2b2bf9
 +	kfree(nxi);
 +out:
 +	sbi->s_nxi = NULL;
-+	mutex_unlock(&nxs_mutex);
 +}
 +
 +/**
@@ -22606,24 +22568,6 @@ index 000000000..5fc2b2bf9
 +fail:
 +	brelse(bh);
 +	return err;
-+}
-+
-+/**
-+ * apfs_alloc_omap - Allocate and initialize an object map struct
-+ *
-+ * Returns the struct, or NULL in case of allocation failure.
-+ */
-+static struct apfs_omap *apfs_alloc_omap(void)
-+{
-+	struct apfs_omap *omap = NULL;
-+	struct apfs_omap_cache *cache = NULL;
-+
-+	omap = kzalloc(sizeof(*omap), GFP_KERNEL);
-+	if (!omap)
-+		return NULL;
-+	cache = &omap->omap_cache;
-+	spin_lock_init(&cache->lock);
-+	return omap;
 +}
 +
 +/**
@@ -22689,7 +22633,7 @@ index 000000000..5fc2b2bf9
 +	brelse(bh);
 +	bh = NULL;
 +
-+	omap = apfs_alloc_omap();
++	omap = kzalloc(sizeof(*omap), GFP_KERNEL);
 +	if (!omap) {
 +		apfs_node_free(vnode);
 +		return -ENOMEM;
@@ -22752,14 +22696,6 @@ index 000000000..5fc2b2bf9
 +			continue;
 +		if (curr->s_vol_nr == sbi->s_vol_nr) {
 +			omap = curr->s_omap;
-+			if (!omap) {
-+				/*
-+				 * This volume has already gone through
-+				 * apfs_attach_nxi(), but its omap is either
-+				 * not yet read or already put.
-+				 */
-+				continue;
-+			}
 +			cache = &omap->omap_cache;
 +			++omap->omap_refcnt;
 +			/* Right now the cache can't be shared like this */
@@ -22843,79 +22779,51 @@ index 000000000..5fc2b2bf9
 + */
 +static int apfs_first_read_omap(struct super_block *sb)
 +{
-+	struct apfs_sb_info *sbi = NULL;
++	struct apfs_sb_info *sbi = APFS_SB(sb);
 +	struct apfs_omap *omap = NULL;
 +	int err;
 +
-+	/*
-+	 * For each volume, the first mount that gets here is responsible
-+	 * for reading the omap. Other mounts (for other snapshots) just
-+	 * go through the container's volume list to retrieve it. This results
-+	 * in coarse locking as usual: with some thought it would be possible
-+	 * to allow other volumes to read their own omaps at the same time,
-+	 * but I don't see the point.
-+	 */
-+	mutex_lock(&nxs_mutex);
-+
-+	sbi = APFS_SB(sb);
++	lockdep_assert_held(&nxs_mutex);
 +
 +	/* The current transaction and all snapshots share a single omap */
 +	omap = apfs_get_omap(sb);
 +	if (omap) {
 +		sbi->s_omap = omap;
-+		err = 0;
-+		goto out;
++		return 0;
 +	}
 +
-+	omap = apfs_alloc_omap();
-+	if (!omap) {
-+		err = -ENOMEM;
-+		goto out;
-+	}
++	omap = kzalloc(sizeof(*omap), GFP_KERNEL);
++	if (!omap)
++		return -ENOMEM;
 +
 +	sbi->s_omap = omap;
 +	err = apfs_read_omap(sb, false /* write */);
 +	if (err) {
 +		kfree(omap);
 +		sbi->s_omap = NULL;
-+		goto out;
++		return err;
 +	}
 +
 +	++omap->omap_refcnt;
-+	err = 0;
-+out:
-+	mutex_unlock(&nxs_mutex);
-+	return err;
++	return 0;
 +}
 +
 +/**
-+ * apfs_unset_omap - Unset the object map in a superblock
-+ * @sb: superblock structure
-+ *
-+ * Shrinks the omap reference, frees the omap if needed, and sets the field to
-+ * NULL atomically in relation to apfs_first_read_omap(). So, no other mount
-+ * can grab a new reference halfway through.
++ * apfs_put_omap - Release a reference to an object map
++ * @omap: the object map
 + */
-+static void apfs_unset_omap(struct super_block *sb)
++static void apfs_put_omap(struct apfs_omap *omap)
 +{
-+	struct apfs_omap **omap_p = NULL;
-+	struct apfs_omap *omap = NULL;
++	lockdep_assert_held(&nxs_mutex);
 +
-+	omap_p = &APFS_SB(sb)->s_omap;
-+	omap = *omap_p;
 +	if (!omap)
 +		return;
 +
-+	mutex_lock(&nxs_mutex);
-+
 +	if (--omap->omap_refcnt != 0)
-+		goto out;
++		return;
 +
 +	apfs_node_free(omap->omap_root);
 +	kfree(omap);
-+out:
-+	*omap_p = NULL;
-+	mutex_unlock(&nxs_mutex);
 +}
 +
 +/**
@@ -22964,13 +22872,9 @@ index 000000000..5fc2b2bf9
 +		struct apfs_superblock *vsb_raw;
 +		struct buffer_head *vsb_bh;
 +		struct apfs_max_ops maxops = {0};
-+		int err;
 +
-+		err = apfs_transaction_start(sb, maxops);
-+		if (err) {
-+			apfs_err(sb, "unmount transaction start failed (err:%d)", err);
++		if (apfs_transaction_start(sb, maxops))
 +			goto fail;
-+		}
 +		vsb_raw = sbi->s_vsb_raw;
 +		vsb_bh = sbi->s_vobject.o_bh;
 +
@@ -22983,9 +22887,7 @@ index 000000000..5fc2b2bf9
 +
 +		/* Guarantee commit */
 +		sbi->s_nxi->nx_transaction.t_state |= APFS_NX_TRANS_FORCE_COMMIT;
-+		err = apfs_transaction_commit(sb);
-+		if (err) {
-+			apfs_err(sb, "unmount transaction commit failed (err:%d)", err);
++		if (apfs_transaction_commit(sb)) {
 +			apfs_transaction_abort(sb);
 +			goto fail;
 +		}
@@ -22998,18 +22900,25 @@ index 000000000..5fc2b2bf9
 +	apfs_make_super_copy(sb);
 +
 +fail:
-+	/*
-+	 * This is essentially the cleanup for apfs_fill_super(). It goes here
-+	 * because generic_shutdown_super() only calls ->put_super() when the
-+	 * root dentry has been set, that is, when apfs_fill_super() succeeded.
-+	 * The rest of the mount cleanup is done directly by ->kill_sb().
-+	 */
 +	iput(sbi->s_private_dir);
 +	sbi->s_private_dir = NULL;
++
 +	apfs_node_free(sbi->s_cat_root);
-+	sbi->s_cat_root = NULL;
-+	apfs_unset_omap(sb);
 +	apfs_unmap_volume_super(sb);
++
++	mutex_lock(&nxs_mutex);
++	apfs_put_omap(sbi->s_omap);
++	sbi->s_omap = NULL;
++	apfs_free_main_super(sbi);
++	mutex_unlock(&nxs_mutex);
++
++	sb->s_fs_info = NULL;
++
++	kfree(sbi->s_snap_name);
++	sbi->s_snap_name = NULL;
++	if (sbi->s_dflt_pfk)
++		kfree(sbi->s_dflt_pfk);
++	kfree(sbi);
 +}
 +
 +static struct kmem_cache *apfs_inode_cachep;
@@ -23156,7 +23065,7 @@ index 000000000..5fc2b2bf9
 +		return PTR_ERR(vnode);
 +	}
 +
-+	omap = apfs_alloc_omap();
++	omap = kzalloc(sizeof(*omap), GFP_KERNEL);
 +	if (!omap) {
 +		err = -ENOMEM;
 +		goto fail;
@@ -23343,16 +23252,66 @@ index 000000000..5fc2b2bf9
 +{
 +	struct apfs_nxsb_info *nxi = APFS_SB(sb)->s_nxi;
 +
-+	mutex_lock(&nxs_mutex);
++	lockdep_assert_held(&nxs_mutex);
 +
-+	/* The first mount thet gets here decides the flags for its container */
-+	flags |= APFS_FLAGS_SET;
-+	if (!(nxi->nx_flags & APFS_FLAGS_SET))
++	/* The mount flags can only be set when the container is first mounted */
++	if (nxi->nx_refcnt == 1)
 +		nxi->nx_flags = flags;
 +	else if (flags != nxi->nx_flags)
 +		apfs_warn(sb, "ignoring mount flags - container already mounted");
++}
 +
-+	mutex_unlock(&nxs_mutex);
++/**
++ * apfs_get_vol_number - Retrieve the volume number from the mount options
++ * @options:	string of mount options
++ *
++ * On error, it will just return the default volume 0.
++ */
++static unsigned int apfs_get_vol_number(char *options)
++{
++	char needle[] = "vol=";
++	char *volstr;
++	long vol;
++
++	if (!options)
++		return 0;
++
++	/* TODO: just parse all the options once... */
++	volstr = strstr(options, needle);
++	if (!volstr)
++		return 0;
++	volstr += sizeof(needle) - 1;
++
++	/* TODO: other bases? */
++	if (kstrtol(volstr, 10, &vol) < 0)
++		return 0;
++	return vol;
++}
++
++/**
++ * apfs_get_snap_name - Duplicate the snapshot label from the mount options
++ * @options:	string of mount options
++ *
++ * On error, it will just return the default NULL snapshot name. TODO: this is
++ * actually a bit dangerous because a memory allocation failure might get the
++ * same snapshot mounted twice, without a shared superblock.
++ */
++static char *apfs_get_snap_name(char *options)
++{
++	char needle[] = "snap=";
++	char *name = NULL, *end = NULL;
++
++	if (!options)
++		return NULL;
++
++	name = strstr(options, needle);
++	if (!name)
++		return NULL;
++
++	name += sizeof(needle) - 1;
++	end = strchrnul(name, ',');
++
++	return kmemdup_nul(name, end - name, GFP_KERNEL);
 +}
 +
 +/*
@@ -23369,7 +23328,10 @@ index 000000000..5fc2b2bf9
 +	int err = 0;
 +	unsigned int nx_flags;
 +
++	lockdep_assert_held(&nxs_mutex);
++
 +	/* Set default values before parsing */
++	sbi->s_vol_nr = 0;
 +	nx_flags = 0;
 +
 +	if (!options)
@@ -23417,8 +23379,15 @@ index 000000000..5fc2b2bf9
 +			}
 +			break;
 +		case Opt_vol:
++			err = match_int(&args[0], &sbi->s_vol_nr);
++			if (err)
++				return err;
++			break;
 +		case Opt_snap:
-+			/* Already read early on mount */
++			kfree(sbi->s_snap_name);
++			sbi->s_snap_name = match_strdup(&args[0]);
++			if (!sbi->s_snap_name)
++				return -ENOMEM;
 +			break;
 +		default:
 +			return -EINVAL;
@@ -23630,31 +23599,24 @@ index 000000000..5fc2b2bf9
 +	struct inode *root = NULL, *priv = NULL;
 +	int err;
 +
-+	/*
-+	 * This function doesn't write anything to disk, that happens later
-+	 * when an actual transaction begins. So, it's not generally a problem
-+	 * if other mounts for the same container fill their own supers at the
-+	 * same time (the few critical sections will be protected by
-+	 * nxs_mutex), nor is it a problem if other mounted volumes want to
-+	 * make reads while the mount is taking place. But we definitely don't
-+	 * want any writes, or else we could find ourselves reading stale
-+	 * blocks after CoW, among other issues.
-+	 */
-+	down_read(&APFS_NXI(sb)->nx_big_sem);
++	ASSERT(sbi);
++	lockdep_assert_held(&nxs_mutex);
 +
 +	err = apfs_setup_bdi(sb);
 +	if (err)
-+		goto failed_volume;
++		return err;
++
++	apfs_set_trans_buffer_limit(sb);
 +
 +	sbi->s_uid = INVALID_UID;
 +	sbi->s_gid = INVALID_GID;
 +	err = parse_options(sb, data);
 +	if (err)
-+		goto failed_volume;
++		return err;
 +
 +	err = apfs_map_volume_super(sb, false /* write */);
 +	if (err)
-+		goto failed_volume;
++		return err;
 +
 +	err = apfs_check_vol_features(sb);
 +	if (err)
@@ -23684,12 +23646,6 @@ index 000000000..5fc2b2bf9
 +	sb->s_xattr = apfs_xattr_handlers;
 +	sb->s_maxbytes = MAX_LFS_FILESIZE;
 +	sb->s_time_gran = 1; /* Nanosecond granularity */
-+
-+	/*
-+	 * At this point everything is already set up for the inode reads,
-+	 * which take care of their own locking as always.
-+	 */
-+	up_read(&APFS_NXI(sb)->nx_big_sem);
 +
 +	sbi->s_private_dir = apfs_iget(sb, APFS_PRIV_DIR_INO_NUM);
 +	if (IS_ERR(sbi->s_private_dir)) {
@@ -23724,14 +23680,12 @@ index 000000000..5fc2b2bf9
 +	iput(sbi->s_private_dir);
 +failed_private_dir:
 +	sbi->s_private_dir = NULL;
-+	down_read(&APFS_NXI(sb)->nx_big_sem);
 +	apfs_node_free(sbi->s_cat_root);
 +failed_cat:
-+	apfs_unset_omap(sb);
++	apfs_put_omap(sbi->s_omap);
++	sbi->s_omap = NULL;
 +failed_omap:
 +	apfs_unmap_volume_super(sb);
-+failed_volume:
-+	up_read(&APFS_NXI(sb)->nx_big_sem);
 +	return err;
 +}
 +
@@ -23835,11 +23789,11 @@ index 000000000..5fc2b2bf9
 +	dev_t dev = 0;
 +	int ret;
 +
-+	mutex_lock(&nxs_mutex);
++	lockdep_assert_held(&nxs_mutex);
 +
 +	ret = apfs_lookup_bdev(dev_name, &dev);
 +	if (ret)
-+		goto out;
++		return ret;
 +
 +	nxi = apfs_nx_find_by_dev(dev);
 +	if (!nxi) {
@@ -23851,17 +23805,14 @@ index 000000000..5fc2b2bf9
 +		struct block_device *bdev = NULL;
 +
 +		nxi = kzalloc(sizeof(*nxi), GFP_KERNEL);
-+		if (!nxi) {
-+			ret = -ENOMEM;
-+			goto out;
-+		}
++		if (!nxi)
++			return -ENOMEM;
 +
 +#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
 +		file = bdev_file_open_by_path(dev_name, mode, &apfs_fs_type, NULL);
 +		if (IS_ERR(file)) {
 +			kfree(nxi);
-+			ret = PTR_ERR(file);
-+			goto out;
++			return PTR_ERR(file);
 +		}
 +		nxi->nx_bdev_file = file;
 +		bdev = file_bdev(file);
@@ -23869,8 +23820,7 @@ index 000000000..5fc2b2bf9
 +		handle = bdev_open_by_path(dev_name, mode, &apfs_fs_type, NULL);
 +		if (IS_ERR(handle)) {
 +			kfree(nxi);
-+			ret = PTR_ERR(handle);
-+			goto out;
++			return PTR_ERR(handle);
 +		}
 +		nxi->nx_bdev_handle = handle;
 +		bdev = handle->bdev;
@@ -23881,8 +23831,7 @@ index 000000000..5fc2b2bf9
 +#endif
 +		if (IS_ERR(bdev)) {
 +			kfree(nxi);
-+			ret = PTR_ERR(bdev);
-+			goto out;
++			return PTR_ERR(bdev);
 +		}
 +
 +		nxi->nx_bdev = bdev;
@@ -23895,75 +23844,7 @@ index 000000000..5fc2b2bf9
 +	list_add(&sbi->list, &nxi->vol_list);
 +	sbi->s_nxi = nxi;
 +	++nxi->nx_refcnt;
-+	ret = 0;
-+out:
-+	mutex_unlock(&nxs_mutex);
-+	return ret;
-+}
-+
-+/**
-+ * apfs_preparse_options - Parse the options used to identify a superblock
-+ * @sbi:	superblock info
-+ * @options:	options string to parse
-+ *
-+ * Returns 0 on success, or a negative error code in case of failure. Even on
-+ * failure, the caller is responsible for freeing all superblock fields.
-+ */
-+static int apfs_preparse_options(struct apfs_sb_info *sbi, char *options)
-+{
-+	char *tofree = NULL;
-+	char *p;
-+	substring_t args[MAX_OPT_ARGS];
-+	int err = 0;
-+
-+	/* Set default values before parsing */
-+	sbi->s_vol_nr = 0;
-+	sbi->s_snap_name = NULL;
-+
-+	if (!options)
-+		return 0;
-+
-+	/* Later parse_options() will need the unmodified options string */
-+	options = kstrdup(options, GFP_KERNEL);
-+	if (!options)
-+		return -ENOMEM;
-+	tofree = options;
-+
-+	while ((p = strsep(&options, ",")) != NULL) {
-+		int token;
-+
-+		if (!*p)
-+			continue;
-+		token = match_token(p, tokens, args);
-+		switch (token) {
-+		case Opt_vol:
-+			err = match_int(&args[0], &sbi->s_vol_nr);
-+			if (err)
-+				goto out;
-+			break;
-+		case Opt_snap:
-+			kfree(sbi->s_snap_name);
-+			sbi->s_snap_name = match_strdup(&args[0]);
-+			if (!sbi->s_snap_name) {
-+				err = -ENOMEM;
-+				goto out;
-+			}
-+			break;
-+		case Opt_readwrite:
-+		case Opt_cknodes:
-+		case Opt_uid:
-+		case Opt_gid:
-+			/* Not needed for sget(), will be read later */
-+			break;
-+		default:
-+			err = -EINVAL;
-+			goto out;
-+		}
-+	}
-+	err = 0;
-+out:
-+	kfree(tofree);
-+	return err;
++	return 0;
 +}
 +
 +/*
@@ -23972,6 +23853,7 @@ index 000000000..5fc2b2bf9
 +static struct dentry *apfs_mount(struct file_system_type *fs_type, int flags,
 +				 const char *dev_name, void *data)
 +{
++	struct apfs_nxsb_info *nxi;
 +	struct super_block *sb;
 +	struct apfs_sb_info *sbi;
 +#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)
@@ -23981,13 +23863,15 @@ index 000000000..5fc2b2bf9
 +#endif
 +	int error = 0;
 +
++	mutex_lock(&nxs_mutex);
++
 +	sbi = kzalloc(sizeof(*sbi), GFP_KERNEL);
-+	if (!sbi)
-+		return ERR_PTR(-ENOMEM);
-+	/* Set up the fields that sget() will need to id the superblock */
-+	error = apfs_preparse_options(sbi, data);
-+	if (error)
-+		goto out_free_sbi;
++	if (!sbi) {
++		error = -ENOMEM;
++		goto out_unlock;
++	}
++	sbi->s_vol_nr = apfs_get_vol_number(data);
++	sbi->s_snap_name = apfs_get_snap_name(data);
 +
 +	/* Make sure that snapshots are mounted read-only */
 +	if (sbi->s_snap_name)
@@ -24001,25 +23885,17 @@ index 000000000..5fc2b2bf9
 +	error = apfs_attach_nxi(sbi, dev_name, mode);
 +	if (error)
 +		goto out_free_sbi;
++	nxi = sbi->s_nxi;
 +
 +	/* TODO: lockfs stuff? Btrfs doesn't seem to care */
 +	sb = sget(fs_type, apfs_test_super, apfs_set_super, flags | SB_NOSEC, sbi);
-+	if (IS_ERR(sb)) {
-+		error = PTR_ERR(sb);
++	if (IS_ERR(sb))
 +		goto out_unmap_super;
-+	}
-+
-+	/*
-+	 * I'm doing something hacky with s_dev inside ->kill_sb(), so I want
-+	 * to find out as soon as possible if I messed it up.
-+	 */
-+	WARN_ON(sb->s_dev != APFS_NXI(sb)->nx_bdev->bd_dev);
 +
 +	if (sb->s_root) {
 +		if ((flags ^ sb->s_flags) & SB_RDONLY) {
 +			error = -EBUSY;
-+			deactivate_locked_super(sb);
-+			goto out_unmap_super;
++			goto out_deactivate_super;
 +		}
 +		/* Only one superblock per volume */
 +		apfs_free_main_super(sbi);
@@ -24029,73 +23905,39 @@ index 000000000..5fc2b2bf9
 +		sbi = NULL;
 +	} else {
 +		error = apfs_read_main_super(sb);
-+		if (error) {
-+			deactivate_locked_super(sb);
-+			return ERR_PTR(error);
-+		}
++		if (error)
++			goto out_deactivate_super;
 +#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 5, 0)
 +		sb->s_mode = mode;
 +#endif
 +		snprintf(sb->s_id, sizeof(sb->s_id), "%xg", sb->s_dev);
 +		error = apfs_fill_super(sb, data, flags & SB_SILENT ? 1 : 0);
-+		if (error) {
-+			deactivate_locked_super(sb);
-+			return ERR_PTR(error);
-+		}
++		if (error)
++			goto out_deactivate_super;
 +		sb->s_flags |= SB_ACTIVE;
 +	}
 +
++	mutex_unlock(&nxs_mutex);
 +	return dget(sb->s_root);
 +
++out_deactivate_super:
++	deactivate_locked_super(sb);
 +out_unmap_super:
 +	apfs_free_main_super(sbi);
 +out_free_sbi:
 +	kfree(sbi->s_snap_name);
 +	kfree(sbi);
++out_unlock:
++	mutex_unlock(&nxs_mutex);
 +	return ERR_PTR(error);
-+}
-+
-+/**
-+ * apfs_free_sb_info - Free the sb info and release all remaining fields
-+ * @sb: superblock structure
-+ *
-+ * This function does not include the cleanup for apfs_fill_super(), which
-+ * already took place inside ->put_super() (or maybe inside apfs_fill_super()
-+ * itself if the mount failed).
-+ */
-+static void apfs_free_sb_info(struct super_block *sb)
-+{
-+	struct apfs_sb_info *sbi = NULL;
-+
-+	sbi = APFS_SB(sb);
-+	apfs_free_main_super(sbi);
-+	sb->s_fs_info = NULL;
-+
-+	kfree(sbi->s_snap_name);
-+	sbi->s_snap_name = NULL;
-+	if (sbi->s_dflt_pfk)
-+		kfree(sbi->s_dflt_pfk);
-+	kfree(sbi);
-+	sbi = NULL;
 +}
 +
 +static void apfs_kill_sb(struct super_block *sb)
 +{
-+	struct apfs_sb_info *sbi = APFS_SB(sb);
++	dev_t anon_dev = APFS_SB(sb)->s_anon_dev;
 +
-+	/*
-+	 * We need to delist the superblock before freeing its info to avoid a
-+	 * race with apfs_test_super(), but we can't call kill_super_notify()
-+	 * from the driver. The available wrapper is kill_anon_super(), but our
-+	 * s_dev is set to the actual device (that gets freed later along with
-+	 * the container), not to the anon device that we keep on the sbi. So,
-+	 * we change that before the call; this is safe because other mounters
-+	 * won't revive this super, even if apfs_test_super() succeeds.
-+	 */
-+	sb->s_dev = sbi->s_anon_dev;
-+	kill_anon_super(sb);
-+
-+	apfs_free_sb_info(sb);
++	generic_shutdown_super(sb);
++	free_anon_bdev(anon_dev);
 +}
 +
 +static struct file_system_type apfs_fs_type = {
@@ -24220,10 +24062,10 @@ index 000000000..be4f9df8f
 +};
 diff --git a/fs/apfs/transaction.c b/fs/apfs/transaction.c
 new file mode 100644
-index 000000000..bdecfc9f4
+index 000000000..7dbd7850a
 --- /dev/null
 +++ b/fs/apfs/transaction.c
-@@ -0,0 +1,987 @@
+@@ -0,0 +1,997 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2019 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -24511,8 +24353,10 @@ index 000000000..bdecfc9f4
 +	 * (TODO).
 +	 */
 +	down_write(&nxi->nx_big_sem);
++	mutex_lock(&nxs_mutex);
 +	if (!sb || sb->s_flags & SB_RDONLY) {
 +		/* The commit already took place, or there was an abort */
++		mutex_unlock(&nxs_mutex);
 +		up_write(&nxi->nx_big_sem);
 +		return;
 +	}
@@ -24554,9 +24398,11 @@ index 000000000..bdecfc9f4
 +	int err;
 +
 +	down_write(&nxi->nx_big_sem);
++	mutex_lock(&nxs_mutex); /* Don't mount during a transaction */
 +
 +	if (sb->s_flags & SB_RDONLY) {
 +		/* A previous transaction has failed; this should be rare */
++		mutex_unlock(&nxs_mutex);
 +		up_write(&nxi->nx_big_sem);
 +		return -EROFS;
 +	}
@@ -24568,6 +24414,7 @@ index 000000000..bdecfc9f4
 +	if (!nxi->nx_eph_list) {
 +		err = apfs_read_ephemeral_objects(sb);
 +		if (err) {
++			mutex_unlock(&nxs_mutex);
 +			up_write(&nxi->nx_big_sem);
 +			apfs_err(sb, "failed to read the ephemeral objects");
 +			return err;
@@ -24661,12 +24508,14 @@ index 000000000..bdecfc9f4
 +		list_del_init(&ai->i_list);
 +
 +		nx_trans->t_state |= APFS_NX_TRANS_COMMITTING;
++		mutex_unlock(&nxs_mutex);
 +		up_write(&nxi->nx_big_sem);
 +
 +		/* Unlocked, so it may call evict() and wait for writeback */
 +		iput(inode);
 +
 +		down_write(&nxi->nx_big_sem);
++		mutex_lock(&nxs_mutex);
 +		nx_trans->t_state = 0;
 +
 +		/* Transaction aborted during writeback, error code is lost */
@@ -25074,6 +24923,7 @@ index 000000000..bdecfc9f4
 +		mod_delayed_work(system_wq, &trans->t_work, msecs_to_jiffies(100));
 +	}
 +
++	mutex_unlock(&nxs_mutex);
 +	up_write(&nxi->nx_big_sem);
 +	return 0;
 +}
@@ -25167,6 +25017,7 @@ index 000000000..bdecfc9f4
 +		/* Transaction already aborted, do nothing */
 +		ASSERT(list_empty(&nx_trans->t_inodes));
 +		ASSERT(list_empty(&nx_trans->t_buffers));
++		mutex_unlock(&nxs_mutex);
 +		up_write(&nxi->nx_big_sem);
 +		return;
 +	}
@@ -25204,6 +25055,7 @@ index 000000000..bdecfc9f4
 +	 */
 +	apfs_force_readonly(nxi);
 +
++	mutex_unlock(&nxs_mutex);
 +	up_write(&nxi->nx_big_sem);
 +
 +	list_for_each_entry_safe(ai, ai_tmp, &nx_trans->t_inodes, i_list) {
@@ -25213,10 +25065,10 @@ index 000000000..bdecfc9f4
 +}
 diff --git a/fs/apfs/unicode.c b/fs/apfs/unicode.c
 new file mode 100644
-index 000000000..2c2de7755
+index 000000000..d17064e1f
 --- /dev/null
 +++ b/fs/apfs/unicode.c
-@@ -0,0 +1,3160 @@
+@@ -0,0 +1,3157 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -25231,12 +25083,9 @@ index 000000000..2c2de7755
 +#include <linux/types.h>
 +#include <linux/nls.h>
 +#include <linux/ctype.h>
-+#include <linux/version.h>
 +#include "unicode.h"
 +
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
-+#define MIN(X, Y)	((X) <= (Y) ? (X) : (Y))
-+#endif
++#define APFS_MIN(X, Y)	((X) <= (Y) ? (X) : (Y))
 +
 +/* The arrays of unicode data are defined at the bottom of the file */
 +/* TODO: would a single trie with all the data be more efficient? */
@@ -25456,7 +25305,7 @@ index 000000000..2c2de7755
 +	while (1) {
 +		if (!total_len || !*utf8str)
 +			return norm_len;
-+		utf8len = utf8_to_utf32(utf8str, MIN(total_len, 4), &utf32char);
++		utf8len = utf8_to_utf32(utf8str, APFS_MIN(total_len, 4), &utf32char);
 +		if (utf8len < 0) /* Invalid unicode; don't normalize anything */
 +			return 0;
 +
@@ -25528,7 +25377,7 @@ index 000000000..2c2de7755
 +		unicode_t utf32char;
 +		int utf8len, pos;
 +
-+		utf8len = utf8_to_utf32(utf8str, MIN(total_len, 4), &utf32char);
++		utf8len = utf8_to_utf32(utf8str, APFS_MIN(total_len, 4), &utf32char);
 +		for (pos = 0;; pos++, str_pos++) {
 +			unicode_t utf32norm;
 +			u8 ccc;
@@ -28412,11 +28261,11 @@ index 000000000..e3b7edc51
 +#endif	/* _APFS_UNICODE_H */
 diff --git a/fs/apfs/version.h b/fs/apfs/version.h
 new file mode 100644
-index 000000000..57dc819c6
+index 000000000..e16b23c10
 --- /dev/null
 +++ b/fs/apfs/version.h
 @@ -0,0 +1 @@
-+#define GIT_COMMIT	"v0.3.11"
++#define GIT_COMMIT	""
 diff --git a/fs/apfs/xattr.c b/fs/apfs/xattr.c
 new file mode 100644
 index 000000000..0de1db140
@@ -29523,5 +29372,5 @@ index 000000000..b8cbe17fd
 +	return total_len;
 +}
 -- 
-2.46.0
+2.45.2
 
