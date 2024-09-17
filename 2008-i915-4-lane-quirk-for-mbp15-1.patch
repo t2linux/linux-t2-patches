@@ -66,15 +66,15 @@ index 14d5fefc9..727639b8f 100644
 +	{ 0x3e9b, 0x106b, 0x0176, quirk_ddi_a_force_4_lanes },
  };
  
- void intel_init_quirks(struct intel_display *display)
+ static struct intel_dpcd_quirk intel_dpcd_quirks[] = {
 diff --git a/drivers/gpu/drm/i915/display/intel_quirks.h b/drivers/gpu/drm/i915/display/intel_quirks.h
 index 151c8f4ae..46e7feba8 100644
 --- a/drivers/gpu/drm/i915/display/intel_quirks.h
 +++ b/drivers/gpu/drm/i915/display/intel_quirks.h
 @@ -17,6 +17,7 @@ enum intel_quirk_id {
- 	QUIRK_INVERT_BRIGHTNESS,
  	QUIRK_LVDS_SSC_DISABLE,
  	QUIRK_NO_PPS_BACKLIGHT_POWER_HOOK,
+ 	QUIRK_FW_SYNC_LEN,
 +	QUIRK_DDI_A_FORCE_4_LANES,
  };
  
