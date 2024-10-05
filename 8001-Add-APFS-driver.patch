@@ -1,7 +1,7 @@
-From dcb92cbb078375fc7c3d8c46d7b173ee1adafe6e Mon Sep 17 00:00:00 2001
+From 08201ac0964c12bee3b29f87a09231e9f8779f98 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Fri, 13 Sep 2024 18:44:05 +0000
+Date: Sat, 5 Oct 2024 18:42:49 +0000
 Subject: [PATCH] Add APFS driver
 
 ---
@@ -11,11 +11,11 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/btree.c                     | 1174 ++++++++++
  fs/apfs/compress.c                  |  474 ++++
  fs/apfs/dir.c                       | 1544 +++++++++++++
- fs/apfs/extents.c                   | 2394 ++++++++++++++++++++
+ fs/apfs/extents.c                   | 2390 ++++++++++++++++++++
  fs/apfs/file.c                      |  220 ++
  fs/apfs/inode.c                     | 2569 ++++++++++++++++++++++
  fs/apfs/key.c                       |  334 +++
- fs/apfs/libzbitmap.c                |  444 ++++
+ fs/apfs/libzbitmap.c                |  442 ++++
  fs/apfs/libzbitmap.h                |   31 +
  fs/apfs/lzfse/lzfse.h               |  136 ++
  fs/apfs/lzfse/lzfse_decode.c        |   74 +
@@ -41,12 +41,12 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/super.c                     | 1946 +++++++++++++++++
  fs/apfs/symlink.c                   |   80 +
  fs/apfs/transaction.c               |  987 +++++++++
- fs/apfs/unicode.c                   | 3160 +++++++++++++++++++++++++++
+ fs/apfs/unicode.c                   | 3156 +++++++++++++++++++++++++++
  fs/apfs/unicode.h                   |   27 +
  fs/apfs/version.h                   |    1 +
  fs/apfs/xattr.c                     |  922 ++++++++
  fs/apfs/xfield.c                    |  171 ++
- 41 files changed, 29187 insertions(+)
+ 41 files changed, 29177 insertions(+)
  create mode 100644 fs/apfs/Makefile
  create mode 100644 fs/apfs/apfs.h
  create mode 100644 fs/apfs/apfs_raw.h
@@ -6089,10 +6089,10 @@ index 000000000..416f42f02
 +}
 diff --git a/fs/apfs/extents.c b/fs/apfs/extents.c
 new file mode 100644
-index 000000000..11025f6b2
+index 000000000..318d97b85
 --- /dev/null
 +++ b/fs/apfs/extents.c
-@@ -0,0 +1,2394 @@
+@@ -0,0 +1,2390 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -6102,10 +6102,6 @@ index 000000000..11025f6b2
 +#include <linux/slab.h>
 +#include <linux/blk_types.h>
 +#include "apfs.h"
-+
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
-+#define MAX(X, Y)	((X) <= (Y) ? (Y) : (X))
-+#endif
 +
 +/**
 + * apfs_ext_is_hole - Does this extent represent a hole in a sparse file?
@@ -8070,7 +8066,7 @@ index 000000000..11025f6b2
 +	prev_end = prev_ext.bno + prev_ext.blkcount;
 +	if (prev_end < *paddr_end) {
 +		/* The extent to put is part of a snapshot */
-+		tmp.phys_block_num = MAX(prev_end, paddr_min);
++		tmp.phys_block_num = max(prev_end, paddr_min);
 +		tmp.len = (*paddr_end - tmp.phys_block_num) << sb->s_blocksize_bits;
 +		ret = apfs_create_update_pext(query, &tmp, -1);
 +		*paddr_end = tmp.phys_block_num;
@@ -8210,7 +8206,7 @@ index 000000000..11025f6b2
 +	prev_end = prev_ext.bno + prev_ext.blkcount;
 +	if (prev_end < *paddr_end) {
 +		/* The extent to take is part of a snapshot */
-+		tmp.phys_block_num = MAX(prev_end, paddr_min);
++		tmp.phys_block_num = max(prev_end, paddr_min);
 +		tmp.len = (*paddr_end - tmp.phys_block_num) << sb->s_blocksize_bits;
 +		ret = apfs_create_update_pext(query, &tmp, +1);
 +		*paddr_end = tmp.phys_block_num;
@@ -11630,10 +11626,10 @@ index 000000000..eb38cd2c1
 +}
 diff --git a/fs/apfs/libzbitmap.c b/fs/apfs/libzbitmap.c
 new file mode 100644
-index 000000000..74799d8b1
+index 000000000..a46cfdbde
 --- /dev/null
 +++ b/fs/apfs/libzbitmap.c
-@@ -0,0 +1,444 @@
+@@ -0,0 +1,442 @@
 +// SPDX-License-Identifier: GPL-2.0+ OR MIT
 +/*
 + * Copyright (C) 2022 Corellium LLC
@@ -11647,8 +11643,6 @@ index 000000000..74799d8b1
 +#include <linux/errno.h>
 +#include <linux/string.h>
 +#include "libzbitmap.h"
-+
-+#define MIN(x, y)   ((x) > (y) ? (y) : (x))
 +
 +#define ZBM_MAGIC       "ZBM\x09"
 +#define ZBM_MAGIC_SZ    4
@@ -25213,10 +25207,10 @@ index 000000000..bdecfc9f4
 +}
 diff --git a/fs/apfs/unicode.c b/fs/apfs/unicode.c
 new file mode 100644
-index 000000000..2c2de7755
+index 000000000..4a747895c
 --- /dev/null
 +++ b/fs/apfs/unicode.c
-@@ -0,0 +1,3160 @@
+@@ -0,0 +1,3156 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -25233,10 +25227,6 @@ index 000000000..2c2de7755
 +#include <linux/ctype.h>
 +#include <linux/version.h>
 +#include "unicode.h"
-+
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 11, 0)
-+#define MIN(X, Y)	((X) <= (Y) ? (X) : (Y))
-+#endif
 +
 +/* The arrays of unicode data are defined at the bottom of the file */
 +/* TODO: would a single trie with all the data be more efficient? */
@@ -25456,7 +25446,7 @@ index 000000000..2c2de7755
 +	while (1) {
 +		if (!total_len || !*utf8str)
 +			return norm_len;
-+		utf8len = utf8_to_utf32(utf8str, MIN(total_len, 4), &utf32char);
++		utf8len = utf8_to_utf32(utf8str, min(total_len, 4), &utf32char);
 +		if (utf8len < 0) /* Invalid unicode; don't normalize anything */
 +			return 0;
 +
@@ -25528,7 +25518,7 @@ index 000000000..2c2de7755
 +		unicode_t utf32char;
 +		int utf8len, pos;
 +
-+		utf8len = utf8_to_utf32(utf8str, MIN(total_len, 4), &utf32char);
++		utf8len = utf8_to_utf32(utf8str, min(total_len, 4), &utf32char);
 +		for (pos = 0;; pos++, str_pos++) {
 +			unicode_t utf32norm;
 +			u8 ccc;
@@ -28412,11 +28402,11 @@ index 000000000..e3b7edc51
 +#endif	/* _APFS_UNICODE_H */
 diff --git a/fs/apfs/version.h b/fs/apfs/version.h
 new file mode 100644
-index 000000000..57dc819c6
+index 000000000..e16b23c10
 --- /dev/null
 +++ b/fs/apfs/version.h
 @@ -0,0 +1 @@
-+#define GIT_COMMIT	"v0.3.11"
++#define GIT_COMMIT	""
 diff --git a/fs/apfs/xattr.c b/fs/apfs/xattr.c
 new file mode 100644
 index 000000000..0de1db140
@@ -29523,5 +29513,5 @@ index 000000000..b8cbe17fd
 +	return total_len;
 +}
 -- 
-2.46.0
+2.46.1
 
