@@ -33,9 +33,9 @@ index f98fb36ff..f881b19db 100644
  #define MT_CLS_RAZER_BLADE_STEALTH		0x0112
  #define MT_CLS_SMART_TECH			0x0113
 +#define MT_CLS_APPLE_TOUCHBAR			0x0114
+ #define MT_CLS_SIS				0x0457
  
  #define MT_DEFAULT_MAXCONTACT	10
- #define MT_MAX_MAXCONTACT	250
 @@ -399,6 +400,13 @@ static const struct mt_class mt_classes[] = {
  			MT_QUIRK_CONTACT_CNT_ACCURATE |
  			MT_QUIRK_SEPARATE_APP_REPORT,
@@ -47,9 +47,9 @@ index f98fb36ff..f881b19db 100644
 +		.is_direct = true,
 +		.maxcontacts = 11,
 +	},
- 	{ }
- };
- 
+ 	{ .name = MT_CLS_SIS,
+ 		.quirks = MT_QUIRK_NOT_SEEN_MEANS_UP |
+ 			MT_QUIRK_ALWAYS_VALID |
 @@ -1755,6 +1763,15 @@ static int mt_probe(struct hid_device *hdev, const struct hid_device_id *id)
  		}
  	}
