@@ -1,21 +1,21 @@
-From a602442976fe87bb89628409444e384b4eb0531f Mon Sep 17 00:00:00 2001
-From: Aditya Garg <gargaditya08@live.com>
-Date: Sat, 8 Jun 2024 17:48:28 +0530
+From 918ebea43ba3c425e6ffefdbde0db6b55e445b77 Mon Sep 17 00:00:00 2001
+From: Aditya Garg <85610623+AdityaGarg8@users.noreply.github.com>
+Date: Sun, 10 Nov 2024 15:31:18 +0530
 Subject: [PATCH] Necessary modifications to build APFS with the kernel
 
 ---
  fs/Kconfig       |  1 +
  fs/Makefile      |  1 +
  fs/apfs/Kconfig  | 13 +++++++++++++
- fs/apfs/Makefile | 17 ++---------------
- 4 files changed, 17 insertions(+), 15 deletions(-)
+ fs/apfs/Makefile | 22 ++--------------------
+ 4 files changed, 17 insertions(+), 20 deletions(-)
  create mode 100644 fs/apfs/Kconfig
 
 diff --git a/fs/Kconfig b/fs/Kconfig
-index a46b0cbc4..d914838fd 100644
+index aae170fc2..5131d5b3c 100644
 --- a/fs/Kconfig
 +++ b/fs/Kconfig
-@@ -317,6 +317,7 @@ source "fs/affs/Kconfig"
+@@ -321,6 +321,7 @@ source "fs/affs/Kconfig"
  source "fs/ecryptfs/Kconfig"
  source "fs/hfs/Kconfig"
  source "fs/hfsplus/Kconfig"
@@ -24,7 +24,7 @@ index a46b0cbc4..d914838fd 100644
  source "fs/bfs/Kconfig"
  source "fs/efs/Kconfig"
 diff --git a/fs/Makefile b/fs/Makefile
-index 6ecc9b0a5..0cfeacc98 100644
+index 61679fd58..8a17c50d7 100644
 --- a/fs/Makefile
 +++ b/fs/Makefile
 @@ -120,6 +120,7 @@ obj-$(CONFIG_DEBUG_FS)		+= debugfs/
@@ -55,10 +55,10 @@ index 000000000..99caf203a
 +	  with read-only access. Write access is experimental and will
 +	  corrupt your container.
 diff --git a/fs/apfs/Makefile b/fs/apfs/Makefile
-index ab4c49d55..bc7bc8cc5 100644
+index a2dbed980..bc7bc8cc5 100644
 --- a/fs/apfs/Makefile
 +++ b/fs/apfs/Makefile
-@@ -1,23 +1,10 @@
+@@ -1,28 +1,10 @@
  # SPDX-License-Identifier: GPL-2.0-only
  #
 -# Makefile for the out-of-tree Linux APFS module.
@@ -76,6 +76,11 @@ index ab4c49d55..bc7bc8cc5 100644
  	  lzfse/lzvn_decode_base.o message.o namei.o node.o object.o snapshot.o \
  	  spaceman.o super.o symlink.o transaction.o unicode.o xattr.o xfield.o
 -
+-# If you want mounts to be writable by default, run the build as:
+-#   make CONFIG=-DCONFIG_APFS_RW_ALWAYS
+-# This is risky and not generally recommended.
+-ccflags-y += $(CONFIG)
+-
 -default:
 -	./genver.sh
 -	make -C $(KERNEL_DIR) M=$(PWD)
@@ -85,5 +90,5 @@ index ab4c49d55..bc7bc8cc5 100644
 -	rm -f version.h
 -	make -C $(KERNEL_DIR) M=$(PWD) clean
 -- 
-2.43.0
+2.39.5 (Apple Git-154)
 
