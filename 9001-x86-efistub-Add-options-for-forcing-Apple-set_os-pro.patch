@@ -1,0 +1,98 @@
+From c3b9be70a39fd8af3731e8755bb00ab4f1fe9e52 Mon Sep 17 00:00:00 2001
+From: Lleyton Gray <lleyton@fyralabs.com>
+Date: Thu, 24 Oct 2024 15:36:52 -0700
+Subject: [PATCH] x86/efistub: Add options for forcing Apple set_os protocol
+
+commit 71e49eccdca6 ("x86/efistub: Call Apple set_os protocol on dual GPU
+Intel Macs") calls the Apple set_os protocol, but only on T2 Macbook Pro
+models. This causes issues on other T2 models when an egpu is used.
+Add two options which allow force enabling or disabling usage of the
+protocol to fix.
+
+Signed-off-by: Lleyton Gray <lleyton@fyralabs.com>
+---
+ Documentation/admin-guide/kernel-parameters.txt | 7 ++++++-
+ drivers/firmware/efi/libstub/efi-stub-helper.c  | 6 ++++++
+ drivers/firmware/efi/libstub/efistub.h          | 2 ++
+ drivers/firmware/efi/libstub/x86-stub.c         | 3 ++-
+ 4 files changed, 16 insertions(+), 2 deletions(-)
+
+diff --git a/Documentation/admin-guide/kernel-parameters.txt b/Documentation/admin-guide/kernel-parameters.txt
+index 1518343bbe22..1d1b88c57c44 100644
+--- a/Documentation/admin-guide/kernel-parameters.txt
++++ b/Documentation/admin-guide/kernel-parameters.txt
+@@ -1447,7 +1447,8 @@
+ 	efi=		[EFI,EARLY]
+ 			Format: { "debug", "disable_early_pci_dma",
+ 				  "nochunk", "noruntime", "nosoftreserve",
+-				  "novamap", "no_disable_early_pci_dma" }
++				  "novamap", "no_disable_early_pci_dma",
++				  "enable_apple_set_os", "disable_apple_set_os" }
+ 			debug: enable misc debug output.
+ 			disable_early_pci_dma: disable the busmaster bit on all
+ 			PCI bridges while in the EFI boot stub.
+@@ -1464,6 +1465,10 @@
+ 			novamap: do not call SetVirtualAddressMap().
+ 			no_disable_early_pci_dma: Leave the busmaster bit set
+ 			on all PCI bridges while in the EFI boot stub
++			enable_apple_set_os: Report that macOS is being booted
++			to the firmware, even if the device is not a dual GPU Mac.
++			disable_apple_set_os: Disable reporting that macOS is being booted
++			to the firmware, even if the device is a dual GPU Mac.
+ 
+ 	efi_no_storage_paranoia [EFI,X86,EARLY]
+ 			Using this parameter you can use more than 50% of
+diff --git a/drivers/firmware/efi/libstub/efi-stub-helper.c b/drivers/firmware/efi/libstub/efi-stub-helper.c
+index de659f6a815f..c33bb98bf79d 100644
+--- a/drivers/firmware/efi/libstub/efi-stub-helper.c
++++ b/drivers/firmware/efi/libstub/efi-stub-helper.c
+@@ -20,6 +20,8 @@
+ bool efi_nochunk;
+ bool efi_nokaslr = !IS_ENABLED(CONFIG_RANDOMIZE_BASE);
+ bool efi_novamap;
++bool efi_enable_apple_set_os;
++bool efi_disable_apple_set_os;
+ 
+ static bool efi_noinitrd;
+ static bool efi_nosoftreserve;
+@@ -95,6 +97,10 @@ efi_status_t efi_parse_options(char const *cmdline)
+ 				efi_disable_pci_dma = true;
+ 			if (parse_option_str(val, "no_disable_early_pci_dma"))
+ 				efi_disable_pci_dma = false;
++			if (parse_option_str(val, "enable_apple_set_os"))
++				efi_enable_apple_set_os = true;
++			if (parse_option_str(val, "disable_apple_set_os"))
++				efi_disable_apple_set_os = true;
+ 			if (parse_option_str(val, "debug"))
+ 				efi_loglevel = CONSOLE_LOGLEVEL_DEBUG;
+ 		} else if (!strcmp(param, "video") &&
+diff --git a/drivers/firmware/efi/libstub/efistub.h b/drivers/firmware/efi/libstub/efistub.h
+index 685098f9626f..3be4b5393812 100644
+--- a/drivers/firmware/efi/libstub/efistub.h
++++ b/drivers/firmware/efi/libstub/efistub.h
+@@ -39,6 +39,8 @@ extern bool efi_nokaslr;
+ extern int efi_loglevel;
+ extern int efi_mem_encrypt;
+ extern bool efi_novamap;
++extern bool efi_enable_apple_set_os;
++extern bool efi_disable_apple_set_os;
+ extern const efi_system_table_t *efi_system_table;
+ 
+ typedef union efi_dxe_services_table efi_dxe_services_table_t;
+diff --git a/drivers/firmware/efi/libstub/x86-stub.c b/drivers/firmware/efi/libstub/x86-stub.c
+index f8e465da344d..566118195f92 100644
+--- a/drivers/firmware/efi/libstub/x86-stub.c
++++ b/drivers/firmware/efi/libstub/x86-stub.c
+@@ -265,7 +265,8 @@ static void apple_set_os(void)
+ 	} *set_os;
+ 	efi_status_t status;
+ 
+-	if (!efi_is_64bit() || !apple_match_product_name())
++	if (efi_disable_apple_set_os || !efi_is_64bit() ||
++		!efi_enable_apple_set_os && !apple_match_product_name())
+ 		return;
+ 
+ 	status = efi_bs_call(locate_protocol, &APPLE_SET_OS_PROTOCOL_GUID, NULL,
+-- 
+2.47.0
+
