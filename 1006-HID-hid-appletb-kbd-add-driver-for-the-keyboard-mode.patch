@@ -1,7 +1,7 @@
-From f94e8e0b275b22c94d0cf8277c33185ed405de87 Mon Sep 17 00:00:00 2001
+From 5a1adaa13943fd27405f3bbc2ca5e2f24f9641a0 Mon Sep 17 00:00:00 2001
 From: Kerem Karabay <kekrby@gmail.com>
 Date: Sun, 5 Mar 2023 18:17:23 +0300
-Subject: [PATCH 2/2] HID: hid-appletb-kbd: add driver for the keyboard mode of
+Subject: [PATCH 2/4] HID: hid-appletb-kbd: add driver for the keyboard mode of
  Apple Touch Bars
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -23,11 +23,11 @@ Co-developed-by: Aditya Garg <gargaditya08@live.com>
 Signed-off-by: Aditya Garg <gargaditya08@live.com>
 ---
  .../ABI/testing/sysfs-driver-hid-appletb-kbd  |  13 +
- drivers/hid/Kconfig                           |  11 +
+ drivers/hid/Kconfig                           |  13 +
  drivers/hid/Makefile                          |   1 +
- drivers/hid/hid-appletb-kbd.c                 | 304 ++++++++++++++++++
+ drivers/hid/hid-appletb-kbd.c                 | 303 ++++++++++++++++++
  drivers/hid/hid-quirks.c                      |   4 +-
- 5 files changed, 332 insertions(+), 1 deletion(-)
+ 5 files changed, 333 insertions(+), 1 deletion(-)
  create mode 100644 Documentation/ABI/testing/sysfs-driver-hid-appletb-kbd
  create mode 100644 drivers/hid/hid-appletb-kbd.c
 
@@ -51,16 +51,18 @@ index 000000000..2a19584d0
 +		3  None
 +		== =================
 diff --git a/drivers/hid/Kconfig b/drivers/hid/Kconfig
-index 4988c1fb2..72b665eda 100644
+index f6678db27..5b16bfadc 100644
 --- a/drivers/hid/Kconfig
 +++ b/drivers/hid/Kconfig
-@@ -158,6 +158,17 @@ config HID_APPLETB_BL
+@@ -158,6 +158,19 @@ config HID_APPLETB_BL
  	  To compile this driver as a module, choose M here: the
  	  module will be called hid-appletb-bl.
  
 +config HID_APPLETB_KBD
 +	tristate "Apple Touch Bar Keyboard Mode"
 +	depends on USB_HID
++	depends on INPUT
++	select INPUT_SPARSEKMAP
 +	help
 +	  Say Y here if you want support for the keyboard mode (escape,
 +	  function, media and brightness keys) of Touch Bars on x86 MacBook
@@ -73,7 +75,7 @@ index 4988c1fb2..72b665eda 100644
  	tristate "Asus"
  	depends on USB_HID
 diff --git a/drivers/hid/Makefile b/drivers/hid/Makefile
-index 1d825a474..d903c9a26 100644
+index 444d24cec..1989288e0 100644
 --- a/drivers/hid/Makefile
 +++ b/drivers/hid/Makefile
 @@ -30,6 +30,7 @@ obj-$(CONFIG_HID_ACRUX)		+= hid-axff.o
@@ -86,10 +88,10 @@ index 1d825a474..d903c9a26 100644
  obj-$(CONFIG_HID_AUREAL)	+= hid-aureal.o
 diff --git a/drivers/hid/hid-appletb-kbd.c b/drivers/hid/hid-appletb-kbd.c
 new file mode 100644
-index 000000000..ecac68fc7
+index 000000000..80c87396f
 --- /dev/null
 +++ b/drivers/hid/hid-appletb-kbd.c
-@@ -0,0 +1,304 @@
+@@ -0,0 +1,303 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Apple Touch Bar Keyboard Mode Driver
@@ -281,9 +283,8 @@ index 000000000..ecac68fc7
 +
 +	sparse_keymap_setup(input, appletb_kbd_keymap, NULL);
 +
-+	for (idx = 0; appletb_kbd_keymap[idx].type != KE_END; idx++) {
++	for (idx = 0; appletb_kbd_keymap[idx].type != KE_END; idx++)
 +		input_set_capability(input, EV_KEY, appletb_kbd_keymap[idx].code);
-+	}
 +
 +	return 0;
 +}

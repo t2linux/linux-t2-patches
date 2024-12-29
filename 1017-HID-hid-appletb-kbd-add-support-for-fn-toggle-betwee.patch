@@ -1,9 +1,9 @@
-From 006a51516285ebaa8333d19fb76efbc81e5cdb3e Mon Sep 17 00:00:00 2001
+From e2e32c6300afa1f8a0a2c9fc721cfc975645999c Mon Sep 17 00:00:00 2001
 From: Aditya Garg <gargaditya08@live.com>
 Date: Fri, 9 Aug 2024 19:40:53 +0530
-Subject: [PATCH] HID: hid-appletb-kbd: add support for fn toggle between media
- and function mode
- 
+Subject: [PATCH 3/4] HID: hid-appletb-kbd: add support for fn toggle between
+ media and function mode
+
 This patch adds support for the switching between the Media and Function
 keys on the touchbar by pressing the Fn key on Apple Internal Keyboard.
 
@@ -13,7 +13,7 @@ Signed-off-by: Aditya Garg <gargaditya08@live.com>
  1 file changed, 128 insertions(+)
 
 diff --git a/drivers/hid/hid-appletb-kbd.c b/drivers/hid/hid-appletb-kbd.c
-index ecac68fc7..442c4d884 100644
+index 80c87396f..de5770500 100644
 --- a/drivers/hid/hid-appletb-kbd.c
 +++ b/drivers/hid/hid-appletb-kbd.c
 @@ -26,6 +26,8 @@
@@ -120,7 +120,7 @@ index ecac68fc7..442c4d884 100644
  static int appletb_kbd_input_configured(struct hid_device *hdev, struct hid_input *hidinput)
  {
  	int idx;
-@@ -196,6 +274,40 @@ static int appletb_kbd_input_configured(struct hid_device *hdev, struct hid_inpu
+@@ -195,6 +273,40 @@ static int appletb_kbd_input_configured(struct hid_device *hdev, struct hid_inpu
  	return 0;
  }
  
@@ -161,7 +161,7 @@ index ecac68fc7..442c4d884 100644
  static int appletb_kbd_probe(struct hid_device *hdev, const struct hid_device_id *id)
  {
  	struct appletb_kbd *kbd;
-@@ -228,6 +340,20 @@ static int appletb_kbd_probe(struct hid_device *hdev, const struct hid_device_id
+@@ -227,6 +339,20 @@ static int appletb_kbd_probe(struct hid_device *hdev, const struct hid_device_id
  		goto stop_hw;
  	}
  
@@ -182,7 +182,7 @@ index ecac68fc7..442c4d884 100644
  	ret = appletb_kbd_set_mode(kbd, appletb_tb_def_mode);
  	if (ret) {
  		dev_err_probe(dev, ret, "Failed to set touchbar mode\n");
-@@ -251,6 +377,8 @@ static void appletb_kbd_remove(struct hid_device *hdev)
+@@ -250,6 +376,8 @@ static void appletb_kbd_remove(struct hid_device *hdev)
  
  	appletb_kbd_set_mode(kbd, APPLETB_KBD_MODE_OFF);
  
