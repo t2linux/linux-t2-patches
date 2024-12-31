@@ -1,4 +1,4 @@
-From b347b70f1f862b8eaddbe8a6832c2aa99b881650 Mon Sep 17 00:00:00 2001
+From fb310a1f5dabf18a559b1368d5cf5ce33b30924e Mon Sep 17 00:00:00 2001
 From: Aditya Garg <gargaditya08@live.com>
 Date: Sun, 29 Dec 2024 12:36:09 +0530
 Subject: [PATCH 4/4] HID: hid-appletb-kbd: add support for automatic
@@ -11,24 +11,27 @@ implements the same functionality.
 
 Signed-off-by: Aditya Garg <gargaditya08@live.com>
 ---
- drivers/hid/Kconfig           |  1 +
- drivers/hid/hid-appletb-kbd.c | 80 +++++++++++++++++++++++++++++++++--
- 2 files changed, 77 insertions(+), 4 deletions(-)
+ drivers/hid/Kconfig           |  2 +
+ drivers/hid/hid-appletb-kbd.c | 83 +++++++++++++++++++++++++++++++++--
+ 2 files changed, 81 insertions(+), 4 deletions(-)
 
 diff --git a/drivers/hid/Kconfig b/drivers/hid/Kconfig
-index 5b16bfadc..9b183633f 100644
+index 5b16bfadc..4dadf42a2 100644
 --- a/drivers/hid/Kconfig
 +++ b/drivers/hid/Kconfig
-@@ -161,6 +161,7 @@ config HID_APPLETB_BL
+@@ -161,8 +161,10 @@ config HID_APPLETB_BL
  config HID_APPLETB_KBD
  	tristate "Apple Touch Bar Keyboard Mode"
  	depends on USB_HID
 +	depends on BACKLIGHT_CLASS_DEVICE
  	depends on INPUT
  	select INPUT_SPARSEKMAP
++	select HID_APPLETB_BL
  	help
+ 	  Say Y here if you want support for the keyboard mode (escape,
+ 	  function, media and brightness keys) of Touch Bars on x86 MacBook
 diff --git a/drivers/hid/hid-appletb-kbd.c b/drivers/hid/hid-appletb-kbd.c
-index de5770500..ecc8c84f4 100644
+index de5770500..fa28a691d 100644
 --- a/drivers/hid/hid-appletb-kbd.c
 +++ b/drivers/hid/hid-appletb-kbd.c
 @@ -16,6 +16,8 @@
@@ -185,6 +188,16 @@ index de5770500..ecc8c84f4 100644
  
  	hid_hw_close(hdev);
  	hid_hw_stop(hdev);
+@@ -425,6 +497,9 @@ static struct hid_driver appletb_kbd_hid_driver = {
+ };
+ module_hid_driver(appletb_kbd_hid_driver);
+ 
++/* The backlight driver should be loaded before the keyboard driver is initialised*/
++MODULE_SOFTDEP("pre: hid_appletb_bl");
++
+ MODULE_AUTHOR("Ronald Tschalär");
+ MODULE_AUTHOR("Kerem Karabay <kekrby@gmail.com>");
+ MODULE_DESCRIPTION("MacBookPro Touch Bar Keyboard Mode Driver");
 -- 
 2.43.0
 
