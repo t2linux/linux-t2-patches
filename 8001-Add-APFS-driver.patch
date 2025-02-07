@@ -1,20 +1,20 @@
-From 2d93a3f060b81534c1cc61054c0720a596f13877 Mon Sep 17 00:00:00 2001
+From 0f486c9bafea8ed00c99e041259cc026c7b2929b Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Sat, 9 Nov 2024 18:42:11 +0000
+Date: Fri, 7 Feb 2025 18:44:32 +0000
 Subject: [PATCH] Add APFS driver
 
 ---
  fs/apfs/Makefile                    |   28 +
- fs/apfs/apfs.h                      | 1191 ++++++++++
- fs/apfs/apfs_raw.h                  | 1562 +++++++++++++
+ fs/apfs/apfs.h                      | 1190 ++++++++++
+ fs/apfs/apfs_raw.h                  | 1568 +++++++++++++
  fs/apfs/btree.c                     | 1174 ++++++++++
  fs/apfs/compress.c                  |  474 ++++
  fs/apfs/dir.c                       | 1544 +++++++++++++
  fs/apfs/extents.c                   | 2390 ++++++++++++++++++++
  fs/apfs/file.c                      |  220 ++
  fs/apfs/inode.c                     | 2597 ++++++++++++++++++++++
- fs/apfs/key.c                       |  334 +++
+ fs/apfs/key.c                       |  337 +++
  fs/apfs/libzbitmap.c                |  442 ++++
  fs/apfs/libzbitmap.h                |   31 +
  fs/apfs/lzfse/lzfse.h               |  136 ++
@@ -33,12 +33,12 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/lzfse/lzvn_encode_base.c    |  593 +++++
  fs/apfs/lzfse/lzvn_encode_base.h    |  116 +
  fs/apfs/message.c                   |   29 +
- fs/apfs/namei.c                     |  142 ++
+ fs/apfs/namei.c                     |  146 ++
  fs/apfs/node.c                      | 2069 ++++++++++++++++++
  fs/apfs/object.c                    |  315 +++
- fs/apfs/snapshot.c                  |  681 ++++++
+ fs/apfs/snapshot.c                  |  689 ++++++
  fs/apfs/spaceman.c                  | 1433 ++++++++++++
- fs/apfs/super.c                     | 1961 +++++++++++++++++
+ fs/apfs/super.c                     | 1971 +++++++++++++++++
  fs/apfs/symlink.c                   |   80 +
  fs/apfs/transaction.c               |  988 +++++++++
  fs/apfs/unicode.c                   | 3156 +++++++++++++++++++++++++++
@@ -46,7 +46,7 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/version.h                   |    1 +
  fs/apfs/xattr.c                     |  922 ++++++++
  fs/apfs/xfield.c                    |  171 ++
- 41 files changed, 29360 insertions(+)
+ 41 files changed, 29390 insertions(+)
  create mode 100644 fs/apfs/Makefile
  create mode 100644 fs/apfs/apfs.h
  create mode 100644 fs/apfs/apfs_raw.h
@@ -125,10 +125,10 @@ index 000000000..a2dbed980
 +	make -C $(KERNEL_DIR) M=$(PWD) clean
 diff --git a/fs/apfs/apfs.h b/fs/apfs/apfs.h
 new file mode 100644
-index 000000000..44d6905f9
+index 000000000..76a18203c
 --- /dev/null
 +++ b/fs/apfs/apfs.h
-@@ -0,0 +1,1191 @@
+@@ -0,0 +1,1190 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -212,7 +212,7 @@ index 000000000..44d6905f9
 +
 +	int key;		/* Offset of the key area in the block */
 +	int free;		/* Offset of the free area in the block */
-+	int data;		/* Offset of the data area in the block */
++	int val;		/* Offset of the value area in the block */
 +
 +	int key_free_list_len;	/* Length of the fragmented free key space */
 +	int val_free_list_len;	/* Length of the fragmented free value space */
@@ -778,8 +778,7 @@ index 000000000..44d6905f9
 +#define APFS_QUERY_PREV		010000	/* Find previous record */
 +
 +/*
-+ * Structure used to retrieve data from an APFS B-Tree. For now only used
-+ * on the calalog and the object map.
++ * Structure used to retrieve data from an APFS B-Tree.
 + */
 +struct apfs_query {
 +	struct apfs_node *node;		/* Node being searched */
@@ -792,8 +791,8 @@ index 000000000..44d6905f9
 +	int index;			/* Index of the entry in the node */
 +	int key_off;			/* Offset of the key in the node */
 +	int key_len;			/* Length of the key */
-+	int off;			/* Offset of the data in the node */
-+	int len;			/* Length of the data */
++	int off;			/* Offset of the value in the node */
++	int len;			/* Length of the value */
 +
 +	int depth;			/* Put a limit on recursion */
 +};
@@ -1322,10 +1321,10 @@ index 000000000..44d6905f9
 +#endif	/* _APFS_H */
 diff --git a/fs/apfs/apfs_raw.h b/fs/apfs/apfs_raw.h
 new file mode 100644
-index 000000000..2195e8a78
+index 000000000..af5dd4768
 --- /dev/null
 +++ b/fs/apfs/apfs_raw.h
-@@ -0,0 +1,1562 @@
+@@ -0,0 +1,1568 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*
 + * Copyright (C) 2019 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -2823,6 +2822,12 @@ index 000000000..2195e8a78
 +	u8 name[];
 +} __packed;
 +
++/* Snapshot metadata record flags */
++enum {
++	APFS_SNAP_META_PENDING_DATALESS	= 0x00000001,
++	APFS_SNAP_MERGE_IN_PROGRESS	= 0x00000002,
++};
++
 +/*
 + * Structure of the value of a snapshot name record
 + */
@@ -2890,7 +2895,7 @@ index 000000000..2195e8a78
 +#endif	/* _APFS_RAW_H */
 diff --git a/fs/apfs/btree.c b/fs/apfs/btree.c
 new file mode 100644
-index 000000000..c5af1100a
+index 000000000..e0b4c2998
 --- /dev/null
 +++ b/fs/apfs/btree.c
 @@ -0,0 +1,1174 @@
@@ -2946,7 +2951,7 @@ index 000000000..c5af1100a
 +		index_val = (struct apfs_btn_index_node_val *)(raw + query->off);
 +		*child = le64_to_cpu(index_val->binv_child_oid) + apfs_catalog_base_oid(query);
 +	} else {
-+		if (query->len != 8) { /* The data on a nonleaf node is the child id */
++		if (query->len != 8) { /* The value on a nonleaf node is the child id */
 +			apfs_err(sb, "bad index value length (%d)", query->len);
 +			return -EFSCORRUPTED;
 +		}
@@ -6100,7 +6105,7 @@ index 000000000..416f42f02
 +}
 diff --git a/fs/apfs/extents.c b/fs/apfs/extents.c
 new file mode 100644
-index 000000000..318d97b85
+index 000000000..37d9df9cb
 --- /dev/null
 +++ b/fs/apfs/extents.c
 @@ -0,0 +1,2390 @@
@@ -8015,7 +8020,7 @@ index 000000000..318d97b85
 + * @paddr_end:	first block after the extent to put
 + * @paddr_min:	don't put references before this block
 + *
-+ * Puts a reference to the physical extent range that ends in paddr. Sets
++ * Puts a reference to the physical extent range that ends in @paddr_end. Sets
 + * @paddr_end to the beginning of the extent, so that the caller can continue
 + * with the previous one. Returns 0 on success, or a negative error code in
 + * case of failure.
@@ -8157,7 +8162,7 @@ index 000000000..318d97b85
 + * @paddr_end:	first block after the extent to take
 + * @paddr_min:	don't take references before this block
 + *
-+ * Takes a reference to the physical extent range that ends in paddr. Sets
++ * Takes a reference to the physical extent range that ends in @paddr_end. Sets
 + * @paddr_end to the beginning of the extent, so that the caller can continue
 + * with the previous one. Returns 0 on success, or a negative error code in
 + * case of failure.
@@ -11325,10 +11330,10 @@ index 000000000..96129a452
 +}
 diff --git a/fs/apfs/key.c b/fs/apfs/key.c
 new file mode 100644
-index 000000000..eb38cd2c1
+index 000000000..96cfa4a6c
 --- /dev/null
 +++ b/fs/apfs/key.c
-@@ -0,0 +1,334 @@
+@@ -0,0 +1,337 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -11511,7 +11516,7 @@ index 000000000..eb38cd2c1
 +{
 +	struct apfs_spaceman_free_queue_key *raw_key;
 +
-+	if (size < sizeof(struct apfs_spaceman_free_queue_key)) {
++	if (size != sizeof(*raw_key)) {
 +		apfs_err(NULL, "bad key length (%d)", size);
 +		return -EFSCORRUPTED;
 +	}
@@ -11535,14 +11540,17 @@ index 000000000..eb38cd2c1
 + */
 +int apfs_read_omap_key(void *raw, int size, struct apfs_key *key)
 +{
-+	if (size < sizeof(struct apfs_omap_key)) {
++	struct apfs_omap_key *raw_key;
++
++	if (size != sizeof(*raw_key)) {
 +		apfs_err(NULL, "bad key length (%d)", size);
 +		return -EFSCORRUPTED;
 +	}
++	raw_key = raw;
 +
-+	key->id = le64_to_cpu(((struct apfs_omap_key *)raw)->ok_oid);
++	key->id = le64_to_cpu(raw_key->ok_oid);
 +	key->type = 0;
-+	key->number = le64_to_cpu(((struct apfs_omap_key *)raw)->ok_xid);
++	key->number = le64_to_cpu(raw_key->ok_xid);
 +	key->name = NULL;
 +
 +	return 0;
@@ -17673,10 +17681,10 @@ index 000000000..fdd74ccb8
 +}
 diff --git a/fs/apfs/namei.c b/fs/apfs/namei.c
 new file mode 100644
-index 000000000..e17638863
+index 000000000..59b2b4a85
 --- /dev/null
 +++ b/fs/apfs/namei.c
-@@ -0,0 +1,142 @@
+@@ -0,0 +1,146 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -17793,7 +17801,11 @@ index 000000000..e17638863
 +	return apfs_filename_cmp(dentry->d_sb, name->name, name->len, str, len);
 +}
 +
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 14, 0)
 +static int apfs_dentry_revalidate(struct dentry *dentry, unsigned int flags)
++#else
++static int apfs_dentry_revalidate(struct inode *dir, const struct qstr *name, struct dentry *dentry, unsigned int flags)
++#endif
 +{
 +	struct super_block *sb = dentry->d_sb;
 +
@@ -17821,7 +17833,7 @@ index 000000000..e17638863
 +};
 diff --git a/fs/apfs/node.c b/fs/apfs/node.c
 new file mode 100644
-index 000000000..2104177a3
+index 000000000..cc332da43
 --- /dev/null
 +++ b/fs/apfs/node.c
 @@ -0,0 +1,2069 @@
@@ -17842,7 +17854,7 @@ index 000000000..2104177a3
 + * Verifies that the node index fits in a single block, and that the number
 + * of records fits in the index. Without this check a crafted filesystem could
 + * pretend to have too many records, and calls to apfs_node_locate_key() and
-+ * apfs_node_locate_data() would read beyond the limits of the node.
++ * apfs_node_locate_value() would read beyond the limits of the node.
 + */
 +static bool apfs_node_is_valid(struct super_block *sb,
 +			       struct apfs_node *node)
@@ -17969,7 +17981,7 @@ index 000000000..2104177a3
 +	node->key = sizeof(*raw) + le16_to_cpu(raw->btn_table_space.off)
 +				+ le16_to_cpu(raw->btn_table_space.len);
 +	node->free = node->key + le16_to_cpu(raw->btn_free_space.off);
-+	node->data = node->free + le16_to_cpu(raw->btn_free_space.len);
++	node->val = node->free + le16_to_cpu(raw->btn_free_space.len);
 +
 +	free_head = &raw->btn_key_free_list;
 +	node->key_free_list_len = le16_to_cpu(free_head->len);
@@ -18386,7 +18398,7 @@ index 000000000..2104177a3
 +	toc_off = sizeof(*raw) + le16_to_cpu(raw->btn_table_space.off);
 +	raw->btn_table_space.len = cpu_to_le16(node->key - toc_off);
 +	raw->btn_free_space.off = cpu_to_le16(node->free - node->key);
-+	raw->btn_free_space.len = cpu_to_le16(node->data - node->free);
++	raw->btn_free_space.len = cpu_to_le16(node->val - node->free);
 +
 +	/* Reset the lists on zero length, a defragmentation is taking place */
 +	free_head = &raw->btn_key_free_list;
@@ -18411,8 +18423,8 @@ index 000000000..2104177a3
 + * @off:	on return will hold the offset in the block
 + *
 + * Returns the length of the key, or 0 in case of failure. The function checks
-+ * that this length fits within the block; callers must use the returned value
-+ * to make sure they never operate outside its bounds.
++ * that this length fits within the block; callers must use it to make sure
++ * they never operate outside its bounds.
 + */
 +int apfs_node_locate_key(struct apfs_node *node, int index, int *off)
 +{
@@ -18440,7 +18452,7 @@ index 000000000..2104177a3
 +		/* Translate offset in key area to offset in block */
 +		*off = node->key + le16_to_cpu(entry->k);
 +	} else {
-+		/* These node types have variable length keys and data */
++		/* These node types have variable length keys and values */
 +		struct apfs_kvloc *entry;
 +
 +		entry = (struct apfs_kvloc *)raw->btn_data + index;
@@ -18457,17 +18469,17 @@ index 000000000..2104177a3
 +}
 +
 +/**
-+ * apfs_node_locate_data - Locate the data of a node record
++ * apfs_node_locate_value - Locate the value of a node record
 + * @node:	node to be searched
 + * @index:	number of the entry to locate
 + * @off:	on return will hold the offset in the block
 + *
-+ * Returns the length of the data, which may be 0 in case of corruption or if
++ * Returns the length of the value, which may be 0 in case of corruption or if
 + * the record is a ghost. The function checks that this length fits within the
-+ * block; callers must use the returned value to make sure they never operate
-+ * outside its bounds.
++ * block; callers must use it to make sure they never operate outside its
++ * bounds.
 + */
-+static int apfs_node_locate_data(struct apfs_node *node, int index, int *off)
++static int apfs_node_locate_value(struct apfs_node *node, int index, int *off)
 +{
 +	struct super_block *sb = node->object.sb;
 +	struct apfs_btree_node_phys *raw;
@@ -18480,7 +18492,7 @@ index 000000000..2104177a3
 +
 +	raw = (struct apfs_btree_node_phys *)node->object.data;
 +	if (apfs_node_has_fixed_kv_size(node)) {
-+		/* These node types have fixed length keys and data */
++		/* These node types have fixed length keys and values */
 +		struct apfs_kvoff *entry;
 +
 +		entry = (struct apfs_kvoff *)raw->btn_data + index;
@@ -18496,7 +18508,7 @@ index 000000000..2104177a3
 +			len = apfs_node_is_leaf(node) ? 16 : 8;
 +		}
 +		/*
-+		 * Data offsets are counted backwards from the end of the
++		 * Value offsets are counted backwards from the end of the
 +		 * block, or from the beginning of the footer when it exists
 +		 */
 +		if (apfs_node_is_root(node)) /* has footer */
@@ -18505,13 +18517,13 @@ index 000000000..2104177a3
 +		else
 +			*off = sb->s_blocksize - le16_to_cpu(entry->v);
 +	} else {
-+		/* These node types have variable length keys and data */
++		/* These node types have variable length keys and values */
 +		struct apfs_kvloc *entry;
 +
 +		entry = (struct apfs_kvloc *)raw->btn_data + index;
 +		len = le16_to_cpu(entry->v.len);
 +		/*
-+		 * Data offsets are counted backwards from the end of the
++		 * Value offsets are counted backwards from the end of the
 +		 * block, or from the beginning of the footer when it exists
 +		 */
 +		if (apfs_node_is_root(node)) /* has footer */
@@ -18658,7 +18670,7 @@ index 000000000..2104177a3
 +		apfs_err(sb, "bad key for index %d", query->index);
 +		return -EFSCORRUPTED;
 +	}
-+	query->len = apfs_node_locate_data(node, query->index, &query->off);
++	query->len = apfs_node_locate_value(node, query->index, &query->off);
 +	if (query->len == 0) {
 +		apfs_err(sb, "bad value for index %d", query->index);
 +		return -EFSCORRUPTED;
@@ -18708,7 +18720,7 @@ index 000000000..2104177a3
 +	    query->flags & APFS_QUERY_EXACT)
 +		return -ENODATA;
 +
-+	query->len = apfs_node_locate_data(node, query->index, &query->off);
++	query->len = apfs_node_locate_value(node, query->index, &query->off);
 +	if (query->len == 0) {
 +		apfs_err(sb, "bad value for index %d", query->index);
 +		return -EFSCORRUPTED;
@@ -18740,7 +18752,7 @@ index 000000000..2104177a3
 + * as soon as we return to this level. The function may also return -EAGAIN,
 + * to signal that the search should go on in a different branch.
 + *
-+ * On success returns 0; the offset of the data within the block will be saved
++ * On success returns 0; the offset of the value within the block will be saved
 + * in @query->off, and its length in @query->len. The function checks that this
 + * length fits within the block; callers must use the returned value to make
 + * sure they never operate outside its bounds.
@@ -18806,7 +18818,7 @@ index 000000000..2104177a3
 +		query->flags |= APFS_QUERY_NEXT;
 +	}
 +
-+	query->len = apfs_node_locate_data(node, query->index, &query->off);
++	query->len = apfs_node_locate_value(node, query->index, &query->off);
 +	return 0;
 +}
 +
@@ -18820,7 +18832,7 @@ index 000000000..2104177a3
 +
 +	query->index = 0;
 +	query->key_len = apfs_node_locate_key(node, query->index, &query->key_off);
-+	query->len = apfs_node_locate_data(node, query->index, &query->off);
++	query->len = apfs_node_locate_value(node, query->index, &query->off);
 +}
 +
 +/**
@@ -18898,7 +18910,7 @@ index 000000000..2104177a3
 +	new_node->records = root->records;
 +	new_node->key = root->key;
 +	new_node->free = root->free;
-+	new_node->data = root->data + sizeof(*info);
++	new_node->val = root->val + sizeof(*info);
 +	new_node->key_free_list_len = root->key_free_list_len;
 +	new_node->val_free_list_len = root->val_free_list_len;
 +	new_raw = (void *)new_node->object.data;
@@ -18906,9 +18918,9 @@ index 000000000..2104177a3
 +	memcpy((void *)new_raw + sizeof(new_raw->btn_o),
 +	       (void *)root_raw + sizeof(root_raw->btn_o),
 +	       root->free - sizeof(new_raw->btn_o));
-+	memcpy((void *)new_raw + new_node->data,
-+	       (void *)root_raw + root->data,
-+	       sb->s_blocksize - new_node->data);
++	memcpy((void *)new_raw + new_node->val,
++	       (void *)root_raw + root->val,
++	       sb->s_blocksize - new_node->val);
 +	query->off += sizeof(*info);
 +	apfs_update_node(new_node);
 +
@@ -18939,10 +18951,10 @@ index 000000000..2104177a3
 +
 +	/* The new root is a nonleaf node; the record value is the child id */
 +	root->flags &= ~APFS_BTNODE_LEAF;
-+	root->data = sb->s_blocksize - sizeof(*info) - sizeof(*raw_oid);
-+	raw_oid = (void *)root_raw + root->data;
++	root->val = sb->s_blocksize - sizeof(*info) - sizeof(*raw_oid);
++	raw_oid = (void *)root_raw + root->val;
 +	*raw_oid = cpu_to_le64(new_node->object.oid);
-+	root_query->off = root->data;
++	root_query->off = root->val;
 +	root_query->len = sizeof(*raw_oid);
 +
 +	/* With the key and value in place, set the table-of-contents */
@@ -19000,9 +19012,9 @@ index 000000000..2104177a3
 +		toc_size = toc_entry_size * round_up(end - start, APFS_BTREE_TOC_ENTRY_INCREMENT);
 +	dest_node->key = sizeof(*dest_raw) + toc_size;
 +	dest_node->free = dest_node->key;
-+	dest_node->data = sb->s_blocksize;
++	dest_node->val = sb->s_blocksize;
 +	if (apfs_node_is_root(dest_node))
-+		dest_node->data -= sizeof(struct apfs_btree_info);
++		dest_node->val -= sizeof(struct apfs_btree_info);
 +
 +	/* We'll use a temporary query structure to move the records around */
 +	query = apfs_alloc_query(dest_node, NULL /* parent */);
@@ -19026,15 +19038,15 @@ index 000000000..2104177a3
 +		query->key_len = len;
 +		dest_node->free += len;
 +
-+		len = apfs_node_locate_data(src_node, i, &off);
-+		dest_node->data -= len;
-+		if (dest_node->data < 0) {
++		len = apfs_node_locate_value(src_node, i, &off);
++		dest_node->val -= len;
++		if (dest_node->val < 0) {
 +			apfs_err(sb, "value of length %d doesn't fit", len);
 +			goto fail;
 +		}
-+		memcpy((char *)dest_raw + dest_node->data,
++		memcpy((char *)dest_raw + dest_node->val,
 +		       (char *)src_raw + off, len);
-+		query->off = dest_node->data;
++		query->off = dest_node->val;
 +		query->len = len;
 +
 +		query->index = i - start;
@@ -19310,7 +19322,7 @@ index 000000000..2104177a3
 +
 +	apfs_assert_in_transaction(sb, &node_raw->btn_o);
 +
-+	if (off >= node->data) { /* Value area */
++	if (off >= node->val) { /* Value area */
 +		off_to_rel = apfs_off_to_val_off;
 +		head = &node_raw->btn_val_free_list;
 +		node->val_free_list_len += len;
@@ -19346,8 +19358,8 @@ index 000000000..2104177a3
 +
 +	apfs_assert_in_transaction(sb, &raw->btn_o);
 +
-+	if (off == node->data)
-+		node->data += len;
++	if (off == node->val)
++		node->val += len;
 +	else if (off + len == node->free)
 +		node->free -= len;
 +	else
@@ -19443,7 +19455,7 @@ index 000000000..2104177a3
 +{
 +	int off;
 +
-+	if (node->free + len <= node->data) {
++	if (node->free + len <= node->val) {
 +		off = node->free;
 +		node->free += len;
 +		return off;
@@ -19463,9 +19475,9 @@ index 000000000..2104177a3
 +{
 +	int off;
 +
-+	if (node->free + len <= node->data) {
-+		off = node->data - len;
-+		node->data -= len;
++	if (node->free + len <= node->val) {
++		off = node->val - len;
++		node->val -= len;
 +		return off;
 +	}
 +	return apfs_node_free_list_alloc(node, len, true /* value */);
@@ -19477,7 +19489,7 @@ index 000000000..2104177a3
 + */
 +static int apfs_node_total_room(struct apfs_node *node)
 +{
-+	return node->data - node->free + node->key_free_list_len + node->val_free_list_len;
++	return node->val - node->free + node->key_free_list_len + node->val_free_list_len;
 +}
 +
 +/**
@@ -19683,7 +19695,7 @@ index 000000000..2104177a3
 +	defragged = true;
 +
 +	/* The record to replace probably moved around */
-+	query->len = apfs_node_locate_data(query->node, query->index, &query->off);
++	query->len = apfs_node_locate_value(query->node, query->index, &query->off);
 +	query->key_len = apfs_node_locate_key(query->node, query->index, &query->key_off);
 +	goto retry;
 +}
@@ -19727,7 +19739,7 @@ index 000000000..2104177a3
 +
 +		new_key_base += inc;
 +		new_free_base += inc;
-+		if (new_free_base > node->data)
++		if (new_free_base > node->val)
 +			goto defrag;
 +		memmove((void *)node_raw + new_key_base,
 +			(void *)node_raw + node->key, node->free - node->key);
@@ -19848,7 +19860,7 @@ index 000000000..2104177a3
 +	new_node->key_free_list_len = 0;
 +	new_node->val_free_list_len = 0;
 +	new_node->key = new_node->free = sizeof(*new_raw);
-+	new_node->data = sb->s_blocksize; /* Nonroot */
++	new_node->val = sb->s_blocksize; /* Nonroot */
 +
 +	prev_raw = (void *)prev_node->object.data;
 +	new_raw = (void *)new_node->object.data;
@@ -20217,10 +20229,10 @@ index 000000000..9636a9a29
 +}
 diff --git a/fs/apfs/snapshot.c b/fs/apfs/snapshot.c
 new file mode 100644
-index 000000000..c9de8a155
+index 000000000..96834c804
 --- /dev/null
 +++ b/fs/apfs/snapshot.c
-@@ -0,0 +1,681 @@
+@@ -0,0 +1,689 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2022 Ernesto A. Fernández <ernesto@corellium.com>
@@ -20643,6 +20655,7 @@ index 000000000..c9de8a155
 +		err = apfs_transaction_commit(sb);
 +		if (err)
 +			goto fail;
++		apfs_warn(sb, "snapshot name already in use (%s)", name);
 +		return -EEXIST;
 +	}
 +
@@ -20808,14 +20821,21 @@ index 000000000..c9de8a155
 +
 +static int apfs_snap_sblock_from_query(struct apfs_query *query, u64 *sblock_oid)
 +{
++	struct super_block *sb = query->node->object.sb;
 +	char *raw = query->node->object.data;
 +	struct apfs_snap_metadata_val *val = NULL;
 +
 +	if (query->len < sizeof(*val)) {
-+		apfs_err(query->node->object.sb, "bad value length (%d)", query->len);
++		apfs_err(sb, "bad value length (%d)", query->len);
 +		return -EFSCORRUPTED;
 +	}
 +	val = (struct apfs_snap_metadata_val *)(raw + query->off);
++
++	/* I don't know anything about these snapshots, can they be mounted? */
++	if (le32_to_cpu(val->flags) & APFS_SNAP_META_PENDING_DATALESS) {
++		apfs_warn(sb, "the requested snapshot is dataless");
++		return -EOPNOTSUPP;
++	}
 +
 +	*sblock_oid = le64_to_cpu(val->sblock_oid);
 +	return 0;
@@ -22343,10 +22363,10 @@ index 000000000..7667f8733
 +}
 diff --git a/fs/apfs/super.c b/fs/apfs/super.c
 new file mode 100644
-index 000000000..8fe9fac6d
+index 000000000..183367337
 --- /dev/null
 +++ b/fs/apfs/super.c
-@@ -0,0 +1,1961 @@
+@@ -0,0 +1,1971 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -23678,8 +23698,15 @@ index 000000000..8fe9fac6d
 +		return -EINVAL;
 +	}
 +	if (features & APFS_INCOMPAT_DATALESS_SNAPS) {
-+		apfs_warn(sb, "snapshots with no data are not supported");
-+		return -EINVAL;
++		/*
++		 * I haven't encountered dataless snapshots myself yet (TODO).
++		 * I'm not even sure what they are, so be safe.
++		 */
++		if (!sb_rdonly(sb)) {
++			apfs_warn(sb, "writes to volumes with dataless snapshots not yet supported");
++			return -EINVAL;
++		}
++		apfs_warn(sb, "volume has dataless snapshots");
 +	}
 +	if (features & APFS_INCOMPAT_ENC_ROLLED) {
 +		apfs_warn(sb, "encrypted volumes are not supported");
@@ -24204,6 +24231,10 @@ index 000000000..8fe9fac6d
 +		kfree(sbi);
 +		sbi = NULL;
 +	} else {
++		if (!sbi->s_snap_name)
++			snprintf(sb->s_id, sizeof(sb->s_id), "%pg:%u", APFS_NXI(sb)->nx_bdev, sbi->s_vol_nr);
++		else
++			snprintf(sb->s_id, sizeof(sb->s_id), "%pg:%u:%s", APFS_NXI(sb)->nx_bdev, sbi->s_vol_nr, sbi->s_snap_name);
 +		error = apfs_read_main_super(sb);
 +		if (error) {
 +			deactivate_locked_super(sb);
@@ -24212,7 +24243,6 @@ index 000000000..8fe9fac6d
 +#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 5, 0)
 +		sb->s_mode = mode;
 +#endif
-+		snprintf(sb->s_id, sizeof(sb->s_id), "%xg", sb->s_dev);
 +		error = apfs_fill_super(sb, data, flags & SB_SILENT ? 1 : 0);
 +		if (error) {
 +			deactivate_locked_super(sb);
@@ -29696,5 +29726,5 @@ index 000000000..b8cbe17fd
 +	return total_len;
 +}
 -- 
-2.47.0
+2.48.1
 
