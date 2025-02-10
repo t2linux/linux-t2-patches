@@ -90,7 +90,7 @@ jobs:
       - name: 'Checkout Repo'
         uses: actions/checkout@v4
         with:
-          ref: 6.6
+          ref: 6.12
           persist-credentials: false
           fetch-depth: 0
 
@@ -159,4 +159,4 @@ jobs:
         uses: ad-m/github-push-action@master
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: 6.6
+          branch: 6.12
