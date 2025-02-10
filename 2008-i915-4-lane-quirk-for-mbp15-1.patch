@@ -13,10 +13,10 @@ Patch written by Kerem Karabay <kekrby@gmail.com>
  3 files changed, 20 insertions(+)
 
 diff --git a/drivers/gpu/drm/i915/display/intel_ddi.c b/drivers/gpu/drm/i915/display/intel_ddi.c
-index 3c3fc5337..c16e0b1d1 100644
+index 49b5cc01c..1435f49f2 100644
 --- a/drivers/gpu/drm/i915/display/intel_ddi.c
 +++ b/drivers/gpu/drm/i915/display/intel_ddi.c
-@@ -4645,6 +4645,7 @@ intel_ddi_init_hdmi_connector(struct intel_digital_port *dig_port)
+@@ -4685,6 +4685,7 @@ intel_ddi_init_hdmi_connector(struct intel_digital_port *dig_port)
  
  static bool intel_ddi_a_force_4_lanes(struct intel_digital_port *dig_port)
  {
@@ -24,7 +24,7 @@ index 3c3fc5337..c16e0b1d1 100644
  	struct drm_i915_private *dev_priv = to_i915(dig_port->base.base.dev);
  
  	if (dig_port->base.port != PORT_A)
-@@ -4653,6 +4654,9 @@ static bool intel_ddi_a_force_4_lanes(struct intel_digital_port *dig_port)
+@@ -4693,6 +4694,9 @@ static bool intel_ddi_a_force_4_lanes(struct intel_digital_port *dig_port)
  	if (dig_port->saved_port_bits & DDI_A_4_LANES)
  		return false;
  
@@ -35,10 +35,10 @@ index 3c3fc5337..c16e0b1d1 100644
  	 *                     supported configuration
  	 */
 diff --git a/drivers/gpu/drm/i915/display/intel_quirks.c b/drivers/gpu/drm/i915/display/intel_quirks.c
-index 14d5fefc9..727639b8f 100644
+index 28f497ae7..c2952b0f8 100644
 --- a/drivers/gpu/drm/i915/display/intel_quirks.c
 +++ b/drivers/gpu/drm/i915/display/intel_quirks.c
-@@ -59,6 +59,18 @@ static void quirk_increase_ddi_disabled_time(struct intel_display *display)
+@@ -64,6 +64,18 @@ static void quirk_increase_ddi_disabled_time(struct intel_display *display)
  	drm_info(display->drm, "Applying Increase DDI Disabled quirk\n");
  }
  
@@ -57,7 +57,7 @@ index 14d5fefc9..727639b8f 100644
  static void quirk_no_pps_backlight_power_hook(struct intel_display *display)
  {
  	intel_set_quirk(display, QUIRK_NO_PPS_BACKLIGHT_POWER_HOOK);
-@@ -201,6 +213,9 @@ static struct intel_quirk intel_quirks[] = {
+@@ -229,6 +241,9 @@ static struct intel_quirk intel_quirks[] = {
  	{ 0x3184, 0x1019, 0xa94d, quirk_increase_ddi_disabled_time },
  	/* HP Notebook - 14-r206nv */
  	{ 0x0f31, 0x103c, 0x220f, quirk_invert_brightness },
@@ -66,12 +66,12 @@ index 14d5fefc9..727639b8f 100644
 +	{ 0x3e9b, 0x106b, 0x0176, quirk_ddi_a_force_4_lanes },
  };
  
- static struct intel_dpcd_quirk intel_dpcd_quirks[] = {
+ static const struct intel_dpcd_quirk intel_dpcd_quirks[] = {
 diff --git a/drivers/gpu/drm/i915/display/intel_quirks.h b/drivers/gpu/drm/i915/display/intel_quirks.h
-index 151c8f4ae..46e7feba8 100644
+index cafdebda7..a5296f827 100644
 --- a/drivers/gpu/drm/i915/display/intel_quirks.h
 +++ b/drivers/gpu/drm/i915/display/intel_quirks.h
-@@ -17,6 +17,7 @@ enum intel_quirk_id {
+@@ -20,6 +20,7 @@ enum intel_quirk_id {
  	QUIRK_LVDS_SSC_DISABLE,
  	QUIRK_NO_PPS_BACKLIGHT_POWER_HOOK,
  	QUIRK_FW_SYNC_LEN,
@@ -80,5 +80,5 @@ index 151c8f4ae..46e7feba8 100644
  
  void intel_init_quirks(struct intel_display *display);
 -- 
-2.45.2
+2.48.1
 
