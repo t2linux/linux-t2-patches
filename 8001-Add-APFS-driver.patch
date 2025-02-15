@@ -1,17 +1,17 @@
-From 677b7a19c81d81d204bf5e6c43cc098cfcbc2633 Mon Sep 17 00:00:00 2001
+From dc3ccb115f5e96a7b0ea8a333c6b893e23f29096 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Fri, 7 Feb 2025 18:44:38 +0000
+Date: Sat, 15 Feb 2025 18:41:52 +0000
 Subject: [PATCH] Add APFS driver
 
 ---
  fs/apfs/Makefile                    |   28 +
- fs/apfs/apfs.h                      | 1190 ++++++++++
- fs/apfs/apfs_raw.h                  | 1568 +++++++++++++
+ fs/apfs/apfs.h                      | 1274 +++++++++++
+ fs/apfs/apfs_raw.h                  | 1570 +++++++++++++
  fs/apfs/btree.c                     | 1174 ++++++++++
  fs/apfs/compress.c                  |  474 ++++
  fs/apfs/dir.c                       | 1544 +++++++++++++
- fs/apfs/extents.c                   | 2390 ++++++++++++++++++++
+ fs/apfs/extents.c                   | 2382 ++++++++++++++++++++
  fs/apfs/file.c                      |  220 ++
  fs/apfs/inode.c                     | 2597 ++++++++++++++++++++++
  fs/apfs/key.c                       |  337 +++
@@ -38,15 +38,15 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/object.c                    |  315 +++
  fs/apfs/snapshot.c                  |  689 ++++++
  fs/apfs/spaceman.c                  | 1433 ++++++++++++
- fs/apfs/super.c                     | 1971 +++++++++++++++++
+ fs/apfs/super.c                     | 2203 +++++++++++++++++++
  fs/apfs/symlink.c                   |   80 +
- fs/apfs/transaction.c               |  988 +++++++++
+ fs/apfs/transaction.c               |  989 +++++++++
  fs/apfs/unicode.c                   | 3156 +++++++++++++++++++++++++++
  fs/apfs/unicode.h                   |   27 +
  fs/apfs/version.h                   |    1 +
  fs/apfs/xattr.c                     |  922 ++++++++
  fs/apfs/xfield.c                    |  171 ++
- 41 files changed, 29390 insertions(+)
+ 41 files changed, 29701 insertions(+)
  create mode 100644 fs/apfs/Makefile
  create mode 100644 fs/apfs/apfs.h
  create mode 100644 fs/apfs/apfs_raw.h
@@ -125,10 +125,10 @@ index 000000000..a2dbed980
 +	make -C $(KERNEL_DIR) M=$(PWD) clean
 diff --git a/fs/apfs/apfs.h b/fs/apfs/apfs.h
 new file mode 100644
-index 000000000..76a18203c
+index 000000000..c54647fdf
 --- /dev/null
 +++ b/fs/apfs/apfs.h
-@@ -0,0 +1,1190 @@
+@@ -0,0 +1,1274 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -360,15 +360,37 @@ index 000000000..76a18203c
 +#define APFS_FLAGS_SET		4
 +
 +/*
++ * Wrapper around block devices for portability.
++ */
++struct apfs_blkdev_info {
++	struct block_device *blki_bdev;
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
++	struct file *blki_bdev_file;
++#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
++	struct bdev_handle *blki_bdev_handle;
++#endif
++
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 5, 0)
++	fmode_t blki_mode;
++#endif
++
++	/*
++	 * For tier 2, we need to remember the mount path for show_options().
++	 * We don't need this for the main device of course, but better to
++	 * keep things consistent.
++	 */
++	char *blki_path;
++};
++
++/*
 + * Container superblock data in memory
 + */
 +struct apfs_nxsb_info {
-+	struct block_device *nx_bdev; /* Device for the container */
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
-+	struct file *nx_bdev_file;
-+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
-+	struct bdev_handle *nx_bdev_handle;
-+#endif
++	/* Block device info for the container */
++	struct apfs_blkdev_info *nx_blkdev_info;
++	struct apfs_blkdev_info *nx_tier2_info;
++	u64 nx_tier2_bno; /* Offset for tier 2 block numbers */
++
 +	struct apfs_nx_superblock *nx_raw; /* On-disk main sb */
 +	u64 nx_bno; /* Current block number for the checkpoint superblock */
 +	u64 nx_xid; /* Latest transaction id */
@@ -452,6 +474,8 @@ index 000000000..76a18203c
 +	struct apfs_superblock *s_vsb_raw; /* On-disk volume sb */
 +
 +	dev_t s_anon_dev; /* Anonymous device for this volume-snapshot */
++
++	char *s_tier2_path; /* Path to the tier 2 device */
 +
 +	char *s_snap_name; /* Label for the mounted snapshot */
 +	u64 s_snap_xid; /* Transaction id for mounted snapshot */
@@ -1290,8 +1314,29 @@ index 000000000..76a18203c
 +static inline void
 +apfs_map_bh(struct buffer_head *bh, struct super_block *sb, sector_t block)
 +{
++	struct apfs_nxsb_info *nxi = NULL;
++	struct apfs_blkdev_info *info = NULL;
++
++	nxi = APFS_NXI(sb);
++	info = nxi->nx_blkdev_info;
++
++	/*
++	 * Block numbers above s_tier2_bno are for the tier 2 device of a
++	 * fusion drive. Don't bother returning an error code if a regular
++	 * drive gets corrupted and reports a tier 2 block number: just treat
++	 * it the same as any other out-of-range block.
++	 */
++	if (block >= nxi->nx_tier2_bno) {
++		if (nxi->nx_tier2_info) {
++			info = nxi->nx_tier2_info;
++			block -= nxi->nx_tier2_bno;
++		} else {
++			apfs_err(sb, "block number in tier 2 range (0x%llx)", (unsigned long long)block);
++		}
++	}
++
 +	set_buffer_mapped(bh);
-+	bh->b_bdev = APFS_NXI(sb)->nx_bdev;
++	bh->b_bdev = info->blki_bdev;
 +	bh->b_blocknr = block;
 +	bh->b_size = sb->s_blocksize;
 +}
@@ -1299,20 +1344,59 @@ index 000000000..76a18203c
 +static inline struct buffer_head *
 +apfs_sb_bread(struct super_block *sb, sector_t block)
 +{
-+	return __bread_gfp(APFS_NXI(sb)->nx_bdev, block, sb->s_blocksize, __GFP_MOVABLE);
++	struct apfs_nxsb_info *nxi = NULL;
++	struct apfs_blkdev_info *info = NULL;
++
++	nxi = APFS_NXI(sb);
++	info = nxi->nx_blkdev_info;
++
++	if (block >= nxi->nx_tier2_bno) {
++		if (!nxi->nx_tier2_info) {
++			/* Not really a fusion drive, so it's corrupted */
++			apfs_err(sb, "block number in tier 2 range (0x%llx)", (unsigned long long)block);
++			return NULL;
++		}
++		info = nxi->nx_tier2_info;
++		block -= nxi->nx_tier2_bno;
++	}
++
++	return __bread_gfp(info->blki_bdev, block, sb->s_blocksize, __GFP_MOVABLE);
++}
++
++/* Like apfs_getblk(), but doesn't mark the buffer uptodate */
++static inline struct buffer_head *
++__apfs_getblk(struct super_block *sb, sector_t block)
++{
++	struct apfs_nxsb_info *nxi = NULL;
++	struct apfs_blkdev_info *info = NULL;
++
++	nxi = APFS_NXI(sb);
++	info = nxi->nx_blkdev_info;
++
++	if (block >= nxi->nx_tier2_bno) {
++		if (!nxi->nx_tier2_info) {
++			/* Not really a fusion drive, so it's corrupted */
++			apfs_err(sb, "block number in tier 2 range (0x%llx)", (unsigned long long)block);
++			return NULL;
++		}
++		info = nxi->nx_tier2_info;
++		block -= nxi->nx_tier2_bno;
++	}
++
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 7, 0)
++	return __getblk_gfp(info->blki_bdev, block, sb->s_blocksize, __GFP_MOVABLE);
++#else
++	return bdev_getblk(info->blki_bdev, block, sb->s_blocksize, __GFP_MOVABLE);
++#endif
 +}
 +
 +/* Use instead of apfs_sb_bread() for blocks that will just be overwritten */
 +static inline struct buffer_head *
 +apfs_getblk(struct super_block *sb, sector_t block)
 +{
-+	struct buffer_head *bh;
++	struct buffer_head *bh = NULL;
 +
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 7, 0)
-+	bh = __getblk_gfp(APFS_NXI(sb)->nx_bdev, block, sb->s_blocksize, __GFP_MOVABLE);
-+#else
-+	bh = bdev_getblk(APFS_NXI(sb)->nx_bdev, block, sb->s_blocksize, __GFP_MOVABLE);
-+#endif
++	bh = __apfs_getblk(sb, block);
 +	if (bh)
 +		set_buffer_uptodate(bh);
 +	return bh;
@@ -1321,10 +1405,10 @@ index 000000000..76a18203c
 +#endif	/* _APFS_H */
 diff --git a/fs/apfs/apfs_raw.h b/fs/apfs/apfs_raw.h
 new file mode 100644
-index 000000000..af5dd4768
+index 000000000..415e6b713
 --- /dev/null
 +++ b/fs/apfs/apfs_raw.h
-@@ -0,0 +1,1568 @@
+@@ -0,0 +1,1570 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*
 + * Copyright (C) 2019 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -2800,6 +2884,8 @@ index 000000000..af5dd4768
 +		__le32 size;
 +	} __packed block[];
 +} __packed;
++
++#define APFS_FUSION_TIER2_DEVICE_BYTE_ADDR	0x4000000000000000ULL
 +
 +/*
 + * TODO: this is a placeholder, create some snapshots with the official
@@ -6105,10 +6191,10 @@ index 000000000..416f42f02
 +}
 diff --git a/fs/apfs/extents.c b/fs/apfs/extents.c
 new file mode 100644
-index 000000000..37d9df9cb
+index 000000000..b462c4b41
 --- /dev/null
 +++ b/fs/apfs/extents.c
-@@ -0,0 +1,2390 @@
+@@ -0,0 +1,2382 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -8406,11 +8492,7 @@ index 000000000..37d9df9cb
 +			goto out;
 +		}
 +
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 7, 0)
-+		bhs[idx] = __getblk_gfp(APFS_NXI(sb)->nx_bdev, bno, sb->s_blocksize, __GFP_MOVABLE);
-+#else
-+		bhs[idx] = bdev_getblk(APFS_NXI(sb)->nx_bdev, bno, sb->s_blocksize, __GFP_MOVABLE);
-+#endif
++		bhs[idx] = __apfs_getblk(sb, bno);
 +		if (!bhs[idx]) {
 +			apfs_err(sb, "failed to map block 0x%llx", bno);
 +			ret = -EIO;
@@ -8482,11 +8564,7 @@ index 000000000..37d9df9cb
 +		if (ret || bno == 0)
 +			return;
 +
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 7, 0)
-+		bh = __getblk_gfp(APFS_NXI(sb)->nx_bdev, bno, sb->s_blocksize, __GFP_MOVABLE);
-+#else
-+		bh = bdev_getblk(APFS_NXI(sb)->nx_bdev, bno, sb->s_blocksize, __GFP_MOVABLE);
-+#endif
++		bh = __apfs_getblk(sb, bno);
 +		if (!bh)
 +			return;
 +		if (!buffer_uptodate(bh)) {
@@ -22363,10 +22441,10 @@ index 000000000..7667f8733
 +}
 diff --git a/fs/apfs/super.c b/fs/apfs/super.c
 new file mode 100644
-index 000000000..183367337
+index 000000000..26ffdbd33
 --- /dev/null
 +++ b/fs/apfs/super.c
-@@ -0,0 +1,1971 @@
+@@ -0,0 +1,2203 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -22426,12 +22504,28 @@ index 000000000..183367337
 +
 +	lockdep_assert_held(&nxs_mutex);
 +	list_for_each_entry(curr, &nxs, nx_list) {
-+		struct block_device *curr_bdev = curr->nx_bdev;
++		struct block_device *curr_bdev = curr->nx_blkdev_info->blki_bdev;
 +
 +		if (curr_bdev->bd_dev == dev)
 +			return curr;
 +	}
 +	return NULL;
++}
++
++/**
++ * apfs_blkdev_set_blocksize - Set the blocksize for a block device
++ * @info:	info struct for the block device
++ * @size:	size to set
++ *
++ * Returns 0 on success, or a negative error code in case of failure.
++ */
++static int apfs_blkdev_set_blocksize(struct apfs_blkdev_info *info, int size)
++{
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 10, 0)
++	return set_blocksize(info->blki_bdev_file, size);
++#else
++	return set_blocksize(info->blki_bdev, size);
++#endif
 +}
 +
 +/**
@@ -22444,11 +22538,7 @@ index 000000000..183367337
 + */
 +static int apfs_sb_set_blocksize(struct super_block *sb, int size)
 +{
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 10, 0)
-+	if (set_blocksize(APFS_NXI(sb)->nx_bdev_file, size))
-+#else
-+	if (set_blocksize(APFS_NXI(sb)->nx_bdev, size))
-+#endif
++	if (apfs_blkdev_set_blocksize(APFS_NXI(sb)->nx_blkdev_info, size))
 +		return 0;
 +	sb->s_blocksize = size;
 +	sb->s_blocksize_bits = blksize_bits(size);
@@ -22551,6 +22641,80 @@ index 000000000..183367337
 +static int apfs_check_nx_features(struct super_block *sb);
 +static void apfs_set_trans_buffer_limit(struct super_block *sb);
 +
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 7, 0)
++static inline void import_uuid(uuid_t *dst, const __u8 *src)
++{
++	memcpy(dst, src, sizeof(uuid_t));
++}
++#endif
++
++/**
++ * apfs_check_fusion_uuid - Verify that the main and tier 2 devices match
++ * @sb: filesystem superblock
++ *
++ * Returns 0 on success, or a negative error code in case of failure.
++ */
++static int apfs_check_fusion_uuid(struct super_block *sb)
++{
++	struct apfs_nxsb_info *nxi = NULL;
++	struct apfs_nx_superblock *main_raw = NULL, *tier2_raw = NULL;
++	uuid_t main_uuid, tier2_uuid;
++	struct buffer_head *bh = NULL;
++
++	nxi = APFS_NXI(sb);
++	main_raw = nxi->nx_raw;
++	if (!main_raw) {
++		apfs_alert(sb, "fusion uuid checks are misplaced");
++		return -EINVAL;
++	}
++	import_uuid(&main_uuid, main_raw->nx_fusion_uuid);
++	main_raw = NULL;
++
++	if (!nxi->nx_tier2_info) {
++		/* Not a fusion drive */
++		if (!uuid_is_null(&main_uuid)) {
++			apfs_err(sb, "fusion uuid on a regular drive");
++			return -EFSCORRUPTED;
++		}
++		return 0;
++	}
++	if (uuid_is_null(&main_uuid)) {
++		apfs_err(sb, "no fusion uuid on fusion drive");
++		return -EFSCORRUPTED;
++	}
++
++	/* Tier 2 also has a copy of the superblock in block zero */
++	bh = apfs_sb_bread(sb, nxi->nx_tier2_bno);
++	if (IS_ERR(bh))
++		return PTR_ERR(bh);
++	tier2_raw = (struct apfs_nx_superblock *)bh->b_data;
++	import_uuid(&tier2_uuid, tier2_raw->nx_fusion_uuid);
++	brelse(bh);
++	bh = NULL;
++	tier2_raw = NULL;
++
++	/*
++	 * The only difference between both superblocks (other than the
++	 * checksum) is this one bit here, so it can be used to tell which is
++	 * main and which is tier 2. By the way, the reference seems to have
++	 * this backwards.
++	 */
++	if (main_uuid.b[15] & 0x01) {
++		apfs_warn(sb, "bad bit on main device - are you mixing up main and tier 2?");
++		return -EINVAL;
++	}
++	if (!(tier2_uuid.b[15] & 0x01)) {
++		apfs_warn(sb, "bad bit on tier 2 device - are you mixing up main and tier 2?");
++		return -EINVAL;
++	}
++	tier2_uuid.b[15] &= ~0x01;
++	if (!uuid_equal(&main_uuid, &tier2_uuid)) {
++		apfs_warn(sb, "the devices are not part of the same fusion drive");
++		return -EINVAL;
++	}
++	return 0;
++}
++
 +/**
 + * apfs_read_main_super - Find the container superblock and read it into memory
 + * @sb:	superblock structure
@@ -22581,6 +22745,13 @@ index 000000000..183367337
 +		goto out;
 +	}
 +
++	/*
++	 * We won't know the block size until we read the backup superblock,
++	 * so we can't set this up correctly yet. But we do know that the
++	 * backup superblock itself is always in the main device.
++	 */
++	nxi->nx_tier2_bno = APFS_NX_BLOCK_NUM + 1;
++
 +	/* Read the superblock from the last clean unmount */
 +	bh = apfs_read_super_copy(sb);
 +	if (IS_ERR(bh)) {
@@ -22589,6 +22760,13 @@ index 000000000..183367337
 +		goto out;
 +	}
 +	msb_raw = (struct apfs_nx_superblock *)bh->b_data;
++
++	/*
++	 * Now that we confirmed the block size, we can set this up for real.
++	 * It's important to do this early because I don't know which mount
++	 * objects could get moved to tier 2.
++	 */
++	nxi->nx_tier2_bno = APFS_FUSION_TIER2_DEVICE_BYTE_ADDR >> sb->s_blocksize_bits;
 +
 +	/* We want to mount the latest valid checkpoint among the descriptors */
 +	desc_base = le64_to_cpu(msb_raw->nx_xp_desc_base);
@@ -22647,6 +22825,19 @@ index 000000000..183367337
 +	apfs_set_trans_buffer_limit(sb);
 +
 +	err = apfs_check_nx_features(sb);
++	if (err)
++		goto out;
++
++	/*
++	 * This check is technically too late: if main and tier 2 are backwards
++	 * then we have already attempted (and failed) to read the checkpoint
++	 * from tier 2. This may lead to a confusing error message if tier 2
++	 * is absurdly tiny, not a big deal.
++	 */
++	err = apfs_check_fusion_uuid(sb);
++	if (err)
++		goto out;
++
 +out:
 +	brelse(bh);
 +	mutex_unlock(&nxs_mutex);
@@ -22681,6 +22872,33 @@ index 000000000..183367337
 +static struct file_system_type apfs_fs_type;
 +
 +/**
++ * apfs_blkdev_cleanup - Clean up after a block device
++ * @info:	info struct to clean up
++ */
++static void apfs_blkdev_cleanup(struct apfs_blkdev_info *info)
++{
++	if (!info)
++		return;
++
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
++	fput(info->blki_bdev_file);
++	info->blki_bdev_file = NULL;
++#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
++	bdev_release(info->blki_bdev_handle);
++	info->blki_bdev_handle = NULL;
++#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)
++	blkdev_put(info->blki_bdev, &apfs_fs_type);
++#else
++	blkdev_put(info->blki_bdev, info->blki_mode);
++#endif
++	info->blki_bdev = NULL;
++
++	kfree(info->blki_path);
++	info->blki_path = NULL;
++	kfree(info);
++}
++
++/**
 + * apfs_free_main_super - Clean up apfs_read_main_super()
 + * @sbi:	in-memory superblock info
 + *
@@ -22689,18 +22907,10 @@ index 000000000..183367337
 +static inline void apfs_free_main_super(struct apfs_sb_info *sbi)
 +{
 +	struct apfs_nxsb_info *nxi = sbi->s_nxi;
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 5, 0)
-+	fmode_t mode = FMODE_READ | FMODE_EXCL;
-+#endif
 +	struct apfs_ephemeral_object_info *eph_list = NULL;
 +	struct apfs_spaceman *sm = NULL;
 +	u32 bmap_idx;
 +	int i;
-+
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 5, 0)
-+	if (nxi->nx_flags & APFS_READWRITE)
-+		mode |= FMODE_WRITE;
-+#endif
 +
 +	mutex_lock(&nxs_mutex);
 +
@@ -22723,15 +22933,10 @@ index 000000000..183367337
 +	kfree(nxi->nx_raw);
 +	nxi->nx_raw = NULL;
 +
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
-+	fput(nxi->nx_bdev_file);
-+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
-+	bdev_release(nxi->nx_bdev_handle);
-+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)
-+	blkdev_put(nxi->nx_bdev, &apfs_fs_type);
-+#else
-+	blkdev_put(nxi->nx_bdev, mode);
-+#endif
++	apfs_blkdev_cleanup(nxi->nx_blkdev_info);
++	nxi->nx_blkdev_info = NULL;
++	apfs_blkdev_cleanup(nxi->nx_tier2_info);
++	nxi->nx_tier2_info = NULL;
 +
 +	list_del(&nxi->nx_list);
 +	sm = nxi->nx_spaceman;
@@ -23454,6 +23659,8 @@ index 000000000..183367337
 +						     sbi->s_gid));
 +	if (nxi->nx_flags & APFS_CHECK_NODES)
 +		seq_puts(seq, ",cknodes");
++	if (nxi->nx_tier2_info)
++		seq_printf(seq, ",tier2=%s", nxi->nx_tier2_info->blki_path);
 +
 +	return 0;
 +}
@@ -23512,7 +23719,7 @@ index 000000000..183367337
 +};
 +
 +enum {
-+	Opt_readwrite, Opt_cknodes, Opt_uid, Opt_gid, Opt_vol, Opt_snap, Opt_err,
++	Opt_readwrite, Opt_cknodes, Opt_uid, Opt_gid, Opt_vol, Opt_snap, Opt_tier2, Opt_err,
 +};
 +
 +static const match_table_t tokens = {
@@ -23522,6 +23729,7 @@ index 000000000..183367337
 +	{Opt_gid, "gid=%u"},
 +	{Opt_vol, "vol=%u"},
 +	{Opt_snap, "snap=%s"},
++	{Opt_tier2, "tier2=%s"},
 +	{Opt_err, NULL}
 +};
 +
@@ -23614,9 +23822,15 @@ index 000000000..183367337
 +			break;
 +		case Opt_vol:
 +		case Opt_snap:
++		case Opt_tier2:
 +			/* Already read early on mount */
 +			break;
 +		default:
++			/*
++			 * We should have already checked the mount options in
++			 * apfs_preparse_options(), so this is a bug.
++			 */
++			apfs_alert(sb, "invalid mount option %s", p);
 +			return -EINVAL;
 +		}
 +	}
@@ -23646,6 +23860,7 @@ index 000000000..183367337
 +{
 +	struct apfs_nx_superblock *msb_raw = NULL;
 +	u64 features;
++	bool fusion;
 +
 +	msb_raw = APFS_NXI(sb)->nx_raw;
 +	if (!msb_raw) {
@@ -23658,9 +23873,21 @@ index 000000000..183367337
 +		apfs_warn(sb, "unknown incompatible container features (0x%llx)", features);
 +		return -EINVAL;
 +	}
-+	if (features & APFS_NX_INCOMPAT_FUSION) {
-+		apfs_warn(sb, "fusion drives are not supported");
++
++	fusion = features & APFS_NX_INCOMPAT_FUSION;
++	if (fusion && !APFS_NXI(sb)->nx_tier2_info) {
++		apfs_warn(sb, "fusion drive - please use the \"tier2\" mount option");
 +		return -EINVAL;
++	}
++	if (!fusion && APFS_NXI(sb)->nx_tier2_info) {
++		apfs_warn(sb, "not a fusion drive - what's the second disk for?");
++		return -EINVAL;
++	}
++	if (fusion) {
++		if (!sb_rdonly(sb)) {
++			apfs_warn(sb, "writes to fusion drives not yet supported");
++			sb->s_flags |= SB_RDONLY;
++		}
 +	}
 +
 +	features = le64_to_cpu(msb_raw->nx_readonly_compatible_features);
@@ -23769,13 +23996,15 @@ index 000000000..183367337
 +static int apfs_setup_bdi(struct super_block *sb)
 +{
 +	struct apfs_nxsb_info *nxi = APFS_NXI(sb);
++	struct apfs_blkdev_info *bd_info = NULL;
 +	struct backing_dev_info *bdi_dev = NULL, *bdi_sb = NULL;
 +	int err;
 +
++	bd_info = nxi->nx_blkdev_info;
 +#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0) || (defined(RHEL_RELEASE) && LINUX_VERSION_CODE == KERNEL_VERSION(5, 14, 0))
-+	bdi_dev = nxi->nx_bdev->bd_disk->bdi;
++	bdi_dev = bd_info->blki_bdev->bd_disk->bdi;
 +#else
-+	bdi_dev = nxi->nx_bdev->bd_bdi;
++	bdi_dev = bd_info->blki_bdev->bd_bdi;
 +#endif
 +
 +	err = super_setup_bdi(sb);
@@ -23993,8 +24222,10 @@ index 000000000..183367337
 +	 * This is the actual device number, shared by all volumes and
 +	 * snapshots. It gets reported by the mountinfo file, and it seems that
 +	 * udisks uses it to decide if a device is mounted, so it must be set.
++	 *
++	 * TODO: does this work for fusion drives?
 +	 */
-+	sb->s_dev = nxi->nx_bdev->bd_dev;
++	sb->s_dev = nxi->nx_blkdev_info->blki_bdev->bd_dev;
 +
 +	sb->s_fs_info = sbi;
 +	return 0;
@@ -24021,6 +24252,79 @@ index 000000000..183367337
 +}
 +
 +/**
++ * apfs_blkdev_setup - Open a block device and set its info struct
++ * @info_p:	info struct to set
++ * @dev_name:	path name for the block device to open
++ * @mode:	FMODE_* mask
++ *
++ * Returns 0 on success, or a negative error code in case of failure.
++ */
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)
++static int apfs_blkdev_setup(struct apfs_blkdev_info **info_p, const char *dev_name, blk_mode_t mode)
++#else
++static int apfs_blkdev_setup(struct apfs_blkdev_info **info_p, const char *dev_name, fmode_t mode)
++#endif
++{
++	struct apfs_blkdev_info *info = NULL;
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
++	struct file *file = NULL;
++#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
++	struct bdev_handle *handle = NULL;
++#endif
++	struct block_device *bdev = NULL;
++	int ret;
++
++	info = kzalloc(sizeof(*info), GFP_KERNEL);
++	if (!info)
++		return -ENOMEM;
++	info->blki_path = kstrdup(dev_name, GFP_KERNEL);
++	if (!info->blki_path) {
++		ret = -ENOMEM;
++		goto fail;
++	}
++
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
++	file = bdev_file_open_by_path(dev_name, mode, &apfs_fs_type, NULL);
++	if (IS_ERR(file)) {
++		ret = PTR_ERR(file);
++		goto fail;
++	}
++	info->blki_bdev_file = file;
++	bdev = file_bdev(file);
++#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
++	handle = bdev_open_by_path(dev_name, mode, &apfs_fs_type, NULL);
++	if (IS_ERR(handle)) {
++		ret = PTR_ERR(handle);
++		goto fail;
++	}
++	info->blki_bdev_handle = handle;
++	bdev = handle->bdev;
++#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)
++	bdev = blkdev_get_by_path(dev_name, mode, &apfs_fs_type, NULL);
++#else
++	bdev = blkdev_get_by_path(dev_name, mode, &apfs_fs_type);
++#endif
++
++	if (IS_ERR(bdev)) {
++		ret = PTR_ERR(bdev);
++		goto fail;
++	}
++	info->blki_bdev = bdev;
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 5, 0)
++	info->blki_mode = mode;
++#endif
++	*info_p = info;
++	return 0;
++
++fail:
++	kfree(info->blki_path);
++	info->blki_path = NULL;
++	kfree(info);
++	info = NULL;
++	return ret;
++}
++
++/**
 + * apfs_attach_nxi - Attach container sb info to a volume's sb info
 + * @sbi:	new superblock info structure for the volume to be mounted
 + * @dev_name:	path name for the container's block device
@@ -24034,7 +24338,7 @@ index 000000000..183367337
 +static int apfs_attach_nxi(struct apfs_sb_info *sbi, const char *dev_name, fmode_t mode)
 +#endif
 +{
-+	struct apfs_nxsb_info *nxi;
++	struct apfs_nxsb_info *nxi = NULL;
 +	dev_t dev = 0;
 +	int ret;
 +
@@ -24046,49 +24350,28 @@ index 000000000..183367337
 +
 +	nxi = apfs_nx_find_by_dev(dev);
 +	if (!nxi) {
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
-+		struct file *file = NULL;
-+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
-+		struct bdev_handle *handle = NULL;
-+#endif
-+		struct block_device *bdev = NULL;
-+
 +		nxi = kzalloc(sizeof(*nxi), GFP_KERNEL);
 +		if (!nxi) {
 +			ret = -ENOMEM;
 +			goto out;
 +		}
 +
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
-+		file = bdev_file_open_by_path(dev_name, mode, &apfs_fs_type, NULL);
-+		if (IS_ERR(file)) {
-+			kfree(nxi);
-+			ret = PTR_ERR(file);
++		ret = apfs_blkdev_setup(&nxi->nx_blkdev_info, dev_name, mode);
++		if (ret)
 +			goto out;
-+		}
-+		nxi->nx_bdev_file = file;
-+		bdev = file_bdev(file);
-+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
-+		handle = bdev_open_by_path(dev_name, mode, &apfs_fs_type, NULL);
-+		if (IS_ERR(handle)) {
-+			kfree(nxi);
-+			ret = PTR_ERR(handle);
-+			goto out;
-+		}
-+		nxi->nx_bdev_handle = handle;
-+		bdev = handle->bdev;
-+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)
-+		bdev = blkdev_get_by_path(dev_name, mode, &apfs_fs_type, NULL);
-+#else
-+		bdev = blkdev_get_by_path(dev_name, mode, &apfs_fs_type);
-+#endif
-+		if (IS_ERR(bdev)) {
-+			kfree(nxi);
-+			ret = PTR_ERR(bdev);
-+			goto out;
++
++		if (sbi->s_tier2_path) {
++			ret = apfs_blkdev_setup(&nxi->nx_tier2_info, sbi->s_tier2_path, mode);
++			if (ret) {
++				apfs_blkdev_cleanup(nxi->nx_blkdev_info);
++				nxi->nx_blkdev_info = NULL;
++				goto out;
++			}
++			/* We won't need this anymore, so why waste memory? */
++			kfree(sbi->s_tier2_path);
++			sbi->s_tier2_path = NULL;
 +		}
 +
-+		nxi->nx_bdev = bdev;
 +		init_rwsem(&nxi->nx_big_sem);
 +		list_add(&nxi->nx_list, &nxs);
 +		INIT_LIST_HEAD(&nxi->vol_list);
@@ -24100,6 +24383,10 @@ index 000000000..183367337
 +	++nxi->nx_refcnt;
 +	ret = 0;
 +out:
++	if (ret) {
++		kfree(nxi);
++		nxi = NULL;
++	}
 +	mutex_unlock(&nxs_mutex);
 +	return ret;
 +}
@@ -24122,6 +24409,7 @@ index 000000000..183367337
 +	/* Set default values before parsing */
 +	sbi->s_vol_nr = 0;
 +	sbi->s_snap_name = NULL;
++	sbi->s_tier2_path = NULL;
 +
 +	if (!options)
 +		return 0;
@@ -24152,6 +24440,14 @@ index 000000000..183367337
 +				goto out;
 +			}
 +			break;
++		case Opt_tier2:
++			kfree(sbi->s_tier2_path);
++			sbi->s_tier2_path = match_strdup(&args[0]);
++			if (!sbi->s_tier2_path) {
++				err = -ENOMEM;
++				goto out;
++			}
++			break;
 +		case Opt_readwrite:
 +		case Opt_cknodes:
 +		case Opt_uid:
@@ -24159,6 +24455,7 @@ index 000000000..183367337
 +			/* Not needed for sget(), will be read later */
 +			break;
 +		default:
++			apfs_warn(NULL, "invalid mount option %s", p);
 +			err = -EINVAL;
 +			goto out;
 +		}
@@ -24177,6 +24474,7 @@ index 000000000..183367337
 +{
 +	struct super_block *sb;
 +	struct apfs_sb_info *sbi;
++	struct apfs_blkdev_info *bd_info = NULL, *tier2_info = NULL;
 +#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)
 +	blk_mode_t mode = sb_open_mode(flags);
 +#else
@@ -24212,11 +24510,14 @@ index 000000000..183367337
 +		goto out_unmap_super;
 +	}
 +
++	bd_info = APFS_NXI(sb)->nx_blkdev_info;
++	tier2_info = APFS_NXI(sb)->nx_tier2_info;
++
 +	/*
 +	 * I'm doing something hacky with s_dev inside ->kill_sb(), so I want
 +	 * to find out as soon as possible if I messed it up.
 +	 */
-+	WARN_ON(sb->s_dev != APFS_NXI(sb)->nx_bdev->bd_dev);
++	WARN_ON(sb->s_dev != bd_info->blki_bdev->bd_dev);
 +
 +	if (sb->s_root) {
 +		if ((flags ^ sb->s_flags) & SB_RDONLY) {
@@ -24228,13 +24529,19 @@ index 000000000..183367337
 +		apfs_free_main_super(sbi);
 +		kfree(sbi->s_snap_name);
 +		sbi->s_snap_name = NULL;
++		kfree(sbi->s_tier2_path);
++		sbi->s_tier2_path = NULL;
 +		kfree(sbi);
 +		sbi = NULL;
 +	} else {
-+		if (!sbi->s_snap_name)
-+			snprintf(sb->s_id, sizeof(sb->s_id), "%pg:%u", APFS_NXI(sb)->nx_bdev, sbi->s_vol_nr);
++		if (!sbi->s_snap_name && !tier2_info)
++			snprintf(sb->s_id, sizeof(sb->s_id), "%pg:%u", bd_info->blki_bdev, sbi->s_vol_nr);
++		else if (!tier2_info)
++			snprintf(sb->s_id, sizeof(sb->s_id), "%pg:%u:%s", bd_info->blki_bdev, sbi->s_vol_nr, sbi->s_snap_name);
++		else if (!sbi->s_snap_name)
++			snprintf(sb->s_id, sizeof(sb->s_id), "%pg+%pg:%u", bd_info->blki_bdev, tier2_info->blki_bdev, sbi->s_vol_nr);
 +		else
-+			snprintf(sb->s_id, sizeof(sb->s_id), "%pg:%u:%s", APFS_NXI(sb)->nx_bdev, sbi->s_vol_nr, sbi->s_snap_name);
++			snprintf(sb->s_id, sizeof(sb->s_id), "%pg+%pg:%u:%s", bd_info->blki_bdev, tier2_info->blki_bdev, sbi->s_vol_nr, sbi->s_snap_name);
 +		error = apfs_read_main_super(sb);
 +		if (error) {
 +			deactivate_locked_super(sb);
@@ -24257,6 +24564,7 @@ index 000000000..183367337
 +	apfs_free_main_super(sbi);
 +out_free_sbi:
 +	kfree(sbi->s_snap_name);
++	kfree(sbi->s_tier2_path);
 +	kfree(sbi);
 +	return ERR_PTR(error);
 +}
@@ -24279,6 +24587,8 @@ index 000000000..183367337
 +
 +	kfree(sbi->s_snap_name);
 +	sbi->s_snap_name = NULL;
++	kfree(sbi->s_tier2_path);
++	sbi->s_tier2_path = NULL;
 +	if (sbi->s_dflt_pfk)
 +		kfree(sbi->s_dflt_pfk);
 +	kfree(sbi);
@@ -24426,10 +24736,10 @@ index 000000000..be4f9df8f
 +};
 diff --git a/fs/apfs/transaction.c b/fs/apfs/transaction.c
 new file mode 100644
-index 000000000..25f9643cc
+index 000000000..6323f5ea4
 --- /dev/null
 +++ b/fs/apfs/transaction.c
-@@ -0,0 +1,988 @@
+@@ -0,0 +1,989 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2019 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -24452,10 +24762,11 @@ index 000000000..25f9643cc
 +	struct apfs_nxsb_info *nxi = APFS_NXI(sb);
 +	struct apfs_obj_phys *obj = &nxi->nx_raw->nx_o;
 +	struct buffer_head *bh = NULL;
++	struct apfs_blkdev_info *bd_info = nxi->nx_blkdev_info;
 +#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 10, 0)
-+	struct address_space *bdev_map = nxi->nx_bdev->bd_mapping;
++	struct address_space *bdev_map = bd_info->blki_bdev->bd_mapping;
 +#else
-+	struct inode *bdev_inode = nxi->nx_bdev->bd_inode;
++	struct inode *bdev_inode = bd_info->blki_bdev->bd_inode;
 +	struct address_space *bdev_map = bdev_inode->i_mapping;
 +#endif
 +	int err;
