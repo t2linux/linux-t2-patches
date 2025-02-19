@@ -1,4 +1,4 @@
-From 9fd738032d10a6b9d36972f2df61fb55d7a8a1b4 Mon Sep 17 00:00:00 2001
+From 7d40e39bbd21efdb24f3ab6cb6afb57d2153c3b2 Mon Sep 17 00:00:00 2001
 From: Kerem Karabay <kekrby@gmail.com>
 Date: Sun, 5 Mar 2023 18:52:43 +0300
 Subject: [PATCH 1/2] HID: hid-appletb-bl: add driver for the backlight of
@@ -19,13 +19,13 @@ Signed-off-by: Aditya Garg <gargaditya08@live.com>
 ---
  drivers/hid/Kconfig          |  10 ++
  drivers/hid/Makefile         |   1 +
- drivers/hid/hid-appletb-bl.c | 203 +++++++++++++++++++++++++++++++++++
+ drivers/hid/hid-appletb-bl.c | 204 +++++++++++++++++++++++++++++++++++
  drivers/hid/hid-quirks.c     |   4 +-
- 4 files changed, 217 insertions(+), 1 deletion(-)
+ 4 files changed, 218 insertions(+), 1 deletion(-)
  create mode 100644 drivers/hid/hid-appletb-bl.c
 
 diff --git a/drivers/hid/Kconfig b/drivers/hid/Kconfig
-index b53eb569b..b58c09f84 100644
+index dfc245867..8d80a624f 100644
 --- a/drivers/hid/Kconfig
 +++ b/drivers/hid/Kconfig
 @@ -148,6 +148,16 @@ config HID_APPLEIR
@@ -59,10 +59,10 @@ index 482b096ee..d001c3ffd 100644
  obj-$(CONFIG_HID_AUREAL)	+= hid-aureal.o
 diff --git a/drivers/hid/hid-appletb-bl.c b/drivers/hid/hid-appletb-bl.c
 new file mode 100644
-index 000000000..1a3dcd44b
+index 000000000..bad2aead8
 --- /dev/null
 +++ b/drivers/hid/hid-appletb-bl.c
-@@ -0,0 +1,203 @@
+@@ -0,0 +1,204 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Apple Touch Bar Backlight Driver
@@ -210,7 +210,8 @@ index 000000000..1a3dcd44b
 +		appletb_bl_brightness_map[(appletb_bl_def_brightness > 2) ? 2 : appletb_bl_def_brightness]);
 +
 +	if (ret) {
-+		dev_err_probe(dev, ret, "Failed to set touch bar brightness to off\n");
++		dev_err_probe(dev, ret, "Failed to set default touch bar brightness to %d\n",
++			      appletb_bl_def_brightness);
 +		goto close_hw;
 +	}
 +
@@ -264,10 +265,10 @@ index 000000000..1a3dcd44b
 +
 +MODULE_AUTHOR("Ronald Tschalär");
 +MODULE_AUTHOR("Kerem Karabay <kekrby@gmail.com>");
-+MODULE_DESCRIPTION("MacBookPro Touch Bar Backlight Driver");
++MODULE_DESCRIPTION("MacBook Pro Touch Bar Backlight driver");
 +MODULE_LICENSE("GPL");
 diff --git a/drivers/hid/hid-quirks.c b/drivers/hid/hid-quirks.c
-index e0bbf0c63..818d41a35 100644
+index 5d7a418cc..0e055bc73 100644
 --- a/drivers/hid/hid-quirks.c
 +++ b/drivers/hid/hid-quirks.c
 @@ -328,7 +328,6 @@ static const struct hid_device_id hid_have_special_driver[] = {
@@ -289,5 +290,5 @@ index e0bbf0c63..818d41a35 100644
  	{ HID_I2C_DEVICE(USB_VENDOR_ID_ASUSTEK, USB_DEVICE_ID_ASUSTEK_I2C_KEYBOARD) },
  	{ HID_I2C_DEVICE(USB_VENDOR_ID_ASUSTEK, USB_DEVICE_ID_ASUSTEK_I2C_TOUCHPAD) },
 -- 
-2.48.1
+2.43.0
 
