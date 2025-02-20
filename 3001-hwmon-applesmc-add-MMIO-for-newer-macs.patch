@@ -10,9 +10,6 @@ key reading, writing, and metadata operations
 (retrieving keys by index and obtaining key information)
 
 Signed-off-by: Subu Dwevedi <messigoatcr7nop@gmail.com>
-
-CC: Aun-Ali Zaidi <admin@kodeit.net>
-CC: Orlando Chamberlain <orlandoch.dev@gmail.com>
 ---
  drivers/hwmon/applesmc.c | 242 +++++++++++++++++++++++++++++++++++++--
  1 file changed, 230 insertions(+), 12 deletions(-)
