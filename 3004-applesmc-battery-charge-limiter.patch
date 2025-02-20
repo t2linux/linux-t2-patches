@@ -1,7 +1,7 @@
 From add0db8b96c3f90b844586a3b9ea32041bae4b2c Mon Sep 17 00:00:00 2001
 From: Orlando Chamberlain <orlandoch.dev@gmail.com>
 Date: Mon, 30 Jan 2023 18:42:21 +1100
-Subject: [PATCH 9/9] applesmc: battery charge limiter
+Subject: [PATCH 4/4] applesmc: battery charge limiter
 
 ---
  drivers/hwmon/applesmc.c | 42 +++++++++++++++++++++++++++++++++++++++-
