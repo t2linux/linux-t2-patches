@@ -1,5 +1,5 @@
 From 6314ad905b40810d1aa94497731ebd655bb1b12f Mon Sep 17 00:00:00 2001
-From: "A. Dwevedi" <messigoatcr7nop@gmail.com>
+From: "Subu Dwevedi" <messigoatcr7nop@gmail.com>
 Date: Sun, 9 Feb 2025 12:48:54 +0530
 Subject: [PATCH 1/4] hwmon/applesmc: add MMIO for newer macs
 
@@ -9,7 +9,10 @@ This replaces the legacy port-based method for
 key reading, writing, and metadata operations
 (retrieving keys by index and obtaining key information)
 
-Signed-off-by: A. Dwevedi <messigoatcr7nop@gmail.com>
+Signed-off-by: Subu Dwevedi <messigoatcr7nop@gmail.com>
+
+CC: Aun-Ali Zaidi <admin@kodeit.net>
+CC: Orlando Chamberlain <orlandoch.dev@gmail.com>
 ---
  drivers/hwmon/applesmc.c | 242 +++++++++++++++++++++++++++++++++++++--
  1 file changed, 230 insertions(+), 12 deletions(-)
