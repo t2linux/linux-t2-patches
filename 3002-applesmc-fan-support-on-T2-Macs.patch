@@ -1,7 +1,7 @@
 From e77e6a12cd389d1d61b861a1c88a6f393daa6d91 Mon Sep 17 00:00:00 2001
 From: Paul Pawlowski <paul@mrarm.io>
 Date: Sun, 17 Nov 2019 23:12:18 +0100
-Subject: [PATCH 6/9] applesmc: fan support on T2 Macs
+Subject: [PATCH 2/4] applesmc: fan support on T2 Macs
 
 T2 Macs changed the fan values from shorts to
 floats, and changed the fan manual override
