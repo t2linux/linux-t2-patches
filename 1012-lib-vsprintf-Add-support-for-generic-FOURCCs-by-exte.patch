@@ -111,13 +111,13 @@ index 59dbe4f9a..4bde40822 100644
 +	static const struct fourcc_struct try_ch = {
 +		0x41424344, "ABCD (0x41424344)",
 +	};
-+	struct const struct fourcc_struct try_cr = {
++	static const struct fourcc_struct try_cr = {
 +		0x41424344, "DCBA (0x44434241)",
 +	};
 +	static const struct fourcc_struct try_cl = {
 +		le32_to_cpu(0x41424344), "ABCD (0x41424344)",
 +	};
-+	struct const struct fourcc_struct try_cb = {
++	static const struct fourcc_struct try_cb = {
 +		be32_to_cpu(0x41424344), "ABCD (0x41424344)",
 +	};
  
