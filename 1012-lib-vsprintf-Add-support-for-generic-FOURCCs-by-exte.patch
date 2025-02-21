@@ -1,8 +1,8 @@
-From ddaaa1980bdc62568453c468e1c8512713d8a13b Mon Sep 17 00:00:00 2001
+From cd53144b42b51db948af0f642903c1eec619d1eb Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 8 Nov 2022 16:33:22 +0000
-Subject: [PATCH] lib/vsprintf: Add support for generic FOURCCs by extending
- %p4cc
+Subject: [PATCH 2/3] lib/vsprintf: Add support for generic FOURCCs by
+ extending %p4cc
 
 %p4cc is designed for DRM/V4L2 FOURCCs with their specific quirks, but
 it's useful to be able to print generic 4-character codes formatted as
@@ -22,12 +22,13 @@ allow printing LSByte-first FOURCCs stored in host endian order
 value).
 
 Signed-off-by: Hector Martin <marcan@marcan.st>
-Signed-off-by: Russell King (Oracle) <rmk+kernel@armlinux.org.uk>
+Signed-off-by: Aditya Garg <gargaditya08@live.com>
 ---
  Documentation/core-api/printk-formats.rst | 32 +++++++++++++++++++
  lib/test_printf.c                         | 39 +++++++++++++++++++----
  lib/vsprintf.c                            | 38 ++++++++++++++++++----
- 3 files changed, 96 insertions(+), 13 deletions(-)
+ scripts/checkpatch.pl                     |  2 +-
+ 4 files changed, 97 insertions(+), 14 deletions(-)
 
 diff --git a/Documentation/core-api/printk-formats.rst b/Documentation/core-api/printk-formats.rst
 index ecccc0473..9982861fa 100644
@@ -73,7 +74,7 @@ index ecccc0473..9982861fa 100644
  ----
  
 diff --git a/lib/test_printf.c b/lib/test_printf.c
-index 59dbe4f9a..ee860327e 100644
+index 59dbe4f9a..4bde40822 100644
 --- a/lib/test_printf.c
 +++ b/lib/test_printf.c
 @@ -776,21 +776,46 @@ static void __init fwnode_pointer(void)
@@ -100,23 +101,23 @@ index 59dbe4f9a..ee860327e 100644
 -		u32 code;
 -		char *str;
 -	} const try[] = {
-+	struct fourcc_struct const try_cc[] = {
++	static const struct fourcc_struct try_cc[] = {
  		{ 0x3231564e, "NV12 little-endian (0x3231564e)", },
  		{ 0xb231564e, "NV12 big-endian (0xb231564e)", },
  		{ 0x10111213, ".... little-endian (0x10111213)", },
  		{ 0x20303159, "Y10  little-endian (0x20303159)", },
  	};
 -	unsigned int i;
-+	struct fourcc_struct const try_ch = {
++	static const struct fourcc_struct try_ch = {
 +		0x41424344, "ABCD (0x41424344)",
 +	};
-+	struct fourcc_struct const try_cr = {
++	struct const struct fourcc_struct try_cr = {
 +		0x41424344, "DCBA (0x44434241)",
 +	};
-+	struct fourcc_struct const try_cl = {
++	static const struct fourcc_struct try_cl = {
 +		le32_to_cpu(0x41424344), "ABCD (0x41424344)",
 +	};
-+	struct fourcc_struct const try_cb = {
++	struct const struct fourcc_struct try_cb = {
 +		be32_to_cpu(0x41424344), "ABCD (0x41424344)",
 +	};
  
@@ -194,6 +195,19 @@ index 56fe96319..13733a4da 100644
  
  	*p++ = ' ';
  	*p++ = '(';
+diff --git a/scripts/checkpatch.pl b/scripts/checkpatch.pl
+index 7b28ad331..21516f753 100755
+--- a/scripts/checkpatch.pl
++++ b/scripts/checkpatch.pl
+@@ -6904,7 +6904,7 @@ sub process {
+ 					    ($extension eq "f" &&
+ 					     defined $qualifier && $qualifier !~ /^w/) ||
+ 					    ($extension eq "4" &&
+-					     defined $qualifier && $qualifier !~ /^cc/)) {
++					     defined $qualifier && $qualifier !~ /^c[chlbr]/)) {
+ 						$bad_specifier = $specifier;
+ 						last;
+ 					}
 -- 
-2.47.1
+2.43.0
 
