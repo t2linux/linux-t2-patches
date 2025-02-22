@@ -1,4 +1,4 @@
-From d6452703245230953308b46bc920db8f176ea5d6 Mon Sep 17 00:00:00 2001
+From 035a518f663a2f5e60975f26e7cc477ba260a1ed Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 8 Nov 2022 16:33:22 +0000
 Subject: [PATCH 2/3] lib/vsprintf: Add support for generic FOURCCs by
@@ -24,11 +24,11 @@ value).
 Signed-off-by: Hector Martin <marcan@marcan.st>
 Signed-off-by: Aditya Garg <gargaditya08@live.com>
 ---
- Documentation/core-api/printk-formats.rst | 32 +++++++++++
- lib/test_printf.c                         | 39 +++++++++++---
- lib/vsprintf.c                            | 66 ++++++++++++++++++++---
+ Documentation/core-api/printk-formats.rst | 32 ++++++++++
+ lib/test_printf.c                         | 39 +++++++++---
+ lib/vsprintf.c                            | 72 ++++++++++++++++++++---
  scripts/checkpatch.pl                     |  2 +-
- 4 files changed, 124 insertions(+), 15 deletions(-)
+ 4 files changed, 128 insertions(+), 17 deletions(-)
 
 diff --git a/Documentation/core-api/printk-formats.rst b/Documentation/core-api/printk-formats.rst
 index ecccc0473..9982861fa 100644
@@ -132,10 +132,10 @@ index 59dbe4f9a..056929c06 100644
  
  static void __init
 diff --git a/lib/vsprintf.c b/lib/vsprintf.c
-index 56fe96319..7ec7218bb 100644
+index 56fe96319..42d4809af 100644
 --- a/lib/vsprintf.c
 +++ b/lib/vsprintf.c
-@@ -1781,31 +1781,83 @@ char *fourcc_string(char *buf, char *end, const u32 *fourcc,
+@@ -1781,31 +1781,85 @@ char *fourcc_string(char *buf, char *end, const u32 *fourcc,
  	char output[sizeof("0123 little-endian (0x01234567)")];
  	char *p = output;
  	unsigned int i;
@@ -183,17 +183,21 @@ index 56fe96319..7ec7218bb 100644
 +		case 'r':
 +		case 'c':
 +			unsigned char c = val >> ((3 - i) * 8);
+ 
+-		/* Print non-control ASCII characters as-is, dot otherwise */
+-		*p++ = isascii(c) && isprint(c) ? c : '.';
++			/* Print non-control ASCII characters as-is, dot otherwise */
++			*p++ = isascii(c) && isprint(c) ? c : '.';
 +			break;
 +		case 'l':
-+			unsigned char c = orig_le >> ((3 - i) * 8);
++			unsigned char c_le = orig_le >> ((3 - i) * 8);
++			*p++ = isascii(c_le) && isprint(c_le) ? c_le : '.';
 +			break;
 +		case 'b':
-+			unsigned char c = orig_be >> ((3 - i) * 8);
++			unsigned char c_be = orig_be >> ((3 - i) * 8);
++			*p++ = isascii(c_be) && isprint(c_be) ? c_be : '.';
 +			break;
 +		}
- 
- 		/* Print non-control ASCII characters as-is, dot otherwise */
- 		*p++ = isascii(c) && isprint(c) ? c : '.';
  	}
  
 -	*p++ = ' ';
