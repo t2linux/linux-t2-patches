@@ -1,0 +1,101 @@
+From 47fb6564e8fcf5e31b0aab765f9a5af8cd2f45f8 Mon Sep 17 00:00:00 2001
+From: Subu Dwevedi <messigoatcr7nop@gmail.com>
+Date: Sun, 23 Feb 2025 01:50:00 +0530
+Subject: [PATCH 2/3] hwmon/applesmc: battery charge limiter
+
+NOTE: the orginal logic/code was written by Orlando Chamberlain
+
+Co-developed: Orlando Chamberlain <orlandoch.dev@gmail.com>
+Signed-off-by: Orlando Chamberlain <orlandoch.dev@gmail.com>
+
+Signed-off-by: Subu Dwevedi <messigoatcr7nop@gmail.com>
+---
+ drivers/hwmon/applesmc.c | 41 +++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 40 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/hwmon/applesmc.c b/drivers/hwmon/applesmc.c
+index 1be4a4026a6e..aa4070e01d49 100644
+--- a/drivers/hwmon/applesmc.c
++++ b/drivers/hwmon/applesmc.c
+@@ -1158,6 +1158,33 @@ static ssize_t applesmc_calibrate_store(struct device *dev,
+ 
+ 	return count;
+ }
++static ssize_t applesmc_BCLM_store(struct device *dev,
++		struct device_attribute *attr, char *sysfsbuf, size_t count)
++{
++	u8 buffer;
++
++	if (kstrtou8(sysfsbuf, 10, &buffer) < 0)
++		return -EINVAL;
++
++	if (buffer <= 0 || buffer > 100)
++		return -EINVAL;
++
++	if (applesmc_write_key("BCLM", &buffer, 1))
++		return -ENODEV;
++
++	return count;
++}
++
++static ssize_t applesmc_BCLM_show(struct device *dev,
++		struct device_attribute *attr, char *sysfsbuf)
++{
++	u8 buffer;
++
++	if (applesmc_read_key("BCLM", &buffer, 1))
++		return -ENODEV;
++
++	return sysfs_emit(sysfsbuf, "%u\n", buffer);
++}
+ 
+ static void applesmc_backlight_set(struct work_struct *work)
+ {
+@@ -1309,6 +1336,11 @@ static struct applesmc_node_group temp_group[] = {
+ 	{ }
+ };
+ 
++static struct applesmc_node_group bclm_group[] = {
++	{ "battery_charge_limiter", applesmc_BCLM_show, applesmc_BCLM_store },
++	{ }
++};
++
+ /* Module stuff */
+ 
+ /*
+@@ -1542,10 +1574,14 @@ static int __init applesmc_init(void)
+ 	if (ret)
+ 		goto out_smcreg;
+ 
+-	ret = applesmc_create_nodes(fan_group, smcreg.fan_count);
++	ret = applesmc_create_nodes(bclm_group, 1);
+ 	if (ret)
+ 		goto out_info;
+ 
++	ret = applesmc_create_nodes(fan_group, smcreg.fan_count);
++	if (ret)
++		goto out_bclm;
++
+ 	ret = applesmc_create_nodes(temp_group, smcreg.index_count);
+ 	if (ret)
+ 		goto out_fans;
+@@ -1580,6 +1616,8 @@ static int __init applesmc_init(void)
+ 	applesmc_destroy_nodes(temp_group);
+ out_fans:
+ 	applesmc_destroy_nodes(fan_group);
++out_bclm:
++	applesmc_destroy_nodes(bclm_group);
+ out_info:
+ 	applesmc_destroy_nodes(info_group);
+ out_smcreg:
+@@ -1603,6 +1641,7 @@ static void __exit applesmc_exit(void)
+ 	applesmc_release_accelerometer();
+ 	applesmc_destroy_nodes(temp_group);
+ 	applesmc_destroy_nodes(fan_group);
++	applesmc_destroy_nodes(bclm_group);
+ 	applesmc_destroy_nodes(info_group);
+ 	applesmc_destroy_smcreg();
+ 	platform_device_unregister(pdev);
+-- 
+2.43.0
+
