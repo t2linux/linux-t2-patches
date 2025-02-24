@@ -1,7 +1,7 @@
 From 47fb6564e8fcf5e31b0aab765f9a5af8cd2f45f8 Mon Sep 17 00:00:00 2001
 From: Subu Dwevedi <messigoatcr7nop@gmail.com>
 Date: Sun, 23 Feb 2025 01:50:00 +0530
-Subject: [PATCH 2/3] hwmon/applesmc: battery charge limiter
+Subject: [PATCH 2/4] hwmon/applesmc: battery charge limiter
 
 NOTE: the orginal logic/code was written by Orlando Chamberlain
 
