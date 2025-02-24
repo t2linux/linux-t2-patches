@@ -1,7 +1,7 @@
 From 9e5152a9f7ac53b33bb37445cc6e23b0f122b71b Mon Sep 17 00:00:00 2001
 From: Subu Dwevedi <messigoatcr7nop@gmail.com>
 Date: Mon, 24 Feb 2025 20:00:24 +0530
-Subject: [PATCH 3/3] hwmon/applesmc: add fan support for newer macs
+Subject: [PATCH 3/4] hwmon/applesmc: add fan support for newer macs
 
 Newer Mac models have transitioned
 the fan speed values from short to float.
