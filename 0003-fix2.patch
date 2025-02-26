@@ -1,0 +1,30 @@
+From 4c633bee3088af34e2a5e61f3b6efe58eaaa8ae7 Mon Sep 17 00:00:00 2001
+From: Aditya Garg <gargaditya08@live.com>
+Date: Thu, 27 Feb 2025 00:50:22 +0530
+Subject: [PATCH 3/3] fix2
+
+---
+ lib/vsprintf.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/lib/vsprintf.c b/lib/vsprintf.c
+index 13733a4da..f1d14007f 100644
+--- a/lib/vsprintf.c
++++ b/lib/vsprintf.c
+@@ -1800,11 +1800,11 @@ char *fourcc_string(char *buf, char *end, const u32 *fourcc,
+ 		val = orig;
+ 		break;
+ 	case 'l':
+-		orig = le32_to_cpu(orig);
++		orig = le32_to_cpu((__force __u32)(__le32)(orig));
+ 		val = orig;
+ 		break;
+ 	case 'b':
+-		orig = be32_to_cpu(orig);
++		orig = be32_to_cpu((__force __u32)(__be32)(orig));
+ 		val = orig;
+ 		break;
+ 	case 'c':
+-- 
+2.47.1.windows.1
+

@@ -1,7 +1,7 @@
 From bde1248a572240fc5e9acc36de30b1e9a1fa1cff Mon Sep 17 00:00:00 2001
 From: Aditya Garg <gargaditya08@live.com>
 Date: Thu, 27 Feb 2025 00:41:18 +0530
-Subject: [PATCH 2/2] fix
+Subject: [PATCH 2/3] fix
 
 ---
  lib/test_printf.c | 4 ++--
