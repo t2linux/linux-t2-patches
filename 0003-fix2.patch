@@ -16,12 +16,12 @@ index 13733a4da..f1d14007f 100644
  		break;
  	case 'l':
 -		orig = le32_to_cpu(orig);
-+		orig = le32_to_cpu((__force __u32)(__le32)(orig));
++		orig = (__force _u32)cpu_to_le32(orig);
  		val = orig;
  		break;
  	case 'b':
 -		orig = be32_to_cpu(orig);
-+		orig = be32_to_cpu((__force __u32)(__be32)(orig));
++		orig = (__force _u32)cpu_to_be32(orig);
  		val = orig;
  		break;
  	case 'c':
