@@ -1,0 +1,213 @@
+From e69b1cef5ff776bf81571c6af3f8f9dec0853fb7 Mon Sep 17 00:00:00 2001
+From: Hector Martin <marcan@marcan.st>
+Date: Fri, 21 Feb 2025 11:37:13 +0000
+Subject: [PATCH 1/2] lib/vsprintf: Add support for generic FOURCCs by
+ extending %p4cc
+
+%p4cc is designed for DRM/V4L2 FOURCCs with their specific quirks, but
+it's useful to be able to print generic 4-character codes formatted as
+an integer. Extend it to add format specifiers for printing generic
+32-bit FOURCCs with various endian semantics:
+
+%p4ch   Host-endian
+%p4cl	Little-endian
+%p4cb	Big-endian
+%p4cr	Reverse-endian
+
+The endianness determines how bytes are interpreted as a u32, and the
+FOURCC is then always printed MSByte-first (this is the opposite of
+V4L/DRM FOURCCs). This covers most practical cases, e.g. %p4cr would
+allow printing LSByte-first FOURCCs stored in host endian order
+(other than the hex form being in character order, not the integer
+value).
+
+Signed-off-by: Hector Martin <marcan@marcan.st>
+Signed-off-by: Aditya Garg <gargaditya08@live.com>
+---
+ Documentation/core-api/printk-formats.rst | 32 +++++++++++++++++++
+ lib/test_printf.c                         | 39 +++++++++++++++++++----
+ lib/vsprintf.c                            | 38 ++++++++++++++++++----
+ scripts/checkpatch.pl                     |  2 +-
+ 4 files changed, 97 insertions(+), 14 deletions(-)
+
+diff --git a/Documentation/core-api/printk-formats.rst b/Documentation/core-api/printk-formats.rst
+index ecccc0473..9982861fa 100644
+--- a/Documentation/core-api/printk-formats.rst
++++ b/Documentation/core-api/printk-formats.rst
+@@ -648,6 +648,38 @@ Examples::
+ 	%p4cc	Y10  little-endian (0x20303159)
+ 	%p4cc	NV12 big-endian (0xb231564e)
+ 
++Generic FourCC code
++-------------------
++
++::
++	%p4c[hrbl]	gP00 (0x67503030)
++
++Print a generic FourCC code, as both ASCII characters and its numerical
++value as hexadecimal.
++
++The additional ``h``, ``r``, ``b``, and ``l`` specifiers are used to specify
++host, reversed, big or little endian order data respectively. Host endian
++order means the data is interpreted as a 32-bit integer and the most
++significant byte is printed first; that is, the character code as printed
++matches the byte order stored in memory on big-endian systems, and is reversed
++on little-endian systems.
++
++Passed by reference.
++
++Examples for a little-endian machine, given &(u32)0x67503030::
++
++	%p4ch	gP00 (0x67503030)
++	%p4cr	00Pg (0x30305067)
++	%p4cb	00Pg (0x30305067)
++	%p4cl	gP00 (0x67503030)
++
++Examples for a big-endian machine, given &(u32)0x67503030::
++
++	%p4ch	gP00 (0x67503030)
++	%p4cr	00Pg (0x30305067)
++	%p4cb	gP00 (0x67503030)
++	%p4cl	00Pg (0x30305067)
++
+ Rust
+ ----
+ 
+diff --git a/lib/test_printf.c b/lib/test_printf.c
+index 59dbe4f9a..4bde40822 100644
+--- a/lib/test_printf.c
++++ b/lib/test_printf.c
+@@ -776,21 +776,46 @@ static void __init fwnode_pointer(void)
+ 	software_node_unregister_node_group(group);
+ }
+ 
++struct fourcc_struct {
++	u32 code;
++	const char *str;
++};
++
++static void __init fourcc_pointer_test(const struct fourcc_struct *fc, size_t n,
++				       const char *fmt)
++{
++	size_t i;
++
++	for (i = 0; i < n; i++)
++		test(fc[i].str, fmt, &fc[i].code);
++}
++
+ static void __init fourcc_pointer(void)
+ {
+-	struct {
+-		u32 code;
+-		char *str;
+-	} const try[] = {
++	static const struct fourcc_struct try_cc[] = {
+ 		{ 0x3231564e, "NV12 little-endian (0x3231564e)", },
+ 		{ 0xb231564e, "NV12 big-endian (0xb231564e)", },
+ 		{ 0x10111213, ".... little-endian (0x10111213)", },
+ 		{ 0x20303159, "Y10  little-endian (0x20303159)", },
+ 	};
+-	unsigned int i;
++	static const struct fourcc_struct try_ch = {
++		0x41424344, "ABCD (0x41424344)",
++	};
++	struct const struct fourcc_struct try_cr = {
++		0x41424344, "DCBA (0x44434241)",
++	};
++	static const struct fourcc_struct try_cl = {
++		le32_to_cpu(0x41424344), "ABCD (0x41424344)",
++	};
++	struct const struct fourcc_struct try_cb = {
++		be32_to_cpu(0x41424344), "ABCD (0x41424344)",
++	};
+ 
+-	for (i = 0; i < ARRAY_SIZE(try); i++)
+-		test(try[i].str, "%p4cc", &try[i].code);
++	fourcc_pointer_test(try_cc, ARRAY_SIZE(try_cc), "%p4cc");
++	fourcc_pointer_test(&try_ch, 1, "%p4ch");
++	fourcc_pointer_test(&try_cr, 1, "%p4cr");
++	fourcc_pointer_test(&try_cl, 1, "%p4cl");
++	fourcc_pointer_test(&try_cb, 1, "%p4cb");
+ }
+ 
+ static void __init
+diff --git a/lib/vsprintf.c b/lib/vsprintf.c
+index 56fe96319..13733a4da 100644
+--- a/lib/vsprintf.c
++++ b/lib/vsprintf.c
+@@ -1781,27 +1781,53 @@ char *fourcc_string(char *buf, char *end, const u32 *fourcc,
+ 	char output[sizeof("0123 little-endian (0x01234567)")];
+ 	char *p = output;
+ 	unsigned int i;
++	bool pixel_fmt = false;
+ 	u32 orig, val;
+ 
+-	if (fmt[1] != 'c' || fmt[2] != 'c')
++	if (fmt[1] != 'c')
+ 		return error_string(buf, end, "(%p4?)", spec);
+ 
+ 	if (check_pointer(&buf, end, fourcc, spec))
+ 		return buf;
+ 
+ 	orig = get_unaligned(fourcc);
+-	val = orig & ~BIT(31);
++	switch (fmt[2]) {
++	case 'h':
++		val = orig;
++		break;
++	case 'r':
++		orig = swab32(orig);
++		val = orig;
++		break;
++	case 'l':
++		orig = le32_to_cpu(orig);
++		val = orig;
++		break;
++	case 'b':
++		orig = be32_to_cpu(orig);
++		val = orig;
++		break;
++	case 'c':
++		/* Pixel formats are printed LSB-first */
++		val = swab32(orig & ~BIT(31));
++		pixel_fmt = true;
++		break;
++	default:
++		return error_string(buf, end, "(%p4?)", spec);
++	}
+ 
+ 	for (i = 0; i < sizeof(u32); i++) {
+-		unsigned char c = val >> (i * 8);
++		unsigned char c = val >> ((3 - i) * 8);
+ 
+ 		/* Print non-control ASCII characters as-is, dot otherwise */
+ 		*p++ = isascii(c) && isprint(c) ? c : '.';
+ 	}
+ 
+-	*p++ = ' ';
+-	strcpy(p, orig & BIT(31) ? "big-endian" : "little-endian");
+-	p += strlen(p);
++	if (pixel_fmt) {
++		*p++ = ' ';
++		strcpy(p, orig & BIT(31) ? "big-endian" : "little-endian");
++		p += strlen(p);
++	}
+ 
+ 	*p++ = ' ';
+ 	*p++ = '(';
+diff --git a/scripts/checkpatch.pl b/scripts/checkpatch.pl
+index 7b28ad331..21516f753 100755
+--- a/scripts/checkpatch.pl
++++ b/scripts/checkpatch.pl
+@@ -6904,7 +6904,7 @@ sub process {
+ 					    ($extension eq "f" &&
+ 					     defined $qualifier && $qualifier !~ /^w/) ||
+ 					    ($extension eq "4" &&
+-					     defined $qualifier && $qualifier !~ /^cc/)) {
++					     defined $qualifier && $qualifier !~ /^c[chlbr]/)) {
+ 						$bad_specifier = $specifier;
+ 						last;
+ 					}
+-- 
+2.47.1.windows.1
+

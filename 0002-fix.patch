@@ -1,0 +1,32 @@
+From bde1248a572240fc5e9acc36de30b1e9a1fa1cff Mon Sep 17 00:00:00 2001
+From: Aditya Garg <gargaditya08@live.com>
+Date: Thu, 27 Feb 2025 00:41:18 +0530
+Subject: [PATCH 2/2] fix
+
+---
+ lib/test_printf.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/lib/test_printf.c b/lib/test_printf.c
+index 4bde40822..056929c06 100644
+--- a/lib/test_printf.c
++++ b/lib/test_printf.c
+@@ -801,13 +801,13 @@ static void __init fourcc_pointer(void)
+ 	static const struct fourcc_struct try_ch = {
+ 		0x41424344, "ABCD (0x41424344)",
+ 	};
+-	struct const struct fourcc_struct try_cr = {
++	static const struct fourcc_struct try_cr = {
+ 		0x41424344, "DCBA (0x44434241)",
+ 	};
+ 	static const struct fourcc_struct try_cl = {
+ 		le32_to_cpu(0x41424344), "ABCD (0x41424344)",
+ 	};
+-	struct const struct fourcc_struct try_cb = {
++	static const struct fourcc_struct try_cb = {
+ 		be32_to_cpu(0x41424344), "ABCD (0x41424344)",
+ 	};
+ 
+-- 
+2.47.1.windows.1
+
