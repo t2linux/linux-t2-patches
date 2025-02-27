@@ -1,23 +1,23 @@
-From ddc6ba4e003f3eb5b93519f26edd51987301dcca Mon Sep 17 00:00:00 2001
+From 75ebe7395b71a69f84958897cee9d0027d48d2f7 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Fri, 21 Feb 2025 11:37:13 +0000
-Subject: [PATCH] lib/vsprintf: Add support for generic FOURCCs by extending
+Subject: [PATCH] lib/vsprintf: Add support for generic FourCCs by extending
  %p4cc
 
-%p4cc is designed for DRM/V4L2 FOURCCs with their specific quirks, but
+%p4cc is designed for DRM/V4L2 FourCCs with their specific quirks, but
 it's useful to be able to print generic 4-character codes formatted as
 an integer. Extend it to add format specifiers for printing generic
-32-bit FOURCCs with various endian semantics:
+32-bit FourCCs with various endian semantics:
 
-%p4ch   Host-endian
-%p4cl	Little-endian
+%p4ch	Host-endian
+%p4cn	Negative-endian
 %p4cb	Big-endian
-%p4cr	Reverse-endian
+%p4cl	Little-endian
 
 The endianness determines how bytes are interpreted as a u32, and the
-FOURCC is then always printed MSByte-first (this is the opposite of
-V4L/DRM FOURCCs). This covers most practical cases, e.g. %p4cr would
-allow printing LSByte-first FOURCCs stored in host endian order
+FourCC is then always printed MSByte-first (this is the opposite of
+V4L/DRM FourCCs). This covers most practical cases, e.g. %p4cn would
+allow printing LSByte-first FourCCs stored in host endian order
 (other than the hex form being in character order, not the integer
 value).
 
@@ -31,7 +31,7 @@ Signed-off-by: Aditya Garg <gargaditya08@live.com>
  4 files changed, 97 insertions(+), 14 deletions(-)
 
 diff --git a/Documentation/core-api/printk-formats.rst b/Documentation/core-api/printk-formats.rst
-index ecccc0473..9982861fa 100644
+index ecccc0473..20e546f08 100644
 --- a/Documentation/core-api/printk-formats.rst
 +++ b/Documentation/core-api/printk-formats.rst
 @@ -648,6 +648,38 @@ Examples::
@@ -42,13 +42,13 @@ index ecccc0473..9982861fa 100644
 +-------------------
 +
 +::
-+	%p4c[hrbl]	gP00 (0x67503030)
++	%p4c[hnbl]	gP00 (0x67503030)
 +
 +Print a generic FourCC code, as both ASCII characters and its numerical
 +value as hexadecimal.
 +
-+The additional ``h``, ``r``, ``b``, and ``l`` specifiers are used to specify
-+host, reversed, big or little endian order data respectively. Host endian
++The additional ``h``, ``n``, ``b``, and ``l`` specifiers are used to specify
++host, negative, big or little endian order data respectively. Host endian
 +order means the data is interpreted as a 32-bit integer and the most
 +significant byte is printed first; that is, the character code as printed
 +matches the byte order stored in memory on big-endian systems, and is reversed
@@ -59,14 +59,14 @@ index ecccc0473..9982861fa 100644
 +Examples for a little-endian machine, given &(u32)0x67503030::
 +
 +	%p4ch	gP00 (0x67503030)
-+	%p4cr	00Pg (0x30305067)
++	%p4cn	00Pg (0x30305067)
 +	%p4cb	00Pg (0x30305067)
 +	%p4cl	gP00 (0x67503030)
 +
 +Examples for a big-endian machine, given &(u32)0x67503030::
 +
 +	%p4ch	gP00 (0x67503030)
-+	%p4cr	00Pg (0x30305067)
++	%p4cn	00Pg (0x30305067)
 +	%p4cb	gP00 (0x67503030)
 +	%p4cl	00Pg (0x30305067)
 +
@@ -74,7 +74,7 @@ index ecccc0473..9982861fa 100644
  ----
  
 diff --git a/lib/test_printf.c b/lib/test_printf.c
-index 59dbe4f9a..056929c06 100644
+index 59dbe4f9a..b5e479b39 100644
 --- a/lib/test_printf.c
 +++ b/lib/test_printf.c
 @@ -776,21 +776,46 @@ static void __init fwnode_pointer(void)
@@ -111,7 +111,7 @@ index 59dbe4f9a..056929c06 100644
 +	static const struct fourcc_struct try_ch = {
 +		0x41424344, "ABCD (0x41424344)",
 +	};
-+	static const struct fourcc_struct try_cr = {
++	static const struct fourcc_struct try_cn = {
 +		0x41424344, "DCBA (0x44434241)",
 +	};
 +	static const struct fourcc_struct try_cl = {
@@ -125,14 +125,14 @@ index 59dbe4f9a..056929c06 100644
 -		test(try[i].str, "%p4cc", &try[i].code);
 +	fourcc_pointer_test(try_cc, ARRAY_SIZE(try_cc), "%p4cc");
 +	fourcc_pointer_test(&try_ch, 1, "%p4ch");
-+	fourcc_pointer_test(&try_cr, 1, "%p4cr");
++	fourcc_pointer_test(&try_cn, 1, "%p4cn");
 +	fourcc_pointer_test(&try_cl, 1, "%p4cl");
 +	fourcc_pointer_test(&try_cb, 1, "%p4cb");
  }
  
  static void __init
 diff --git a/lib/vsprintf.c b/lib/vsprintf.c
-index 56fe96319..2ac90aba2 100644
+index 56fe96319..43a71dcd2 100644
 --- a/lib/vsprintf.c
 +++ b/lib/vsprintf.c
 @@ -1781,27 +1781,53 @@ char *fourcc_string(char *buf, char *end, const u32 *fourcc,
@@ -155,7 +155,7 @@ index 56fe96319..2ac90aba2 100644
 +	case 'h':
 +		val = orig;
 +		break;
-+	case 'r':
++	case 'n':
 +		orig = swab32(orig);
 +		val = orig;
 +		break;
@@ -196,7 +196,7 @@ index 56fe96319..2ac90aba2 100644
  	*p++ = ' ';
  	*p++ = '(';
 diff --git a/scripts/checkpatch.pl b/scripts/checkpatch.pl
-index 7b28ad331..21516f753 100755
+index 7b28ad331..cb89d815a 100755
 --- a/scripts/checkpatch.pl
 +++ b/scripts/checkpatch.pl
 @@ -6904,7 +6904,7 @@ sub process {
@@ -204,7 +204,7 @@ index 7b28ad331..21516f753 100755
  					     defined $qualifier && $qualifier !~ /^w/) ||
  					    ($extension eq "4" &&
 -					     defined $qualifier && $qualifier !~ /^cc/)) {
-+					     defined $qualifier && $qualifier !~ /^c[chlbr]/)) {
++					     defined $qualifier && $qualifier !~ /^c[chnlb]/)) {
  						$bad_specifier = $specifier;
  						last;
  					}
