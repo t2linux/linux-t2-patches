@@ -1,8 +1,8 @@
-From e69b1cef5ff776bf81571c6af3f8f9dec0853fb7 Mon Sep 17 00:00:00 2001
+From ddc6ba4e003f3eb5b93519f26edd51987301dcca Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Fri, 21 Feb 2025 11:37:13 +0000
-Subject: [PATCH 1/3] lib/vsprintf: Add support for generic FOURCCs by
- extending %p4cc
+Subject: [PATCH] lib/vsprintf: Add support for generic FOURCCs by extending
+ %p4cc
 
 %p4cc is designed for DRM/V4L2 FOURCCs with their specific quirks, but
 it's useful to be able to print generic 4-character codes formatted as
@@ -74,7 +74,7 @@ index ecccc0473..9982861fa 100644
  ----
  
 diff --git a/lib/test_printf.c b/lib/test_printf.c
-index 59dbe4f9a..4bde40822 100644
+index 59dbe4f9a..056929c06 100644
 --- a/lib/test_printf.c
 +++ b/lib/test_printf.c
 @@ -776,21 +776,46 @@ static void __init fwnode_pointer(void)
@@ -111,13 +111,13 @@ index 59dbe4f9a..4bde40822 100644
 +	static const struct fourcc_struct try_ch = {
 +		0x41424344, "ABCD (0x41424344)",
 +	};
-+	struct const struct fourcc_struct try_cr = {
++	static const struct fourcc_struct try_cr = {
 +		0x41424344, "DCBA (0x44434241)",
 +	};
 +	static const struct fourcc_struct try_cl = {
 +		le32_to_cpu(0x41424344), "ABCD (0x41424344)",
 +	};
-+	struct const struct fourcc_struct try_cb = {
++	static const struct fourcc_struct try_cb = {
 +		be32_to_cpu(0x41424344), "ABCD (0x41424344)",
 +	};
  
@@ -132,7 +132,7 @@ index 59dbe4f9a..4bde40822 100644
  
  static void __init
 diff --git a/lib/vsprintf.c b/lib/vsprintf.c
-index 56fe96319..13733a4da 100644
+index 56fe96319..2ac90aba2 100644
 --- a/lib/vsprintf.c
 +++ b/lib/vsprintf.c
 @@ -1781,27 +1781,53 @@ char *fourcc_string(char *buf, char *end, const u32 *fourcc,
@@ -160,11 +160,11 @@ index 56fe96319..13733a4da 100644
 +		val = orig;
 +		break;
 +	case 'l':
-+		orig = le32_to_cpu(orig);
++		orig = (__force u32)cpu_to_le32(orig);
 +		val = orig;
 +		break;
 +	case 'b':
-+		orig = be32_to_cpu(orig);
++		orig = (__force u32)cpu_to_be32(orig);
 +		val = orig;
 +		break;
 +	case 'c':
@@ -209,5 +209,5 @@ index 7b28ad331..21516f753 100755
  						last;
  					}
 -- 
-2.47.1.windows.1
+2.43.0
 
