@@ -1,4 +1,4 @@
-From ca75d081a406c46696761ddf87226617d636d794 Mon Sep 17 00:00:00 2001
+From 961b5f51bcfec2ae785b54d15b0f7e25e50c61dd Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Fri, 21 Feb 2025 11:37:13 +0000
 Subject: [PATCH] lib/vsprintf: Add support for generic FourCCs by extending
@@ -133,7 +133,7 @@ index 59dbe4f9a..b5e479b39 100644
  
  static void __init
 diff --git a/lib/vsprintf.c b/lib/vsprintf.c
-index 56fe96319..56511a994 100644
+index 56fe96319..3e5e2da21 100644
 --- a/lib/vsprintf.c
 +++ b/lib/vsprintf.c
 @@ -1781,27 +1781,50 @@ char *fourcc_string(char *buf, char *end, const u32 *fourcc,
@@ -187,7 +187,7 @@ index 56fe96319..56511a994 100644
 -	p += strlen(p);
 +	if (pixel_fmt) {
 +		*p++ = ' ';
-+		strcpy(p, orig & BIT(31) ? "big-endian" : "little-endian");
++		strscpy(p, orig & BIT(31) ? "big-endian" : "little-endian");
 +		p += strlen(p);
 +	}
  
