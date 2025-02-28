@@ -1,4 +1,4 @@
-From 75ebe7395b71a69f84958897cee9d0027d48d2f7 Mon Sep 17 00:00:00 2001
+From ca75d081a406c46696761ddf87226617d636d794 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Fri, 21 Feb 2025 11:37:13 +0000
 Subject: [PATCH] lib/vsprintf: Add support for generic FourCCs by extending
@@ -10,9 +10,9 @@ an integer. Extend it to add format specifiers for printing generic
 32-bit FourCCs with various endian semantics:
 
 %p4ch	Host-endian
-%p4cn	Negative-endian
+%p4cn	Reverse-endian
+%p4cl   Little-endian
 %p4cb	Big-endian
-%p4cl	Little-endian
 
 The endianness determines how bytes are interpreted as a u32, and the
 FourCC is then always printed MSByte-first (this is the opposite of
@@ -24,17 +24,17 @@ value).
 Signed-off-by: Hector Martin <marcan@marcan.st>
 Signed-off-by: Aditya Garg <gargaditya08@live.com>
 ---
- Documentation/core-api/printk-formats.rst | 32 +++++++++++++++++++
+ Documentation/core-api/printk-formats.rst | 33 +++++++++++++++++++
  lib/test_printf.c                         | 39 +++++++++++++++++++----
- lib/vsprintf.c                            | 38 ++++++++++++++++++----
+ lib/vsprintf.c                            | 35 ++++++++++++++++----
  scripts/checkpatch.pl                     |  2 +-
- 4 files changed, 97 insertions(+), 14 deletions(-)
+ 4 files changed, 95 insertions(+), 14 deletions(-)
 
 diff --git a/Documentation/core-api/printk-formats.rst b/Documentation/core-api/printk-formats.rst
-index ecccc0473..20e546f08 100644
+index ecccc0473..7b076abee 100644
 --- a/Documentation/core-api/printk-formats.rst
 +++ b/Documentation/core-api/printk-formats.rst
-@@ -648,6 +648,38 @@ Examples::
+@@ -648,6 +648,39 @@ Examples::
  	%p4cc	Y10  little-endian (0x20303159)
  	%p4cc	NV12 big-endian (0xb231564e)
  
@@ -42,17 +42,18 @@ index ecccc0473..20e546f08 100644
 +-------------------
 +
 +::
-+	%p4c[hnbl]	gP00 (0x67503030)
++	%p4c[hnlb]	gP00 (0x67503030)
 +
 +Print a generic FourCC code, as both ASCII characters and its numerical
 +value as hexadecimal.
 +
 +The additional ``h``, ``n``, ``b``, and ``l`` specifiers are used to specify
-+host, negative, big or little endian order data respectively. Host endian
++host, reverse, big or little endian order data respectively. Host endian
 +order means the data is interpreted as a 32-bit integer and the most
 +significant byte is printed first; that is, the character code as printed
 +matches the byte order stored in memory on big-endian systems, and is reversed
-+on little-endian systems.
++on little-endian systems. Reverse endian is the reverse of host endian order.
++Basically it mimics htonl() / ntohl() used in networking.
 +
 +Passed by reference.
 +
@@ -60,15 +61,15 @@ index ecccc0473..20e546f08 100644
 +
 +	%p4ch	gP00 (0x67503030)
 +	%p4cn	00Pg (0x30305067)
-+	%p4cb	00Pg (0x30305067)
 +	%p4cl	gP00 (0x67503030)
++	%p4cb	00Pg (0x30305067)
 +
 +Examples for a big-endian machine, given &(u32)0x67503030::
 +
 +	%p4ch	gP00 (0x67503030)
 +	%p4cn	00Pg (0x30305067)
-+	%p4cb	gP00 (0x67503030)
 +	%p4cl	00Pg (0x30305067)
++	%p4cb	gP00 (0x67503030)
 +
  Rust
  ----
@@ -132,10 +133,10 @@ index 59dbe4f9a..b5e479b39 100644
  
  static void __init
 diff --git a/lib/vsprintf.c b/lib/vsprintf.c
-index 56fe96319..43a71dcd2 100644
+index 56fe96319..56511a994 100644
 --- a/lib/vsprintf.c
 +++ b/lib/vsprintf.c
-@@ -1781,27 +1781,53 @@ char *fourcc_string(char *buf, char *end, const u32 *fourcc,
+@@ -1781,27 +1781,50 @@ char *fourcc_string(char *buf, char *end, const u32 *fourcc,
  	char output[sizeof("0123 little-endian (0x01234567)")];
  	char *p = output;
  	unsigned int i;
@@ -153,28 +154,25 @@ index 56fe96319..43a71dcd2 100644
 -	val = orig & ~BIT(31);
 +	switch (fmt[2]) {
 +	case 'h':
-+		val = orig;
 +		break;
 +	case 'n':
 +		orig = swab32(orig);
-+		val = orig;
 +		break;
 +	case 'l':
 +		orig = (__force u32)cpu_to_le32(orig);
-+		val = orig;
 +		break;
 +	case 'b':
 +		orig = (__force u32)cpu_to_be32(orig);
-+		val = orig;
 +		break;
 +	case 'c':
 +		/* Pixel formats are printed LSB-first */
-+		val = swab32(orig & ~BIT(31));
 +		pixel_fmt = true;
 +		break;
 +	default:
 +		return error_string(buf, end, "(%p4?)", spec);
 +	}
++
++	val = pixel_fmt ? swab32(orig & ~BIT(31)) : orig;
  
  	for (i = 0; i < sizeof(u32); i++) {
 -		unsigned char c = val >> (i * 8);
@@ -196,7 +194,7 @@ index 56fe96319..43a71dcd2 100644
  	*p++ = ' ';
  	*p++ = '(';
 diff --git a/scripts/checkpatch.pl b/scripts/checkpatch.pl
-index 7b28ad331..cb89d815a 100755
+index 7b28ad331..5595a0898 100755
 --- a/scripts/checkpatch.pl
 +++ b/scripts/checkpatch.pl
 @@ -6904,7 +6904,7 @@ sub process {
@@ -204,7 +202,7 @@ index 7b28ad331..cb89d815a 100755
  					     defined $qualifier && $qualifier !~ /^w/) ||
  					    ($extension eq "4" &&
 -					     defined $qualifier && $qualifier !~ /^cc/)) {
-+					     defined $qualifier && $qualifier !~ /^c[chnlb]/)) {
++					     defined $qualifier && $qualifier !~ /^c[hnlbc]/)) {
  						$bad_specifier = $specifier;
  						last;
  					}
