@@ -1,4 +1,4 @@
-From 961b5f51bcfec2ae785b54d15b0f7e25e50c61dd Mon Sep 17 00:00:00 2001
+From 4ef91381b26459d159c7bbe1f0dc031c42dbef7d Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Fri, 21 Feb 2025 11:37:13 +0000
 Subject: [PATCH] lib/vsprintf: Add support for generic FourCCs by extending
@@ -24,17 +24,17 @@ value).
 Signed-off-by: Hector Martin <marcan@marcan.st>
 Signed-off-by: Aditya Garg <gargaditya08@live.com>
 ---
- Documentation/core-api/printk-formats.rst | 33 +++++++++++++++++++
+ Documentation/core-api/printk-formats.rst | 32 +++++++++++++++++++
  lib/test_printf.c                         | 39 +++++++++++++++++++----
  lib/vsprintf.c                            | 35 ++++++++++++++++----
  scripts/checkpatch.pl                     |  2 +-
- 4 files changed, 95 insertions(+), 14 deletions(-)
+ 4 files changed, 94 insertions(+), 14 deletions(-)
 
 diff --git a/Documentation/core-api/printk-formats.rst b/Documentation/core-api/printk-formats.rst
-index ecccc0473..7b076abee 100644
+index ecccc0473..14853295a 100644
 --- a/Documentation/core-api/printk-formats.rst
 +++ b/Documentation/core-api/printk-formats.rst
-@@ -648,6 +648,39 @@ Examples::
+@@ -648,6 +648,38 @@ Examples::
  	%p4cc	Y10  little-endian (0x20303159)
  	%p4cc	NV12 big-endian (0xb231564e)
  
@@ -47,13 +47,12 @@ index ecccc0473..7b076abee 100644
 +Print a generic FourCC code, as both ASCII characters and its numerical
 +value as hexadecimal.
 +
-+The additional ``h``, ``n``, ``b``, and ``l`` specifiers are used to specify
-+host, reverse, big or little endian order data respectively. Host endian
-+order means the data is interpreted as a 32-bit integer and the most
-+significant byte is printed first; that is, the character code as printed
-+matches the byte order stored in memory on big-endian systems, and is reversed
-+on little-endian systems. Reverse endian is the reverse of host endian order.
-+Basically it mimics htonl() / ntohl() used in networking.
++The generic FourCC code is always printed in the big-endian format,
++the most significant byte first. This is the opposite of V4L/DRM FourCCs.
++
++The additional ``h``, ``n``, ``l``, and ``b`` specifiers define what
++endianness is used to load the stored bytes. The data might be interpreted
++using the host-endian, reverse-host-endian, little-endian, or big-endian.
 +
 +Passed by reference.
 +
@@ -75,7 +74,7 @@ index ecccc0473..7b076abee 100644
  ----
  
 diff --git a/lib/test_printf.c b/lib/test_printf.c
-index 59dbe4f9a..b5e479b39 100644
+index 59dbe4f9a..80d9fd374 100644
 --- a/lib/test_printf.c
 +++ b/lib/test_printf.c
 @@ -776,21 +776,46 @@ static void __init fwnode_pointer(void)
@@ -110,30 +109,30 @@ index 59dbe4f9a..b5e479b39 100644
  	};
 -	unsigned int i;
 +	static const struct fourcc_struct try_ch = {
-+		0x41424344, "ABCD (0x41424344)",
++		{ 0x41424344, "ABCD (0x41424344)", },
 +	};
 +	static const struct fourcc_struct try_cn = {
-+		0x41424344, "DCBA (0x44434241)",
++		{ 0x41424344, "DCBA (0x44434241)", },
 +	};
 +	static const struct fourcc_struct try_cl = {
-+		le32_to_cpu(0x41424344), "ABCD (0x41424344)",
++		{ le32_to_cpu(0x41424344), "ABCD (0x41424344)", },
 +	};
 +	static const struct fourcc_struct try_cb = {
-+		be32_to_cpu(0x41424344), "ABCD (0x41424344)",
++		{ be32_to_cpu(0x41424344), "ABCD (0x41424344)", },
 +	};
  
 -	for (i = 0; i < ARRAY_SIZE(try); i++)
 -		test(try[i].str, "%p4cc", &try[i].code);
 +	fourcc_pointer_test(try_cc, ARRAY_SIZE(try_cc), "%p4cc");
-+	fourcc_pointer_test(&try_ch, 1, "%p4ch");
-+	fourcc_pointer_test(&try_cn, 1, "%p4cn");
-+	fourcc_pointer_test(&try_cl, 1, "%p4cl");
-+	fourcc_pointer_test(&try_cb, 1, "%p4cb");
++	fourcc_pointer_test(try_ch, ARRAY_SIZE(try_ch), "%p4ch");
++	fourcc_pointer_test(try_cn, ARRAY_SIZE(try_cn), "%p4cn");
++	fourcc_pointer_test(try_cl, ARRAY_SIZE(try_cl), "%p4cl");
++	fourcc_pointer_test(try_cb, ARRAY_SIZE(try_cb), "%p4cb");
  }
  
  static void __init
 diff --git a/lib/vsprintf.c b/lib/vsprintf.c
-index 56fe96319..3e5e2da21 100644
+index 56fe96319..56511a994 100644
 --- a/lib/vsprintf.c
 +++ b/lib/vsprintf.c
 @@ -1781,27 +1781,50 @@ char *fourcc_string(char *buf, char *end, const u32 *fourcc,
@@ -187,7 +186,7 @@ index 56fe96319..3e5e2da21 100644
 -	p += strlen(p);
 +	if (pixel_fmt) {
 +		*p++ = ' ';
-+		strscpy(p, orig & BIT(31) ? "big-endian" : "little-endian");
++		strcpy(p, orig & BIT(31) ? "big-endian" : "little-endian");
 +		p += strlen(p);
 +	}
  
