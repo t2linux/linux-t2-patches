@@ -108,16 +108,16 @@ index 59dbe4f9a..80d9fd374 100644
  		{ 0x20303159, "Y10  little-endian (0x20303159)", },
  	};
 -	unsigned int i;
-+	static const struct fourcc_struct try_ch = {
++	static const struct fourcc_struct try_ch[] = {
 +		{ 0x41424344, "ABCD (0x41424344)", },
 +	};
-+	static const struct fourcc_struct try_cn = {
++	static const struct fourcc_struct try_cn[] = {
 +		{ 0x41424344, "DCBA (0x44434241)", },
 +	};
-+	static const struct fourcc_struct try_cl = {
++	static const struct fourcc_struct try_cl[] = {
 +		{ le32_to_cpu(0x41424344), "ABCD (0x41424344)", },
 +	};
-+	static const struct fourcc_struct try_cb = {
++	static const struct fourcc_struct try_cb[] = {
 +		{ be32_to_cpu(0x41424344), "ABCD (0x41424344)", },
 +	};
  
