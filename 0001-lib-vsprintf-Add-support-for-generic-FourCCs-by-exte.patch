@@ -45,6 +45,7 @@ v6 ->
 - Replace spaces with tabs
 - Add missing []
 - Use host byte order and network byte order terms
+- Fix sparse warning in test_printf.c
 
  Documentation/core-api/printk-formats.rst | 32 +++++++++++++++++++
  lib/test_printf.c                         | 39 +++++++++++++++++++----
@@ -137,10 +138,10 @@ index 59dbe4f9a..4019de09e 100644
 +		{ 0x41424344, "DCBA (0x44434241)", },
 +	};
 +	static const struct fourcc_struct try_cl[] = {
-+		{ le32_to_cpu(0x41424344), "ABCD (0x41424344)", },
++		{ (__force u32)cpu_to_le32(0x41424344), "ABCD (0x41424344)", },
 +	};
 +	static const struct fourcc_struct try_cb[] = {
-+		{ be32_to_cpu(0x41424344), "ABCD (0x41424344)", },
++		{ (__force u32)cpu_to_be32(0x41424344), "ABCD (0x41424344)", },
 +	};
  
 -	for (i = 0; i < ARRAY_SIZE(try); i++)
