@@ -1,12 +1,12 @@
-From 3415dda71c8352252b150d7775be8a2fd1c944a5 Mon Sep 17 00:00:00 2001
+From 5bb2dfd223e09a8e08d7437a6e470e25338e6ea8 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Sat, 15 Feb 2025 18:41:53 +0000
+Date: Sat, 1 Mar 2025 18:43:22 +0000
 Subject: [PATCH] Add APFS driver
 
 ---
  fs/apfs/Makefile                    |   28 +
- fs/apfs/apfs.h                      | 1274 +++++++++++
+ fs/apfs/apfs.h                      | 1289 +++++++++++
  fs/apfs/apfs_raw.h                  | 1570 +++++++++++++
  fs/apfs/btree.c                     | 1174 ++++++++++
  fs/apfs/compress.c                  |  474 ++++
@@ -46,7 +46,7 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/version.h                   |    1 +
  fs/apfs/xattr.c                     |  922 ++++++++
  fs/apfs/xfield.c                    |  171 ++
- 41 files changed, 29701 insertions(+)
+ 41 files changed, 29716 insertions(+)
  create mode 100644 fs/apfs/Makefile
  create mode 100644 fs/apfs/apfs.h
  create mode 100644 fs/apfs/apfs_raw.h
@@ -125,10 +125,10 @@ index 000000000..a2dbed980
 +	make -C $(KERNEL_DIR) M=$(PWD) clean
 diff --git a/fs/apfs/apfs.h b/fs/apfs/apfs.h
 new file mode 100644
-index 000000000..c54647fdf
+index 000000000..701f0a8e5
 --- /dev/null
 +++ b/fs/apfs/apfs.h
-@@ -0,0 +1,1274 @@
+@@ -0,0 +1,1289 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -142,6 +142,21 @@ index 000000000..c54647fdf
 +#include <linux/list.h>
 +#include <linux/types.h>
 +#include <linux/version.h>
++
++/*
++ * Redhat kernels regularly break the api, so they need their own version
++ * checks. Make sure they always fail for non-rhel kernels.
++ *
++ * By the way, if rhel keeps picking up breaking patches for old majors after
++ * a new one is out, this check could break down and things could get more
++ * complicated. I don't think they do that though...
++ */
++#ifdef RHEL_RELEASE
++#define RHEL_VERSION_GE(a, b)	(RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(a, b))
++#else
++#define RHEL_VERSION_GE(a, b)	0
++#endif
++
 +#include "apfs_raw.h"
 +
 +#define EFSBADCRC	EBADMSG		/* Bad CRC detected */
@@ -160,10 +175,10 @@ index 000000000..c54647fdf
 +#endif
 +
 +/* Compatibility wrapper around submit_bh() */
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 0, 0)
-+#define apfs_submit_bh(op, op_flags, bh) submit_bh(op, op_flags, bh)
-+#else
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0) || RHEL_VERSION_GE(9, 2)
 +#define apfs_submit_bh(op, op_flags, bh) submit_bh(op | op_flags, bh)
++#else
++#define apfs_submit_bh(op, op_flags, bh) submit_bh(op, op_flags, bh)
 +#endif
 +
 +/*
@@ -4161,7 +4176,7 @@ index 000000000..e0b4c2998
 +}
 diff --git a/fs/apfs/compress.c b/fs/apfs/compress.c
 new file mode 100644
-index 000000000..a36050688
+index 000000000..ecdd490ab
 --- /dev/null
 +++ b/fs/apfs/compress.c
 @@ -0,0 +1,474 @@
@@ -4576,7 +4591,7 @@ index 000000000..a36050688
 +	return step;
 +}
 +
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0) || RHEL_VERSION_GE(9, 3)
 +static int apfs_compress_read_folio(struct file *filp, struct folio *folio)
 +{
 +	struct page *page = &folio->page;
@@ -4605,7 +4620,7 @@ index 000000000..a36050688
 +}
 +
 +const struct address_space_operations apfs_compress_aops = {
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0) || RHEL_VERSION_GE(9, 3)
 +	.read_folio	= apfs_compress_read_folio,
 +#else
 +	.readpage	= apfs_compress_readpage,
@@ -8579,7 +8594,7 @@ index 000000000..b462c4b41
 +}
 diff --git a/fs/apfs/file.c b/fs/apfs/file.c
 new file mode 100644
-index 000000000..c37d59a02
+index 000000000..76928a07b
 --- /dev/null
 +++ b/fs/apfs/file.c
 @@ -0,0 +1,220 @@
@@ -8717,7 +8732,7 @@ index 000000000..c37d59a02
 +{
 +	struct address_space *mapping = file->f_mapping;
 +
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0) || RHEL_VERSION_GE(9, 3)
 +	if (!mapping->a_ops->read_folio)
 +#else
 +	if (!mapping->a_ops->readpage)
@@ -8805,7 +8820,7 @@ index 000000000..c37d59a02
 +};
 diff --git a/fs/apfs/inode.c b/fs/apfs/inode.c
 new file mode 100644
-index 000000000..96129a452
+index 000000000..db24a5045
 --- /dev/null
 +++ b/fs/apfs/inode.c
 @@ -0,0 +1,2597 @@
@@ -8821,7 +8836,7 @@ index 000000000..96129a452
 +#include <linux/blk_types.h>
 +#include "apfs.h"
 +
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0) || RHEL_VERSION_GE(9, 3)
 +#include <linux/sched/mm.h>
 +#endif
 +
@@ -8831,7 +8846,7 @@ index 000000000..96129a452
 +
 +#define MAX_PFK_LEN	512
 +
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0) || RHEL_VERSION_GE(9, 3)
 +
 +static int apfs_read_folio(struct file *file, struct folio *folio)
 +{
@@ -9313,7 +9328,7 @@ index 000000000..96129a452
 +		}
 +	}
 +
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0) || RHEL_VERSION_GE(9, 3)
 +	flags = memalloc_nofs_save();
 +	page = grab_cache_page_write_begin(mapping, index);
 +	memalloc_nofs_restore(flags);
@@ -9399,7 +9414,7 @@ index 000000000..96129a452
 +static int apfs_write_begin(struct file *file, struct address_space *mapping,
 +			    loff_t pos, unsigned int len,
 +			    struct folio **foliop, void **fsdata)
-+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0)
++#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0) || RHEL_VERSION_GE(9, 3)
 +static int apfs_write_begin(struct file *file, struct address_space *mapping,
 +			    loff_t pos, unsigned int len,
 +			    struct page **pagep, void **fsdata)
@@ -9418,7 +9433,7 @@ index 000000000..96129a452
 +	int blkcount = (len + sb->s_blocksize - 1) >> inode->i_blkbits;
 +	struct apfs_max_ops maxops;
 +	int err;
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0) || RHEL_VERSION_GE(9, 3)
 +	unsigned int flags = 0;
 +#endif
 +
@@ -9509,23 +9524,23 @@ index 000000000..96129a452
 +	return err;
 +}
 +
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)
-+static void apfs_noop_invalidatepage(struct page *page, unsigned int offset, unsigned int length)
-+#else
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 18, 0) || RHEL_VERSION_GE(9, 3)
 +static void apfs_noop_invalidate_folio(struct folio *folio, size_t offset, size_t length)
++#else
++static void apfs_noop_invalidatepage(struct page *page, unsigned int offset, unsigned int length)
 +#endif
 +{
 +}
 +
 +/* bmap is not implemented to avoid issues with CoW on swapfiles */
 +static const struct address_space_operations apfs_aops = {
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 18, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 18, 0) || RHEL_VERSION_GE(9, 2)
 +	.dirty_folio	= block_dirty_folio,
 +#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0)
 +	.set_page_dirty	= __set_page_dirty_buffers,
 +#endif
 +
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0) || RHEL_VERSION_GE(9, 3)
 +	.read_folio	= apfs_read_folio,
 +#else
 +	.readpage	= apfs_readpage,
@@ -9541,10 +9556,10 @@ index 000000000..96129a452
 +	.write_end	= apfs_write_end,
 +
 +	/* The intention is to keep bhs around until the transaction is over */
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0)
-+	.invalidatepage	= apfs_noop_invalidatepage,
-+#else
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 18, 0) || RHEL_VERSION_GE(9, 3)
 +	.invalidate_folio = apfs_noop_invalidate_folio,
++#else
++	.invalidatepage	= apfs_noop_invalidatepage,
 +#endif
 +};
 +
@@ -22441,7 +22456,7 @@ index 000000000..7667f8733
 +}
 diff --git a/fs/apfs/super.c b/fs/apfs/super.c
 new file mode 100644
-index 000000000..26ffdbd33
+index 000000000..d4c61eb53
 --- /dev/null
 +++ b/fs/apfs/super.c
 @@ -0,0 +1,2203 @@
@@ -23415,7 +23430,7 @@ index 000000000..26ffdbd33
 +	struct apfs_inode_info *ai;
 +	struct apfs_dstream_info *dstream;
 +
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 18, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 18, 0) || RHEL_VERSION_GE(9, 1)
 +	ai = alloc_inode_sb(sb, apfs_inode_cachep, GFP_KERNEL);
 +#else
 +	ai = kmem_cache_alloc(apfs_inode_cachep, GFP_KERNEL);
@@ -24001,7 +24016,7 @@ index 000000000..26ffdbd33
 +	int err;
 +
 +	bd_info = nxi->nx_blkdev_info;
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0) || (defined(RHEL_RELEASE) && LINUX_VERSION_CODE == KERNEL_VERSION(5, 14, 0))
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0) || RHEL_VERSION_GE(9, 0)
 +	bdi_dev = bd_info->blki_bdev->bd_disk->bdi;
 +#else
 +	bdi_dev = bd_info->blki_bdev->bd_bdi;
@@ -24736,7 +24751,7 @@ index 000000000..be4f9df8f
 +};
 diff --git a/fs/apfs/transaction.c b/fs/apfs/transaction.c
 new file mode 100644
-index 000000000..6323f5ea4
+index 000000000..eb5c60ee3
 --- /dev/null
 +++ b/fs/apfs/transaction.c
 @@ -0,0 +1,989 @@
@@ -25485,7 +25500,7 @@ index 000000000..6323f5ea4
 +		if (!is_metadata) {
 +#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
 +			try_to_free_buffers(folio);
-+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0)
++#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0) || RHEL_VERSION_GE(9, 3)
 +			try_to_free_buffers(page_folio(page));
 +#else
 +			try_to_free_buffers(page);
