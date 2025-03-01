@@ -1,6 +1,6 @@
-From 4ef91381b26459d159c7bbe1f0dc031c42dbef7d Mon Sep 17 00:00:00 2001
+From ce3fab0d341593c25df3ca10170760680c75b454 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
-Date: Fri, 21 Feb 2025 11:37:13 +0000
+Date: Sat, 1 Mar 2025 08:48:28 +0000
 Subject: [PATCH] lib/vsprintf: Add support for generic FourCCs by extending
  %p4cc
 
@@ -9,9 +9,9 @@ it's useful to be able to print generic 4-character codes formatted as
 an integer. Extend it to add format specifiers for printing generic
 32-bit FourCCs with various endian semantics:
 
-%p4ch	Host-endian
-%p4cn	Reverse-endian
-%p4cl   Little-endian
+%p4ch	Host byte order
+%p4cn	Network byte order
+%p4cl	Little-endian
 %p4cb	Big-endian
 
 The endianness determines how bytes are interpreted as a u32, and the
@@ -24,6 +24,28 @@ value).
 Signed-off-by: Hector Martin <marcan@marcan.st>
 Signed-off-by: Aditya Garg <gargaditya08@live.com>
 ---
+v2 ->
+- Add this patch to appletbdrm patchset
+
+v3 ->
+- Make array static
+
+v4 ->
+- Fix code error
+- Fix sparse warnings
+- Make this patch separate from drm
+
+v5 ->
+- Improve documentation
+- Use better logic to assign value of val
+- Use 'n' instead of 'r' for reverse endian
+- Use ARRAY_SIZE() instead of hardcoding 1
+
+v6 ->
+- Replace spaces with tabs
+- Add missing []
+- Use host byte order and network byte order terms
+
  Documentation/core-api/printk-formats.rst | 32 +++++++++++++++++++
  lib/test_printf.c                         | 39 +++++++++++++++++++----
  lib/vsprintf.c                            | 35 ++++++++++++++++----
@@ -31,7 +53,7 @@ Signed-off-by: Aditya Garg <gargaditya08@live.com>
  4 files changed, 94 insertions(+), 14 deletions(-)
 
 diff --git a/Documentation/core-api/printk-formats.rst b/Documentation/core-api/printk-formats.rst
-index ecccc0473..14853295a 100644
+index ecccc0473..bd420e8aa 100644
 --- a/Documentation/core-api/printk-formats.rst
 +++ b/Documentation/core-api/printk-formats.rst
 @@ -648,6 +648,38 @@ Examples::
@@ -52,7 +74,7 @@ index ecccc0473..14853295a 100644
 +
 +The additional ``h``, ``n``, ``l``, and ``b`` specifiers define what
 +endianness is used to load the stored bytes. The data might be interpreted
-+using the host-endian, reverse-host-endian, little-endian, or big-endian.
++using the host byte order, network byte order, little-endian, or big-endian.
 +
 +Passed by reference.
 +
@@ -74,7 +96,7 @@ index ecccc0473..14853295a 100644
  ----
  
 diff --git a/lib/test_printf.c b/lib/test_printf.c
-index 59dbe4f9a..80d9fd374 100644
+index 59dbe4f9a..4019de09e 100644
 --- a/lib/test_printf.c
 +++ b/lib/test_printf.c
 @@ -776,21 +776,46 @@ static void __init fwnode_pointer(void)
@@ -206,5 +228,5 @@ index 7b28ad331..5595a0898 100755
  						last;
  					}
 -- 
-2.43.0
+2.47.1
 
