@@ -25,7 +25,7 @@ index 49b5cc01c..1435f49f2 100644
  
  	if (dig_port->base.port != PORT_A)
 @@ -4693,6 +4694,9 @@ static bool intel_ddi_a_force_4_lanes(struct intel_digital_port *dig_port)
- 	if (dig_port->saved_port_bits & DDI_A_4_LANES)
+ 	if (dig_port->ddi_a_4_lanes)
  		return false;
  
 +	if (intel_has_quirk(display, QUIRK_DDI_A_FORCE_4_LANES))
