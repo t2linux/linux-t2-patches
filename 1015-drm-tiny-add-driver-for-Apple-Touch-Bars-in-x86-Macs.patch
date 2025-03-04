@@ -279,7 +279,7 @@ index 000000000..f5d177e23
 +	}
 +
 +	if (actual_size != size) {
-+		drm_err(drm, "Actual size (%d) doesn't match expected size (%lu)\n",
++		drm_err(drm, "Actual size (%d) doesn't match expected size (%zu)\n",
 +			actual_size, size);
 +		return -EIO;
 +	}
@@ -320,7 +320,7 @@ index 000000000..f5d177e23
 +	}
 +
 +	if (actual_size != size) {
-+		drm_err(drm, "Actual size (%d) doesn't match expected size (%lu)\n",
++		drm_err(drm, "Actual size (%d) doesn't match expected size (%zu)\n",
 +			actual_size, size);
 +		return -EBADMSG;
 +	}
