@@ -1,7 +1,7 @@
-From 5fcc6bfe9e5219c7db68e7b17f3251c9604f749e Mon Sep 17 00:00:00 2001
+From ca8022f49298b49efacfb183b4b4b250b3eacf2d Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Sat, 1 Mar 2025 18:43:27 +0000
+Date: Tue, 4 Mar 2025 18:48:01 +0000
 Subject: [PATCH] Add APFS driver
 
 ---
@@ -125,7 +125,7 @@ index 000000000..a2dbed980
 +	make -C $(KERNEL_DIR) M=$(PWD) clean
 diff --git a/fs/apfs/apfs.h b/fs/apfs/apfs.h
 new file mode 100644
-index 000000000..701f0a8e5
+index 000000000..62f4ad576
 --- /dev/null
 +++ b/fs/apfs/apfs.h
 @@ -0,0 +1,1289 @@
@@ -379,13 +379,13 @@ index 000000000..701f0a8e5
 + */
 +struct apfs_blkdev_info {
 +	struct block_device *blki_bdev;
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0) || RHEL_VERSION_GE(9, 5)
 +	struct file *blki_bdev_file;
 +#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
 +	struct bdev_handle *blki_bdev_handle;
 +#endif
 +
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 5, 0)
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 5, 0) && !RHEL_VERSION_GE(9, 4)
 +	fmode_t blki_mode;
 +#endif
 +
@@ -8594,7 +8594,7 @@ index 000000000..b462c4b41
 +}
 diff --git a/fs/apfs/file.c b/fs/apfs/file.c
 new file mode 100644
-index 000000000..76928a07b
+index 000000000..4ac7d7b5e
 --- /dev/null
 +++ b/fs/apfs/file.c
 @@ -0,0 +1,220 @@
@@ -8713,7 +8713,7 @@ index 000000000..76928a07b
 +	apfs_transaction_abort(sb);
 +out:
 +	if (err)
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0)
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0) && !RHEL_VERSION_GE(9, 5)
 +		ret = block_page_mkwrite_return(err);
 +#else
 +		ret = vmf_fs_error(err);
@@ -22456,7 +22456,7 @@ index 000000000..7667f8733
 +}
 diff --git a/fs/apfs/super.c b/fs/apfs/super.c
 new file mode 100644
-index 000000000..d4c61eb53
+index 000000000..e7243fe7c
 --- /dev/null
 +++ b/fs/apfs/super.c
 @@ -0,0 +1,2203 @@
@@ -22895,13 +22895,13 @@ index 000000000..d4c61eb53
 +	if (!info)
 +		return;
 +
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0) || RHEL_VERSION_GE(9, 5)
 +	fput(info->blki_bdev_file);
 +	info->blki_bdev_file = NULL;
 +#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
 +	bdev_release(info->blki_bdev_handle);
 +	info->blki_bdev_handle = NULL;
-+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)
++#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0) || RHEL_VERSION_GE(9, 4)
 +	blkdev_put(info->blki_bdev, &apfs_fs_type);
 +#else
 +	blkdev_put(info->blki_bdev, info->blki_mode);
@@ -24281,7 +24281,7 @@ index 000000000..d4c61eb53
 +#endif
 +{
 +	struct apfs_blkdev_info *info = NULL;
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0) || RHEL_VERSION_GE(9, 5)
 +	struct file *file = NULL;
 +#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
 +	struct bdev_handle *handle = NULL;
@@ -24298,7 +24298,7 @@ index 000000000..d4c61eb53
 +		goto fail;
 +	}
 +
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0) || RHEL_VERSION_GE(9, 5)
 +	file = bdev_file_open_by_path(dev_name, mode, &apfs_fs_type, NULL);
 +	if (IS_ERR(file)) {
 +		ret = PTR_ERR(file);
@@ -24314,7 +24314,7 @@ index 000000000..d4c61eb53
 +	}
 +	info->blki_bdev_handle = handle;
 +	bdev = handle->bdev;
-+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)
++#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0) || RHEL_VERSION_GE(9, 4)
 +	bdev = blkdev_get_by_path(dev_name, mode, &apfs_fs_type, NULL);
 +#else
 +	bdev = blkdev_get_by_path(dev_name, mode, &apfs_fs_type);
@@ -24325,7 +24325,7 @@ index 000000000..d4c61eb53
 +		goto fail;
 +	}
 +	info->blki_bdev = bdev;
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 5, 0)
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 5, 0) && !RHEL_VERSION_GE(9, 4)
 +	info->blki_mode = mode;
 +#endif
 +	*info_p = info;
@@ -24490,7 +24490,7 @@ index 000000000..d4c61eb53
 +	struct super_block *sb;
 +	struct apfs_sb_info *sbi;
 +	struct apfs_blkdev_info *bd_info = NULL, *tier2_info = NULL;
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 5, 0) || RHEL_VERSION_GE(9, 4)
 +	blk_mode_t mode = sb_open_mode(flags);
 +#else
 +	fmode_t mode = FMODE_READ | FMODE_EXCL;
@@ -24509,7 +24509,7 @@ index 000000000..d4c61eb53
 +	if (sbi->s_snap_name)
 +		flags |= SB_RDONLY;
 +
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 5, 0)
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 5, 0) && !RHEL_VERSION_GE(9, 4)
 +	if (!(flags & SB_RDONLY))
 +		mode |= FMODE_WRITE;
 +#endif
@@ -24562,7 +24562,7 @@ index 000000000..d4c61eb53
 +			deactivate_locked_super(sb);
 +			return ERR_PTR(error);
 +		}
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 5, 0)
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 5, 0) && !RHEL_VERSION_GE(9, 4)
 +		sb->s_mode = mode;
 +#endif
 +		error = apfs_fill_super(sb, data, flags & SB_SILENT ? 1 : 0);
