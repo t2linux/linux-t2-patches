@@ -1,0 +1,26 @@
+From: Aditya Garg <gargaditya08@live.com>
+
+The APPLE_IGNORE_MOUSE quirk was not used anywhere in this driver, so can
+be removed.
+
+Signed-off-by: Aditya Garg <gargaditya08@live.com>
+---
+ drivers/hid/hid-apple.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/hid/hid-apple.c b/drivers/hid/hid-apple.c
+index 3d7befe0a..fde438bee 100644
+--- a/drivers/hid/hid-apple.c
++++ b/drivers/hid/hid-apple.c
+@@ -30,7 +30,7 @@
+ #include "hid-ids.h"
+ 
+ #define APPLE_RDESC_JIS		BIT(0)
+-#define APPLE_IGNORE_MOUSE	BIT(1)
++/* BIT(1) reserved, was: APPLE_IGNORE_MOUSE */
+ #define APPLE_HAS_FN		BIT(2)
+ /* BIT(3) reserved, was: APPLE_HIDDEV */
+ #define APPLE_ISO_TILDE_QUIRK	BIT(4)
+-- 
+2.39.5 (Apple Git-154)
+

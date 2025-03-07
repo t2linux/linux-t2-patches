@@ -1,0 +1,106 @@
+From: Grigorii Sokolik <g.sokol99@g-sokol.info>
+
+Add Apple Magic Keyboard 2024 model (with USB-C port) device ID (0321)
+to those recognized by the hid-apple driver. Keyboard is otherwise
+compatible with the existing implementation for its earlier 2021 model.
+
+Signed-off-by: Grigorii Sokolik <g.sokol99@g-sokol.info>
+Co-developed-by: Aditya Garg <gargaditya08@live.com>
+Signed-off-by: Aditya Garg <gargaditya08@live.com>
+---
+ drivers/hid/hid-apple.c | 21 +++++++++++++--------
+ drivers/hid/hid-ids.h   |  9 +++++----
+ 2 files changed, 18 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/hid/hid-apple.c b/drivers/hid/hid-apple.c
+index fde438bee..e95a54113 100644
+--- a/drivers/hid/hid-apple.c
++++ b/drivers/hid/hid-apple.c
+@@ -165,7 +165,7 @@ static const struct apple_key_translation magic_keyboard_2015_fn_keys[] = {
+ 	{ }
+ };
+ 
+-static const struct apple_key_translation apple2021_fn_keys[] = {
++static const struct apple_key_translation magic_keyboard_2021_and_2024_fn_keys[] = {
+ 	{ KEY_BACKSPACE, KEY_DELETE },
+ 	{ KEY_ENTER,	KEY_INSERT },
+ 	{ KEY_F1,	KEY_BRIGHTNESSDOWN, APPLE_FLAG_FKEY },
+@@ -482,10 +482,11 @@ static int hidinput_apple_event(struct hid_device *hid, struct input_dev *input,
+ 			table = magic_keyboard_2015_fn_keys;
+ 			break;
+ 		case USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_2021:
+-		case USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_2024:
+ 		case USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_FINGERPRINT_2021:
+ 		case USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_NUMPAD_2021:
+-			table = apple2021_fn_keys;
++		case USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_2024:
++		case USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_FINGERPRINT_2024:
++			table = magic_keyboard_2021_and_2024_fn_keys;
+ 			break;
+ 		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J132:
+ 		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J213:
+@@ -690,7 +691,7 @@ static void apple_setup_input(struct input_dev *input)
+ 	apple_setup_key_translation(input, apple_iso_keyboard);
+ 	apple_setup_key_translation(input, magic_keyboard_alu_fn_keys);
+ 	apple_setup_key_translation(input, magic_keyboard_2015_fn_keys);
+-	apple_setup_key_translation(input, apple2021_fn_keys);
++	apple_setup_key_translation(input, magic_keyboard_2021_and_2024_fn_keys);
+ 	apple_setup_key_translation(input, macbookpro_no_esc_fn_keys);
+ 	apple_setup_key_translation(input, macbookpro_dedicated_esc_fn_keys);
+ }
+@@ -1165,10 +1166,6 @@ static const struct hid_device_id apple_devices[] = {
+ 		.driver_data = APPLE_HAS_FN | APPLE_ISO_TILDE_QUIRK | APPLE_RDESC_BATTERY },
+ 	{ HID_BLUETOOTH_DEVICE(BT_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_2021),
+ 		.driver_data = APPLE_HAS_FN | APPLE_ISO_TILDE_QUIRK },
+-	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_2024),
+-		.driver_data = APPLE_HAS_FN | APPLE_ISO_TILDE_QUIRK | APPLE_RDESC_BATTERY },
+-	{ HID_BLUETOOTH_DEVICE(BT_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_2024),
+-		.driver_data = APPLE_HAS_FN | APPLE_ISO_TILDE_QUIRK },
+ 	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_FINGERPRINT_2021),
+ 		.driver_data = APPLE_HAS_FN | APPLE_ISO_TILDE_QUIRK | APPLE_RDESC_BATTERY },
+ 	{ HID_BLUETOOTH_DEVICE(BT_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_FINGERPRINT_2021),
+@@ -1177,6 +1174,14 @@ static const struct hid_device_id apple_devices[] = {
+ 		.driver_data = APPLE_HAS_FN | APPLE_ISO_TILDE_QUIRK | APPLE_RDESC_BATTERY },
+ 	{ HID_BLUETOOTH_DEVICE(BT_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_NUMPAD_2021),
+ 		.driver_data = APPLE_HAS_FN | APPLE_ISO_TILDE_QUIRK },
++	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_2024),
++		.driver_data = APPLE_HAS_FN | APPLE_ISO_TILDE_QUIRK | APPLE_RDESC_BATTERY },
++	{ HID_BLUETOOTH_DEVICE(BT_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_2024),
++		.driver_data = APPLE_HAS_FN | APPLE_ISO_TILDE_QUIRK },
++	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_FINGERPRINT_2024),
++		.driver_data = APPLE_HAS_FN | APPLE_ISO_TILDE_QUIRK | APPLE_RDESC_BATTERY },
++	{ HID_BLUETOOTH_DEVICE(BT_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_FINGERPRINT_2024),
++		.driver_data = APPLE_HAS_FN | APPLE_ISO_TILDE_QUIRK },
+ 	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_TOUCHBAR_BACKLIGHT),
+ 		.driver_data = APPLE_MAGIC_BACKLIGHT },
+ 
+diff --git a/drivers/hid/hid-ids.h b/drivers/hid/hid-ids.h
+index 288a2b864..8682e1b11 100644
+--- a/drivers/hid/hid-ids.h
++++ b/drivers/hid/hid-ids.h
+@@ -162,6 +162,11 @@
+ #define USB_DEVICE_ID_APPLE_ALU_WIRELESS_2011_JIS   0x0257
+ #define USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_2015   0x0267
+ #define USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_NUMPAD_2015   0x026c
++#define USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_2021   0x029c
++#define USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_FINGERPRINT_2021   0x029a
++#define USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_NUMPAD_2021   0x029f
++#define USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_2024   0x0320
++#define USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_FINGERPRINT_2024   0x0321
+ #define USB_DEVICE_ID_APPLE_WELLSPRING8_ANSI	0x0290
+ #define USB_DEVICE_ID_APPLE_WELLSPRING8_ISO	0x0291
+ #define USB_DEVICE_ID_APPLE_WELLSPRING8_JIS	0x0292
+@@ -183,10 +188,6 @@
+ #define USB_DEVICE_ID_APPLE_IRCONTROL3	0x8241
+ #define USB_DEVICE_ID_APPLE_IRCONTROL4	0x8242
+ #define USB_DEVICE_ID_APPLE_IRCONTROL5	0x8243
+-#define USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_2021   0x029c
+-#define USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_2024   0x0320
+-#define USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_FINGERPRINT_2021   0x029a
+-#define USB_DEVICE_ID_APPLE_MAGIC_KEYBOARD_NUMPAD_2021   0x029f
+ #define USB_DEVICE_ID_APPLE_TOUCHBAR_BACKLIGHT 0x8102
+ #define USB_DEVICE_ID_APPLE_TOUCHBAR_DISPLAY 0x8302
+ 
+-- 
+2.39.5 (Apple Git-154)
+
