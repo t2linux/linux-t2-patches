@@ -1,7 +1,7 @@
 From 333c1742167b64aea0802996601b9bdc5aaa0a6e Mon Sep 17 00:00:00 2001
 From: Aditya Garg <gargaditya08@live.com>
 Date: Tue, 11 Mar 2025 18:44:06 +0530
-Subject: [PATCH 3/3] HID: magicmouse: Add support for trackpads found on T2
+Subject: [PATCH 3/5] HID: magicmouse: Add support for trackpads found on T2
  Macs
 
 This patch adds support for trackpads found on Macs with the T2
