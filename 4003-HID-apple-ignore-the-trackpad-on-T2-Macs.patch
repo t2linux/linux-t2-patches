@@ -1,7 +1,7 @@
 From cc2712238a3179b046f7cd36a24a9a606b99aa81 Mon Sep 17 00:00:00 2001
 From: Aditya Garg <gargaditya08@live.com>
 Date: Mon, 10 Mar 2025 23:03:29 +0530
-Subject: [PATCH 2/3] HID: apple: ignore the trackpad on T2 Macs
+Subject: [PATCH 2/5] HID: apple: ignore the trackpad on T2 Macs
 
 In order to manage the trackpad on T2 Macs by hid-magicmouse driver
 we need to ensure that it is not bound by the hid-apple driver. Use
