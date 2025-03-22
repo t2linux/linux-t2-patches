@@ -1,19 +1,19 @@
-From ca8022f49298b49efacfb183b4b4b250b3eacf2d Mon Sep 17 00:00:00 2001
+From cab2265d20a53422a13b7b7a8d5cc34ee1f1f747 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Tue, 4 Mar 2025 18:48:01 +0000
+Date: Sat, 22 Mar 2025 18:44:05 +0000
 Subject: [PATCH] Add APFS driver
 
 ---
  fs/apfs/Makefile                    |   28 +
- fs/apfs/apfs.h                      | 1289 +++++++++++
+ fs/apfs/apfs.h                      | 1294 +++++++++++
  fs/apfs/apfs_raw.h                  | 1570 +++++++++++++
  fs/apfs/btree.c                     | 1174 ++++++++++
  fs/apfs/compress.c                  |  474 ++++
- fs/apfs/dir.c                       | 1544 +++++++++++++
- fs/apfs/extents.c                   | 2382 ++++++++++++++++++++
- fs/apfs/file.c                      |  220 ++
- fs/apfs/inode.c                     | 2597 ++++++++++++++++++++++
+ fs/apfs/dir.c                       | 1497 +++++++++++++
+ fs/apfs/extents.c                   | 2374 ++++++++++++++++++++
+ fs/apfs/file.c                      |  213 ++
+ fs/apfs/inode.c                     | 2571 ++++++++++++++++++++++
  fs/apfs/key.c                       |  337 +++
  fs/apfs/libzbitmap.c                |  442 ++++
  fs/apfs/libzbitmap.h                |   31 +
@@ -36,17 +36,17 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/namei.c                     |  146 ++
  fs/apfs/node.c                      | 2069 ++++++++++++++++++
  fs/apfs/object.c                    |  315 +++
- fs/apfs/snapshot.c                  |  689 ++++++
- fs/apfs/spaceman.c                  | 1433 ++++++++++++
- fs/apfs/super.c                     | 2203 +++++++++++++++++++
+ fs/apfs/snapshot.c                  |  687 ++++++
+ fs/apfs/spaceman.c                  | 1479 +++++++++++++
+ fs/apfs/super.c                     | 2123 ++++++++++++++++++
  fs/apfs/symlink.c                   |   80 +
- fs/apfs/transaction.c               |  989 +++++++++
+ fs/apfs/transaction.c               | 1034 +++++++++
  fs/apfs/unicode.c                   | 3156 +++++++++++++++++++++++++++
  fs/apfs/unicode.h                   |   27 +
  fs/apfs/version.h                   |    1 +
- fs/apfs/xattr.c                     |  922 ++++++++
+ fs/apfs/xattr.c                     |  914 ++++++++
  fs/apfs/xfield.c                    |  171 ++
- 41 files changed, 29716 insertions(+)
+ 41 files changed, 29634 insertions(+)
  create mode 100644 fs/apfs/Makefile
  create mode 100644 fs/apfs/apfs.h
  create mode 100644 fs/apfs/apfs_raw.h
@@ -125,10 +125,10 @@ index 000000000..a2dbed980
 +	make -C $(KERNEL_DIR) M=$(PWD) clean
 diff --git a/fs/apfs/apfs.h b/fs/apfs/apfs.h
 new file mode 100644
-index 000000000..62f4ad576
+index 000000000..9a1c4baa2
 --- /dev/null
 +++ b/fs/apfs/apfs.h
-@@ -0,0 +1,1289 @@
+@@ -0,0 +1,1294 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -283,6 +283,7 @@ index 000000000..62f4ad576
 +	u32 sm_cib_count;		/* Number of chunk-info blocks */
 +	u64 sm_free_count;		/* Number of free blocks */
 +	u32 sm_addr_offset;		/* Offset of cib addresses in @sm_raw */
++	u64 sm_main_fq_nodes;		/* Number of nodes in the main fq */
 +
 +	/*
 +	 * A range of freed blocks not yet put in the free queue. Extend this as
@@ -312,6 +313,20 @@ index 000000000..62f4ad576
 +#define APFS_NX_TRANS_INCOMPLETE_BLOCK	8	/* A data block is not written in full */
 +
 +/*
++ * ENOSPC checks before transactions are more or less coarse depending on this.
++ */
++enum apfs_trans_kind {
++	APFS_TRANS_REG,		/* Most transactions */
++	APFS_TRANS_DEL,		/* Transactions that usually free space */
++	APFS_TRANS_SYNC,	/* Sync (or unmount) transaction */
++};
++
++/* The space requirements for each kind of transaction, in blocks */
++#define APFS_REG_ROOM	128
++#define APFS_DEL_ROOM	20
++#define APFS_SYNC_ROOM	6
++
++/*
 + * Structure that keeps track of a container transaction.
 + */
 +struct apfs_nx_transaction {
@@ -338,14 +353,6 @@ index 000000000..62f4ad576
 +struct apfs_bh_info {
 +	struct buffer_head	*bh;	/* The buffer head */
 +	struct list_head	list;	/* List of buffers in the transaction */
-+};
-+
-+/*
-+ * Used to report how many operations may be needed for a transaction
-+ */
-+struct apfs_max_ops {
-+	int cat;	/* Maximum catalog records that may need changing */
-+	int blks;	/* Maximum extent blocks that may need changing */
 +};
 +
 +/*
@@ -509,6 +516,7 @@ index 000000000..62f4ad576
 +
 +	struct inode *s_private_dir;	/* Inode for the private directory */
 +	struct work_struct s_orphan_cleanup_work;
++	atomic_t s_orphan_cleanup_err;	/* Error from last orphan cleanup */
 +};
 +
 +static inline struct apfs_sb_info *APFS_SB(struct super_block *sb)
@@ -1095,7 +1103,6 @@ index 000000000..62f4ad576
 +extern int apfs_unlink(struct inode *dir, struct dentry *dentry);
 +extern int apfs_rmdir(struct inode *dir, struct dentry *dentry);
 +extern int apfs_delete_orphan_link(struct inode *inode);
-+extern int APFS_DELETE_ORPHAN_LINK_MAXOPS(void);
 +extern u64 apfs_any_orphan_ino(struct super_block *sb, u64 *ino_p);
 +
 +/* extents.c */
@@ -1110,7 +1117,6 @@ index 000000000..62f4ad576
 +extern int apfs_dstream_get_new_bno(struct apfs_dstream_info *dstream, u64 dsblock, u64 *bno);
 +extern int apfs_get_new_block(struct inode *inode, sector_t iblock,
 +			      struct buffer_head *bh_result, int create);
-+extern int APFS_GET_NEW_BLOCK_MAXOPS(void);
 +extern int apfs_truncate(struct apfs_dstream_info *dstream, loff_t new_size);
 +extern int apfs_inode_delete_front(struct inode *inode);
 +#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 20, 0)
@@ -1129,7 +1135,7 @@ index 000000000..62f4ad576
 +/* inode.c */
 +extern struct inode *apfs_iget(struct super_block *sb, u64 cnid);
 +extern int apfs_update_inode(struct inode *inode, char *new_name);
-+extern int APFS_UPDATE_INODE_MAXOPS(void);
++extern void apfs_schedule_orphan_cleanup(struct super_block *sb);
 +extern void apfs_orphan_cleanup_work(struct work_struct *work);
 +extern void apfs_evict_inode(struct inode *inode);
 +extern struct inode *apfs_new_inode(struct inode *dir, umode_t mode,
@@ -1137,7 +1143,6 @@ index 000000000..62f4ad576
 +extern int apfs_create_inode_rec(struct super_block *sb, struct inode *inode,
 +				 struct dentry *dentry);
 +extern int apfs_inode_create_exclusive_dstream(struct inode *inode);
-+extern int APFS_CREATE_INODE_REC_MAXOPS(void);
 +extern int __apfs_write_begin(struct file *file, struct address_space *mapping, loff_t pos, unsigned int len, unsigned int flags, struct page **pagep, void **fsdata);
 +extern int __apfs_write_end(struct file *file, struct address_space *mapping, loff_t pos, unsigned int len, unsigned int copied, struct page *page, void *fsdata);
 +extern int apfs_dstream_adj_refcnt(struct apfs_dstream_info *dstream, u32 delta);
@@ -1177,7 +1182,6 @@ index 000000000..62f4ad576
 +#endif
 +
 +extern int apfs_crypto_adj_refcnt(struct super_block *sb, u64 crypto_id, int delta);
-+extern int APFS_CRYPTO_ADJ_REFCNT_MAXOPS(void);
 +
 +#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
 +extern int apfs_fileattr_get(struct dentry *dentry, struct fileattr *fa);
@@ -1241,6 +1245,7 @@ index 000000000..62f4ad576
 +extern int apfs_free_queue_insert(struct super_block *sb, u64 bno, u64 count);
 +extern int apfs_spaceman_allocate_block(struct super_block *sb, u64 *bno, bool backwards);
 +extern int apfs_write_ip_bitmaps(struct super_block *sb);
++extern int apfs_spaceman_get_free_blkcnt(struct super_block *sb, u64 *blkcnt);
 +
 +/* super.c */
 +extern int apfs_map_volume_super_bno(struct super_block *sb, u64 bno, bool check);
@@ -1253,13 +1258,14 @@ index 000000000..62f4ad576
 +/* transaction.c */
 +extern int apfs_cpoint_data_free(struct super_block *sb, u64 bno);
 +extern void apfs_transaction_init(struct apfs_nx_transaction *trans);
-+extern int apfs_transaction_start(struct super_block *sb, struct apfs_max_ops maxops);
++extern int apfs_transaction_start(struct super_block *sb, enum apfs_trans_kind kind);
 +extern int apfs_transaction_commit(struct super_block *sb);
 +extern void apfs_inode_join_transaction(struct super_block *sb, struct inode *inode);
 +extern int apfs_transaction_join(struct super_block *sb,
 +				 struct buffer_head *bh);
 +void apfs_transaction_abort(struct super_block *sb);
 +extern int apfs_transaction_flush_all_inodes(struct super_block *sb);
++extern int apfs_read_ephemeral_objects(struct super_block *sb);
 +
 +/* xattr.c */
 +extern int ____apfs_xattr_get(struct inode *inode, const char *name, void *buffer,
@@ -1269,7 +1275,6 @@ index 000000000..62f4ad576
 +extern int apfs_delete_all_xattrs(struct inode *inode);
 +extern int apfs_xattr_set(struct inode *inode, const char *name, const void *value,
 +			  size_t size, int flags);
-+extern int APFS_XATTR_SET_MAXOPS(void);
 +extern ssize_t apfs_listxattr(struct dentry *dentry, char *buffer, size_t size);
 +extern int apfs_xattr_get_compressed_data(struct inode *inode, const char *name, struct apfs_compressed_data *cdata);
 +extern void apfs_release_compressed_data(struct apfs_compressed_data *cdata);
@@ -4656,10 +4661,10 @@ index 000000000..ecdd490ab
 +}
 diff --git a/fs/apfs/dir.c b/fs/apfs/dir.c
 new file mode 100644
-index 000000000..416f42f02
+index 000000000..25797aa1e
 --- /dev/null
 +++ b/fs/apfs/dir.c
-@@ -0,0 +1,1544 @@
+@@ -0,0 +1,1497 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -5076,7 +5081,6 @@ index 000000000..416f42f02
 +	apfs_free_query(query);
 +	return ret;
 +}
-+#define APFS_CREATE_DENTRY_REC_MAXOPS	1
 +
 +/**
 + * apfs_build_sibling_val - Allocate and initialize a sibling link's value
@@ -5153,7 +5157,6 @@ index 000000000..416f42f02
 +	apfs_free_query(query);
 +	return ret;
 +}
-+#define APFS_CREATE_SIBLING_LINK_REC_MAXOPS	1
 +
 +/**
 + * apfs_create_sibling_map_rec - Create a sibling map record for a dentry
@@ -5196,7 +5199,6 @@ index 000000000..416f42f02
 +	apfs_free_query(query);
 +	return ret;
 +}
-+#define APFS_CREATE_SIBLING_MAP_REC_MAXOPS	1
 +
 +/**
 + * apfs_create_sibling_recs - Create sibling link and map records for a dentry
@@ -5229,8 +5231,6 @@ index 000000000..416f42f02
 +	*sibling_id = cnid;
 +	return 0;
 +}
-+#define APFS_CREATE_SIBLING_RECS_MAXOPS	(APFS_CREATE_SIBLING_LINK_REC_MAXOPS + \
-+					 APFS_CREATE_SIBLING_MAP_REC_MAXOPS)
 +
 +/**
 + * apfs_create_dentry - Create all records for a new dentry
@@ -5275,9 +5275,6 @@ index 000000000..416f42f02
 +	apfs_inode_join_transaction(parent->i_sb, parent);
 +	return 0;
 +}
-+#define APFS_CREATE_DENTRY_MAXOPS	(APFS_CREATE_SIBLING_RECS_MAXOPS + \
-+					 APFS_CREATE_DENTRY_REC_MAXOPS + \
-+					 APFS_UPDATE_INODE_MAXOPS())
 +
 +/**
 + * apfs_undo_create_dentry - Clean up apfs_create_dentry()
@@ -5305,15 +5302,9 @@ index 000000000..416f42f02
 +{
 +	struct super_block *sb = dir->i_sb;
 +	struct inode *inode;
-+	struct apfs_max_ops maxops;
 +	int err;
 +
-+	maxops.cat = APFS_CREATE_INODE_REC_MAXOPS() + APFS_CREATE_DENTRY_MAXOPS;
-+	if (symname)
-+		maxops.cat += APFS_XATTR_SET_MAXOPS();
-+	maxops.blks = 0;
-+
-+	err = apfs_transaction_start(sb, maxops);
++	err = apfs_transaction_start(sb, APFS_TRANS_REG);
 +	if (err)
 +		return err;
 +
@@ -5480,8 +5471,6 @@ index 000000000..416f42f02
 +	return apfs_create_dentry_rec(d_inode(dentry), &dentry->d_name,
 +				      apfs_ino(parent), sibling_id);
 +}
-+#define APFS_PREPARE_DENTRY_FOR_LINK_MAXOPS	(1 + APFS_CREATE_SIBLING_RECS_MAXOPS + \
-+						 APFS_CREATE_DENTRY_REC_MAXOPS)
 +
 +/**
 + * __apfs_undo_link - Clean up __apfs_link()
@@ -5537,22 +5526,15 @@ index 000000000..416f42f02
 +	drop_nlink(inode);
 +	return err;
 +}
-+#define __APFS_LINK_MAXOPS	(APFS_UPDATE_INODE_MAXOPS() + \
-+				 APFS_PREPARE_DENTRY_FOR_LINK_MAXOPS + \
-+				 APFS_CREATE_DENTRY_MAXOPS)
 +
 +int apfs_link(struct dentry *old_dentry, struct inode *dir,
 +	      struct dentry *dentry)
 +{
 +	struct super_block *sb = dir->i_sb;
 +	struct inode *inode = d_inode(old_dentry);
-+	struct apfs_max_ops maxops;
 +	int err;
 +
-+	maxops.cat = __APFS_LINK_MAXOPS;
-+	maxops.blks = 0;
-+
-+	err = apfs_transaction_start(sb, maxops);
++	err = apfs_transaction_start(sb, APFS_TRANS_REG);
 +	if (err)
 +		return err;
 +
@@ -5616,7 +5598,6 @@ index 000000000..416f42f02
 +	apfs_free_query(query);
 +	return ret;
 +}
-+#define APFS_DELETE_SIBLING_LINK_REC_MAXOPS	1
 +
 +/**
 + * apfs_delete_sibling_map_rec - Delete the sibling map record for a dentry
@@ -5657,7 +5638,6 @@ index 000000000..416f42f02
 +	apfs_free_query(query);
 +	return ret;
 +}
-+#define APFS_DELETE_SIBLING_MAP_REC_MAXOPS	1
 +
 +/**
 + * apfs_delete_dentry - Delete all records for a dentry
@@ -5710,9 +5690,6 @@ index 000000000..416f42f02
 +	apfs_inode_join_transaction(sb, parent);
 +	return err;
 +}
-+#define APFS_DELETE_DENTRY_MAXOPS	(1 + APFS_DELETE_SIBLING_LINK_REC_MAXOPS + \
-+					 APFS_DELETE_SIBLING_MAP_REC_MAXOPS + \
-+					 APFS_UPDATE_INODE_MAXOPS())
 +
 +/**
 + * apfs_undo_delete_dentry - Clean up apfs_delete_dentry()
@@ -5879,8 +5856,6 @@ index 000000000..416f42f02
 +	kfree(qname.name);
 +	return err;
 +}
-+#define APFS_CREATE_ORPHAN_LINK_MAXOPS	(APFS_CREATE_DENTRY_REC_MAXOPS + \
-+					 APFS_UPDATE_INODE_MAXOPS())
 +
 +/**
 + * apfs_delete_orphan_link - Delete the link for an orphan inode
@@ -5930,10 +5905,6 @@ index 000000000..416f42f02
 +	apfs_free_query(query);
 +	kfree(qname.name);
 +	return err;
-+}
-+int APFS_DELETE_ORPHAN_LINK_MAXOPS(void)
-+{
-+	return 1 + APFS_UPDATE_INODE_MAXOPS();
 +}
 +
 +/**
@@ -6030,20 +6001,13 @@ index 000000000..416f42f02
 +		__apfs_undo_unlink(dentry);
 +	return err;
 +}
-+#define __APFS_UNLINK_MAXOPS	(APFS_DELETE_DENTRY_MAXOPS + \
-+				 APFS_CREATE_ORPHAN_LINK_MAXOPS + \
-+				 APFS_UPDATE_INODE_MAXOPS())
 +
 +int apfs_unlink(struct inode *dir, struct dentry *dentry)
 +{
 +	struct super_block *sb = dir->i_sb;
-+	struct apfs_max_ops maxops;
 +	int err;
 +
-+	maxops.cat = __APFS_UNLINK_MAXOPS;
-+	maxops.blks = 0;
-+
-+	err = apfs_transaction_start(sb, maxops);
++	err = apfs_transaction_start(sb, APFS_TRANS_DEL);
 +	if (err)
 +		return err;
 +
@@ -6089,7 +6053,6 @@ index 000000000..416f42f02
 +	struct super_block *sb = old_dir->i_sb;
 +	struct inode *old_inode = d_inode(old_dentry);
 +	struct inode *new_inode = d_inode(new_dentry);
-+	struct apfs_max_ops maxops;
 +	int err;
 +
 +	if (new_inode && APFS_I(new_inode)->i_nchildren)
@@ -6098,12 +6061,7 @@ index 000000000..416f42f02
 +	if (flags & ~RENAME_NOREPLACE) /* TODO: support RENAME_EXCHANGE */
 +		return -EINVAL;
 +
-+	maxops.cat = __APFS_UNLINK_MAXOPS + __APFS_LINK_MAXOPS;
-+	if (new_inode)
-+		maxops.cat += __APFS_UNLINK_MAXOPS;
-+	maxops.blks = 0;
-+
-+	err = apfs_transaction_start(sb, maxops);
++	err = apfs_transaction_start(sb, APFS_TRANS_REG);
 +	if (err)
 +		return err;
 +
@@ -6206,10 +6164,10 @@ index 000000000..416f42f02
 +}
 diff --git a/fs/apfs/extents.c b/fs/apfs/extents.c
 new file mode 100644
-index 000000000..b462c4b41
+index 000000000..fabb2d230
 --- /dev/null
 +++ b/fs/apfs/extents.c
-@@ -0,0 +1,2382 @@
+@@ -0,0 +1,2374 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -6970,7 +6928,6 @@ index 000000000..b462c4b41
 +	}
 +	return apfs_update_mid_extent(dstream, extent);
 +}
-+#define APFS_UPDATE_EXTENTS_MAXOPS	(1 + 2 * APFS_CRYPTO_ADJ_REFCNT_MAXOPS())
 +
 +static int apfs_extend_phys_extent(struct apfs_query *query, u64 bno, u64 blkcnt, u64 dstream_id)
 +{
@@ -7348,7 +7305,6 @@ index 000000000..b462c4b41
 +	dstream->ds_ext_dirty = false;
 +	return 0;
 +}
-+#define APFS_FLUSH_EXTENT_CACHE	APFS_UPDATE_EXTENTS_MAXOPS
 +
 +/**
 + * apfs_create_hole - Create and insert a hole extent for the dstream
@@ -7663,10 +7619,6 @@ index 000000000..b462c4b41
 +	dstream->ds_ext_dirty = true;
 +	return 0;
 +}
-+int APFS_GET_NEW_BLOCK_MAXOPS(void)
-+{
-+	return APFS_FLUSH_EXTENT_CACHE;
-+}
 +
 +/**
 + * apfs_dstream_get_new_bno - Allocate a new block inside a dstream
@@ -7973,8 +7925,6 @@ index 000000000..b462c4b41
 +	struct apfs_dstream_info *dst_ds = &dst_ai->i_dstream;
 +	struct super_block *sb = src_inode->i_sb;
 +	struct apfs_sb_info *sbi = APFS_SB(sb);
-+	/* TODO: remember to update the maxops in the future */
-+	struct apfs_max_ops maxops = {0};
 +	const u64 xfield_flags = APFS_INODE_MAINTAIN_DIR_STATS | APFS_INODE_IS_SPARSE | APFS_INODE_HAS_PURGEABLE_FLAGS;
 +	int err;
 +
@@ -8008,7 +7958,7 @@ index 000000000..b462c4b41
 +		return -EOPNOTSUPP;
 +	}
 +
-+	err = apfs_transaction_start(sb, maxops);
++	err = apfs_transaction_start(sb, APFS_TRANS_REG);
 +	if (err)
 +		return err;
 +	apfs_inode_join_transaction(sb, src_inode);
@@ -8594,10 +8544,10 @@ index 000000000..b462c4b41
 +}
 diff --git a/fs/apfs/file.c b/fs/apfs/file.c
 new file mode 100644
-index 000000000..4ac7d7b5e
+index 000000000..3d0923fa6
 --- /dev/null
 +++ b/fs/apfs/file.c
-@@ -0,0 +1,220 @@
+@@ -0,0 +1,213 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -8628,8 +8578,6 @@ index 000000000..4ac7d7b5e
 +	struct super_block *sb = inode->i_sb;
 +	struct buffer_head *bh, *head;
 +	vm_fault_t ret = VM_FAULT_LOCKED;
-+	struct apfs_max_ops maxops;
-+	int blkcount = PAGE_SIZE >> inode->i_blkbits;
 +	unsigned int blocksize, block_start, len;
 +	u64 size;
 +	int err = 0;
@@ -8637,12 +8585,7 @@ index 000000000..4ac7d7b5e
 +	sb_start_pagefault(inode->i_sb);
 +	file_update_time(vma->vm_file);
 +
-+	/* Placeholder values, I need to get back to this in the future */
-+	maxops.cat = APFS_UPDATE_INODE_MAXOPS() +
-+		     blkcount * APFS_GET_NEW_BLOCK_MAXOPS();
-+	maxops.blks = blkcount;
-+
-+	err = apfs_transaction_start(sb, maxops);
++	err = apfs_transaction_start(sb, APFS_TRANS_REG);
 +	if (err)
 +		goto out;
 +	apfs_inode_join_transaction(sb, inode);
@@ -8820,10 +8763,10 @@ index 000000000..4ac7d7b5e
 +};
 diff --git a/fs/apfs/inode.c b/fs/apfs/inode.c
 new file mode 100644
-index 000000000..db24a5045
+index 000000000..6418f994d
 --- /dev/null
 +++ b/fs/apfs/inode.c
-@@ -0,0 +1,2597 @@
+@@ -0,0 +1,2571 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -8916,7 +8859,6 @@ index 000000000..db24a5045
 +	apfs_free_query(query);
 +	return ret;
 +}
-+#define APFS_CREATE_DSTREAM_REC_MAXOPS	1
 +
 +static int apfs_check_dstream_refcnt(struct inode *inode);
 +static int apfs_put_dstream_rec(struct apfs_dstream_info *dstream);
@@ -9134,7 +9076,6 @@ index 000000000..db24a5045
 +	apfs_free_query(query);
 +	return ret;
 +}
-+#define APFS_CREATE_CRYPTO_REC_MAXOPS	1
 +
 +/**
 + * apfs_dflt_key_class - Returns default key class for files in volume
@@ -9197,10 +9138,6 @@ index 000000000..db24a5045
 +	apfs_free_query(query);
 +	return ret;
 +}
-+int APFS_CRYPTO_ADJ_REFCNT_MAXOPS(void)
-+{
-+	return 1;
-+}
 +
 +/**
 + * apfs_crypto_set_key - Modify content of crypto state record
@@ -9249,7 +9186,6 @@ index 000000000..db24a5045
 +	apfs_free_query(query);
 +	return ret;
 +}
-+#define APFS_CRYPTO_SET_KEY_MAXOPS	1
 +
 +/**
 + * apfs_crypto_get_key - Retrieve content of crypto state record
@@ -9430,8 +9366,6 @@ index 000000000..db24a5045
 +	struct page *page = NULL;
 +	struct page **pagep = &page;
 +#endif
-+	int blkcount = (len + sb->s_blocksize - 1) >> inode->i_blkbits;
-+	struct apfs_max_ops maxops;
 +	int err;
 +#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0) || RHEL_VERSION_GE(9, 3)
 +	unsigned int flags = 0;
@@ -9440,13 +9374,7 @@ index 000000000..db24a5045
 +	if (unlikely(pos >= APFS_MAX_FILE_SIZE))
 +		return -EFBIG;
 +
-+	maxops.cat = APFS_CREATE_DSTREAM_REC_MAXOPS +
-+		     APFS_CREATE_CRYPTO_REC_MAXOPS +
-+		     APFS_UPDATE_INODE_MAXOPS() +
-+		     blkcount * APFS_GET_NEW_BLOCK_MAXOPS();
-+	maxops.blks = blkcount;
-+
-+	err = apfs_transaction_start(sb, maxops);
++	err = apfs_transaction_start(sb, APFS_TRANS_REG);
 +	if (err)
 +		return err;
 +
@@ -10079,7 +10007,6 @@ index 000000000..db24a5045
 +	kfree(new_val);
 +	return err;
 +}
-+#define APFS_INODE_RENAME_MAXOPS	1
 +
 +/**
 + * apfs_create_dstream_xfield - Create the inode xfield for a new data stream
@@ -10134,7 +10061,6 @@ index 000000000..db24a5045
 +	kfree(new_val);
 +	return err;
 +}
-+#define APFS_CREATE_DSTREAM_XFIELD_MAXOPS	1
 +
 +/**
 + * apfs_inode_resize - Update the sizes reported in an inode record
@@ -10185,7 +10111,6 @@ index 000000000..db24a5045
 +	/* This inode has no dstream xfield, so we need to create it */
 +	return apfs_create_dstream_xfield(inode, query);
 +}
-+#define APFS_INODE_RESIZE_MAXOPS	(1 + APFS_CREATE_DSTREAM_XFIELD_MAXOPS)
 +
 +/**
 + * apfs_create_sparse_xfield - Create an inode xfield to count sparse bytes
@@ -10389,10 +10314,6 @@ index 000000000..db24a5045
 +	apfs_free_query(query);
 +	return err;
 +}
-+int APFS_UPDATE_INODE_MAXOPS(void)
-+{
-+	return APFS_INODE_RENAME_MAXOPS + APFS_INODE_RESIZE_MAXOPS + 1;
-+}
 +
 +/**
 + * apfs_delete_inode - Delete an inode record
@@ -10476,7 +10397,6 @@ index 000000000..db24a5045
 +	ai->i_cleaned = true;
 +	return ret;
 +}
-+#define APFS_DELETE_INODE_MAXOPS	1
 +
 +/**
 + * apfs_clean_single_orphan - Clean the given orphan file
@@ -10488,12 +10408,11 @@ index 000000000..db24a5045
 +static int apfs_clean_single_orphan(struct inode *inode)
 +{
 +	struct super_block *sb = inode->i_sb;
-+	struct apfs_max_ops maxops = {0}; /* TODO: rethink this stuff */
 +	u64 ino = apfs_ino(inode);
 +	bool eagain = false;
 +	int err;
 +
-+	err = apfs_transaction_start(sb, maxops);
++	err = apfs_transaction_start(sb, APFS_TRANS_DEL);
 +	if (err)
 +		return err;
 +	err = apfs_delete_inode(inode);
@@ -10573,6 +10492,32 @@ index 000000000..db24a5045
 +}
 +
 +/**
++ * apfs_schedule_orphan_cleanup - Schedule cleanup for orphan inodes
++ * @sb: filesystem superblock
++ */
++void apfs_schedule_orphan_cleanup(struct super_block *sb)
++{
++	struct apfs_sb_info *sbi = APFS_SB(sb);
++
++	/*
++	 * Don't schedule cleanups during unmount: completing all of it could
++	 * take a while so just leave future mounts to handle the orphans.
++	 */
++	if (atomic_read(&sb->s_active) == 0)
++		return;
++
++	/*
++	 * Don't keep retrying orphan cleanups nonstop when they run into an
++	 * unexpected error: it won't do any good and it will flood dmesg. We
++	 * will retry eventually for ENOSPC, but that's handled elsewhere.
++	 */
++	if (atomic_read(&sbi->s_orphan_cleanup_err))
++		return;
++
++	schedule_work(&sbi->s_orphan_cleanup_work);
++}
++
++/**
 + * apfs_clean_orphans - Delete as many orphan files as is reasonable
 + * @sb: filesystem superblock
 + *
@@ -10580,26 +10525,27 @@ index 000000000..db24a5045
 + */
 +static int apfs_clean_orphans(struct super_block *sb)
 +{
++	struct apfs_sb_info *sbi = APFS_SB(sb);
 +	int ret, i;
 +
 +	for (i = 0; i < 100; ++i) {
 +		ret = apfs_clean_any_orphan(sb);
-+		if (ret) {
-+			if (ret == -ENODATA)
-+				return 0;
-+			if (ret == -EAGAIN)
-+				break;
-+			apfs_err(sb, "failed to delete an orphan file");
-+			return ret;
-+		}
++		if (ret == 0)
++			continue;
++		if (ret == -ENODATA)
++			return 0;
++		if (ret == -EAGAIN)
++			break;
++		apfs_err(sb, "failed to delete an orphan file");
++		atomic_set(&sbi->s_orphan_cleanup_err, ret);
++		return ret;
 +	}
 +
 +	/*
 +	 * If a file is too big, or if there are too many files, take a break
 +	 * and continue later.
 +	 */
-+	if (atomic_read(&sb->s_active) != 0)
-+		schedule_work(&APFS_SB(sb)->s_orphan_cleanup_work);
++	apfs_schedule_orphan_cleanup(sb);
 +	return 0;
 +}
 +
@@ -10615,18 +10561,15 @@ index 000000000..db24a5045
 +	if (!ai->i_has_dstream || ai->i_dstream.ds_size == 0) {
 +		/* For files with no extents, scheduled cleanup wastes time */
 +		err = apfs_clean_single_orphan(inode);
-+		if (err)
++		if (err) {
 +			apfs_err(sb, "failed to clean orphan 0x%llx (err:%d)", apfs_ino(inode), err);
++			atomic_set(&APFS_SB(sb)->s_orphan_cleanup_err, err);
++		}
 +		goto out;
 +	}
 +
-+	/*
-+	 * If the inode still has extents then schedule cleanup for the rest
-+	 * of it. Not during unmount though: completing all cleanup could take
-+	 * a while so just leave future mounts to handle the orphans.
-+	 */
-+	if (atomic_read(&sb->s_active))
-+		schedule_work(&APFS_SB(sb)->s_orphan_cleanup_work);
++	/* If the inode still has extents then schedule cleanup for the rest */
++	apfs_schedule_orphan_cleanup(sb);
 +out:
 +	truncate_inode_pages_final(&inode->i_data);
 +	clear_inode(inode);
@@ -10805,10 +10748,6 @@ index 000000000..db24a5045
 +	apfs_free_query(query);
 +	return ret;
 +}
-+int APFS_CREATE_INODE_REC_MAXOPS(void)
-+{
-+	return 1;
-+}
 +
 +/**
 + * apfs_setsize - Change the size of a regular file
@@ -10863,12 +10802,14 @@ index 000000000..db24a5045
 +{
 +	struct inode *inode = d_inode(dentry);
 +	struct super_block *sb = inode->i_sb;
-+	struct apfs_max_ops maxops;
 +	bool resizing = S_ISREG(inode->i_mode) && (iattr->ia_valid & ATTR_SIZE);
++	bool shrinking = false;
 +	int err;
 +
 +	if (resizing && iattr->ia_size > APFS_MAX_FILE_SIZE)
 +		return -EFBIG;
++	if (resizing && iattr->ia_size < inode->i_size)
++		shrinking = true;
 +
 +#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 12, 0)
 +	err = setattr_prepare(dentry, iattr);
@@ -10880,11 +10821,8 @@ index 000000000..db24a5045
 +	if (err)
 +		return err;
 +
-+	maxops.cat = APFS_UPDATE_INODE_MAXOPS();
-+	maxops.blks = 0;
-+
 +	/* TODO: figure out why ->write_inode() isn't firing */
-+	err = apfs_transaction_start(sb, maxops);
++	err = apfs_transaction_start(sb, shrinking ? APFS_TRANS_DEL : APFS_TRANS_REG);
 +	if (err)
 +		return err;
 +	apfs_inode_join_transaction(sb, inode);
@@ -10924,13 +10862,9 @@ index 000000000..db24a5045
 +#endif
 +{
 +	struct super_block *sb = inode->i_sb;
-+	struct apfs_max_ops maxops;
 +	int err;
 +
-+	maxops.cat = APFS_UPDATE_INODE_MAXOPS();
-+	maxops.blks = 0;
-+
-+	err = apfs_transaction_start(sb, maxops);
++	err = apfs_transaction_start(sb, APFS_TRANS_REG);
 +	if (err)
 +		return err;
 +	apfs_inode_join_transaction(sb, inode);
@@ -10991,7 +10925,6 @@ index 000000000..db24a5045
 +	struct inode *inode = file_inode(file);
 +	struct apfs_inode_info *ai = APFS_I(inode);
 +	struct super_block *sb = inode->i_sb;
-+	struct apfs_max_ops maxops;
 +	u32 class;
 +	int err;
 +
@@ -11000,10 +10933,7 @@ index 000000000..db24a5045
 +
 +	ai->i_key_class = class;
 +
-+	maxops.cat = APFS_UPDATE_INODE_MAXOPS();
-+	maxops.blks = 0;
-+
-+	err = apfs_transaction_start(sb, maxops);
++	err = apfs_transaction_start(sb, APFS_TRANS_REG);
 +	if (err)
 +		return err;
 +	apfs_inode_join_transaction(sb, inode);
@@ -11025,7 +10955,6 @@ index 000000000..db24a5045
 +	struct apfs_crypto_state_val *pfk;
 +	struct apfs_inode_info *ai = APFS_I(inode);
 +	struct apfs_dstream_info *dstream = &ai->i_dstream;
-+	struct apfs_max_ops maxops;
 +	unsigned int key_len, key_class;
 +	int err;
 +
@@ -11043,10 +10972,7 @@ index 000000000..db24a5045
 +	}
 +	pfk->refcnt = cpu_to_le32(1);
 +
-+	maxops.cat = APFS_CRYPTO_SET_KEY_MAXOPS + APFS_UPDATE_INODE_MAXOPS();
-+	maxops.blks = 0;
-+
-+	err = apfs_transaction_start(sb, maxops);
++	err = apfs_transaction_start(sb, APFS_TRANS_REG);
 +	if (err) {
 +		kfree(pfk);
 +		return err;
@@ -11213,7 +11139,6 @@ index 000000000..db24a5045
 +static int apfs_do_ioc_setflags(struct inode *inode, unsigned int newflags)
 +{
 +	struct super_block *sb = inode->i_sb;
-+	struct apfs_max_ops maxops;
 +	unsigned int oldflags;
 +	int err;
 +
@@ -11224,9 +11149,7 @@ index 000000000..db24a5045
 +	if (err)
 +		return err;
 +
-+	maxops.cat = APFS_UPDATE_INODE_MAXOPS();
-+	maxops.blks = 0;
-+	err = apfs_transaction_start(sb, maxops);
++	err = apfs_transaction_start(sb, APFS_TRANS_REG);
 +	if (err)
 +		return err;
 +
@@ -11296,7 +11219,6 @@ index 000000000..db24a5045
 +{
 +	struct inode *inode = d_inode(dentry);
 +	struct super_block *sb = inode->i_sb;
-+	struct apfs_max_ops maxops;
 +	int err;
 +
 +	if (sb->s_flags & SB_RDONLY)
@@ -11309,9 +11231,7 @@ index 000000000..db24a5045
 +
 +	lockdep_assert_held_write(&inode->i_rwsem);
 +
-+	maxops.cat = APFS_UPDATE_INODE_MAXOPS();
-+	maxops.blks = 0;
-+	err = apfs_transaction_start(sb, maxops);
++	err = apfs_transaction_start(sb, APFS_TRANS_REG);
 +	if (err)
 +		return err;
 +
@@ -11339,7 +11259,6 @@ index 000000000..db24a5045
 +{
 +	struct inode *inode = d_inode(dentry);
 +	struct super_block *sb = inode->i_sb;
-+	struct apfs_max_ops maxops;
 +	int err;
 +
 +	if (sb->s_flags & SB_RDONLY)
@@ -11352,9 +11271,7 @@ index 000000000..db24a5045
 +
 +	lockdep_assert_held_write(&inode->i_rwsem);
 +
-+	maxops.cat = APFS_UPDATE_INODE_MAXOPS();
-+	maxops.blks = 0;
-+	err = apfs_transaction_start(sb, maxops);
++	err = apfs_transaction_start(sb, APFS_TRANS_REG);
 +	if (err)
 +		return err;
 +
@@ -20322,10 +20239,10 @@ index 000000000..9636a9a29
 +}
 diff --git a/fs/apfs/snapshot.c b/fs/apfs/snapshot.c
 new file mode 100644
-index 000000000..96834c804
+index 000000000..f76d2f70a
 --- /dev/null
 +++ b/fs/apfs/snapshot.c
-@@ -0,0 +1,689 @@
+@@ -0,0 +1,687 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2022 Ernesto A. Fernández <ernesto@corellium.com>
@@ -20723,13 +20640,11 @@ index 000000000..96834c804
 +	struct apfs_sb_info *sbi = APFS_SB(sb);
 +	struct apfs_superblock *vsb_raw = NULL;
 +	struct apfs_omap *omap = sbi->s_omap;
-+	/* TODO: remember to update the maxops in the future */
-+	struct apfs_max_ops maxops = {0};
 +	u64 sblock_oid;
 +	bool eexist = false;
 +	int err;
 +
-+	err = apfs_transaction_start(sb, maxops);
++	err = apfs_transaction_start(sb, APFS_TRANS_REG);
 +	if (err)
 +		return err;
 +
@@ -21017,10 +20932,10 @@ index 000000000..96834c804
 +}
 diff --git a/fs/apfs/spaceman.c b/fs/apfs/spaceman.c
 new file mode 100644
-index 000000000..7667f8733
+index 000000000..31bf439e9
 --- /dev/null
 +++ b/fs/apfs/spaceman.c
-@@ -0,0 +1,1433 @@
+@@ -0,0 +1,1479 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2019 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -21613,17 +21528,17 @@ index 000000000..7667f8733
 + * apfs_flush_free_queue - Free ip blocks queued by old transactions
 + * @sb:		superblock structure
 + * @qid:	queue to be freed
-+ * @force:	flush as much as possible
 + *
 + * Returns 0 on success or a negative error code in case of failure.
 + */
-+static int apfs_flush_free_queue(struct super_block *sb, unsigned int qid, bool force)
++static int apfs_flush_free_queue(struct super_block *sb, unsigned int qid)
 +{
 +	struct apfs_nxsb_info *nxi = APFS_NXI(sb);
 +	struct apfs_spaceman *sm = APFS_SM(sb);
 +	struct apfs_spaceman_phys *sm_raw = sm->sm_raw;
 +	struct apfs_spaceman_free_queue *fq = &sm_raw->sm_fq[qid];
 +	struct apfs_node *fq_root;
++	struct apfs_btree_info *fq_info = NULL;
 +	u64 oldest = le64_to_cpu(fq->sfq_oldest_xid);
 +	int err;
 +
@@ -21635,19 +21550,15 @@ index 000000000..7667f8733
 +	}
 +
 +	while (oldest) {
-+		u64 sfq_count;
-+
 +		/*
-+		 * Try to preserve one transaction here. I don't really know
-+		 * what free queues are for so this is probably silly.
++		 * Blocks freed in the current transaction can't be reused
++		 * safely until after the commit, but I don't think there is
++		 * any point in preserving old transacions. I'm guessing the
++		 * official driver keeps multiple transactions going at the
++		 * same time, that must be why they need a free queue.
 +		 */
-+		if (force) {
-+			if (oldest == nxi->nx_xid)
-+				break;
-+		} else {
-+			if (oldest + 1 >= nxi->nx_xid)
-+				break;
-+		}
++		if (oldest == nxi->nx_xid)
++			break;
 +
 +		while (true) {
 +			u64 count = 0;
@@ -21666,22 +21577,16 @@ index 000000000..7667f8733
 +		}
 +		oldest = apfs_free_queue_oldest_xid(fq_root);
 +		fq->sfq_oldest_xid = cpu_to_le64(oldest);
++	}
 +
-+		if (force)
-+			continue;
-+
-+		/*
-+		 * Flushing a single transaction may not be enough to avoid
-+		 * running out of space in the ip, but it's probably best not
-+		 * to flush all the old transactions at once either. We use a
-+		 * harsher version of the apfs_transaction_need_commit() check,
-+		 * to make sure we won't be forced to commit again right away.
-+		 */
-+		sfq_count = le64_to_cpu(fq->sfq_count);
-+		if (qid == APFS_SFQ_IP && sfq_count * 6 <= le64_to_cpu(sm_raw->sm_ip_block_count))
-+			break;
-+		if (qid == APFS_SFQ_MAIN && sfq_count <= APFS_TRANS_MAIN_QUEUE_MAX - 200)
-+			break;
++	if (qid == APFS_SFQ_MAIN) {
++		fq_info = (void *)fq_root->object.data + sb->s_blocksize - sizeof(*fq_info);
++		sm->sm_main_fq_nodes = le64_to_cpu(fq_info->bt_node_count);
++		if (sm->sm_main_fq_nodes != 1) {
++			apfs_alert(sb, "main queue wasn't flushed in full - bug!");
++			err = -EFSCORRUPTED;
++			goto fail;
++		}
 +	}
 +
 +fail:
@@ -21810,12 +21715,16 @@ index 000000000..7667f8733
 +		goto fail;
 +	}
 +
-+	err = apfs_flush_free_queue(sb, APFS_SFQ_IP, false /* force */);
++	/*
++	 * We flush free queues whole when each transaction begins, to make it
++	 * harder for the btrees to become too unbalanced.
++	 */
++	err = apfs_flush_free_queue(sb, APFS_SFQ_IP);
 +	if (err) {
 +		apfs_err(sb, "failed to flush ip fq");
 +		goto fail;
 +	}
-+	err = apfs_flush_free_queue(sb, APFS_SFQ_MAIN, false /* force */);
++	err = apfs_flush_free_queue(sb, APFS_SFQ_MAIN);
 +	if (err) {
 +		apfs_err(sb, "failed to flush main fq");
 +		goto fail;
@@ -21949,8 +21858,7 @@ index 000000000..7667f8733
 + * @count:	number of consecutive blocks to free
 + *
 + * Same as apfs_free_queue_insert_nocache(), except that this one can also fail
-+ * with -EAGAIN if there is no room for the new record, so that the caller can
-+ * flush the queue and retry.
++ * with -ENOSPC if there is no room for the new record.
 + */
 +static int apfs_free_queue_try_insert(struct super_block *sb, u64 bno, u64 count)
 +{
@@ -21967,12 +21875,11 @@ index 000000000..7667f8733
 +	__le64 raw_val;
 +	u64 node_count;
 +	u16 node_limit;
++	unsigned int qid;
 +	int err;
 +
-+	if (apfs_block_in_ip(sm, bno))
-+		fq = &sm_raw->sm_fq[APFS_SFQ_IP];
-+	else
-+		fq = &sm_raw->sm_fq[APFS_SFQ_MAIN];
++	qid = apfs_block_in_ip(sm, bno) ? APFS_SFQ_IP : APFS_SFQ_MAIN;
++	fq = &sm_raw->sm_fq[qid];
 +
 +	fq_root = apfs_read_node(sb, le64_to_cpu(fq->sfq_tree_oid),
 +				 APFS_OBJ_EPHEMERAL, true /* write */);
@@ -22001,7 +21908,7 @@ index 000000000..7667f8733
 +	if (node_count == node_limit) {
 +		needed_room = sizeof(raw_key) + (ghost ? 0 : sizeof(raw_val));
 +		if (!apfs_node_has_room(query->node, needed_room, false /* replace */)) {
-+			err = -EAGAIN;
++			err = -ENOSPC;
 +			goto fail;
 +		}
 +	}
@@ -22024,6 +21931,9 @@ index 000000000..7667f8733
 +		fq->sfq_oldest_xid = cpu_to_le64(nxi->nx_xid);
 +	le64_add_cpu(&fq->sfq_count, count);
 +
++	if (qid == APFS_SFQ_MAIN)
++		sm->sm_main_fq_nodes = le64_to_cpu(fq_info->bt_node_count);
++
 +fail:
 +	apfs_free_query(query);
 +	apfs_node_free(fq_root);
@@ -22043,25 +21953,16 @@ index 000000000..7667f8733
 + */
 +int apfs_free_queue_insert_nocache(struct super_block *sb, u64 bno, u64 count)
 +{
-+	struct apfs_spaceman *sm = APFS_SM(sb);
 +	unsigned int qid;
 +	int err;
 +
 +	err = apfs_free_queue_try_insert(sb, bno, count);
-+	if (err == -EAGAIN) {
-+		qid = apfs_block_in_ip(sm, bno) ? APFS_SFQ_IP : APFS_SFQ_MAIN;
-+		err = apfs_flush_free_queue(sb, qid, true /* force */);
-+		if (err) {
-+			apfs_err(sb, "failed to flush fq to make room");
-+			return err;
-+		}
-+		err = apfs_free_queue_try_insert(sb, bno, count);
++	if (err == -ENOSPC) {
++		qid = apfs_block_in_ip(APFS_SM(sb), bno) ? APFS_SFQ_IP : APFS_SFQ_MAIN;
++		apfs_alert(sb, "free queue (%u) seems full - bug!", qid);
++		err = -EFSCORRUPTED;
 +	}
 +	if (err) {
-+		if (err == -EAGAIN) {
-+			apfs_alert(sb, "failed to make room in fq - bug!");
-+			err = -EFSCORRUPTED;
-+		}
 +		apfs_err(sb, "fq insert failed (0x%llx-0x%llx)", bno, count);
 +		return err;
 +	}
@@ -22393,6 +22294,11 @@ index 000000000..7667f8733
 +			apfs_err(sb, "error during allocation");
 +		return err;
 +	}
++	/*
++	 * We checked the free space before starting the transaction, so this
++	 * isn't expected to happen.
++	 */
++	apfs_err(sb, "ran out of space during transaction");
 +	return -ENOSPC;
 +}
 +
@@ -22419,10 +22325,11 @@ index 000000000..7667f8733
 +{
 +	struct apfs_spaceman *sm = APFS_SM(sb);
 +	struct apfs_spaceman_phys *sm_raw = sm->sm_raw;
++	struct apfs_sb_info *sbi = NULL;
 +	u64 cib_idx, chunk_idx;
 +	struct buffer_head *cib_bh;
 +	u64 cib_bno;
-+	int err;
++	int err, orphan_err;
 +
 +	if (!sm_raw->sm_blocks_per_chunk || !sm_raw->sm_chunks_per_cib) {
 +		apfs_err(sb, "block or chunk count not set");
@@ -22449,17 +22356,71 @@ index 000000000..7667f8733
 +		apfs_write_spaceman(sm);
 +	}
 +	brelse(cib_bh);
-+	if (err)
++	if (err) {
 +		apfs_err(sb, "error during free");
++		return err;
++	}
++
++	/* It may be time to resume orphan cleanups, if we made enough room */
++	sbi = APFS_SB(sb);
++	orphan_err = atomic_read(&sbi->s_orphan_cleanup_err);
++	if (orphan_err == -ENOSPC && sm->sm_free_count >= 2 * APFS_DEL_ROOM) {
++		atomic_set(&sbi->s_orphan_cleanup_err, 0);
++		apfs_schedule_orphan_cleanup(sb);
++	}
 +
 +	return err;
 +}
++
++/**
++ * apfs_spaceman_get_free_blkcnt - Calculate the total number of free blocks
++ * @sb:		filesystem superblock
++ * @blkcnt:	on return, the total number of free blocks for all devices
++ *
++ * Can be called even if the spaceman has not been read (for example, on a
++ * read-only mount). Returns 0 on success, or a negative error code in case of
++ * failure.
++ */
++int apfs_spaceman_get_free_blkcnt(struct super_block *sb, u64 *blkcnt)
++{
++	struct apfs_nxsb_info *nxi = APFS_NXI(sb);
++	struct apfs_nx_superblock *raw_sb = NULL;
++	struct apfs_spaceman_phys *sm_raw = NULL;
++	struct apfs_ephemeral_object_info *sm_eph_info = NULL;
++	struct apfs_spaceman_device *dev = NULL;
++	u64 oid;
++	int err;
++
++	if (!nxi->nx_eph_list) {
++		err = apfs_read_ephemeral_objects(sb);
++		if (err) {
++			apfs_err(sb, "failed to read the ephemeral objects");
++			return err;
++		}
++	}
++
++	raw_sb = nxi->nx_raw;
++	oid = le64_to_cpu(raw_sb->nx_spaceman_oid);
++	sm_eph_info = apfs_ephemeral_object_lookup(sb, oid);
++	if (IS_ERR(sm_eph_info)) {
++		apfs_err(sb, "no spaceman object for oid 0x%llx", oid);
++		return PTR_ERR(sm_eph_info);
++	}
++	sm_raw = (struct apfs_spaceman_phys *)sm_eph_info->object;
++
++	*blkcnt = 0;
++	dev = &sm_raw->sm_dev[APFS_SD_MAIN];
++	*blkcnt += le64_to_cpu(dev->sm_free_count);
++	dev = &sm_raw->sm_dev[APFS_SD_TIER2];
++	*blkcnt += le64_to_cpu(dev->sm_free_count);
++	return 0;
++}
 diff --git a/fs/apfs/super.c b/fs/apfs/super.c
 new file mode 100644
-index 000000000..e7243fe7c
+index 000000000..4aa83a994
 --- /dev/null
 +++ b/fs/apfs/super.c
-@@ -0,0 +1,2203 @@
+@@ -0,0 +1,2123 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -23374,10 +23335,9 @@ index 000000000..e7243fe7c
 +	if (!(sb->s_flags & SB_RDONLY)) {
 +		struct apfs_superblock *vsb_raw;
 +		struct buffer_head *vsb_bh;
-+		struct apfs_max_ops maxops = {0};
 +		int err;
 +
-+		err = apfs_transaction_start(sb, maxops);
++		err = apfs_transaction_start(sb, APFS_TRANS_SYNC);
 +		if (err) {
 +			apfs_err(sb, "unmount transaction start failed (err:%d)", err);
 +			goto fail;
@@ -23494,13 +23454,9 @@ index 000000000..e7243fe7c
 +{
 +	struct super_block *sb = inode->i_sb;
 +	struct apfs_nxsb_info *nxi = APFS_SB(sb)->s_nxi;
-+	struct apfs_max_ops maxops;
 +	int err;
 +
-+	maxops.cat = APFS_UPDATE_INODE_MAXOPS();
-+	maxops.blks = 0;
-+
-+	err = apfs_transaction_start(sb, maxops);
++	err = apfs_transaction_start(sb, APFS_TRANS_REG);
 +	if (err)
 +		return err;
 +	err = apfs_update_inode(inode, NULL /* new_name */);
@@ -23528,85 +23484,6 @@ index 000000000..e7243fe7c
 +	kmem_cache_destroy(apfs_inode_cachep);
 +}
 +
-+/**
-+ * apfs_count_used_blocks - Count the blocks in use across all volumes
-+ * @sb:		filesystem superblock
-+ * @count:	on return it will store the block count
-+ *
-+ * This function probably belongs in a separate file, but for now it is
-+ * only called by statfs.
-+ */
-+static int apfs_count_used_blocks(struct super_block *sb, u64 *count)
-+{
-+	struct apfs_nx_superblock *msb_raw = APFS_NXI(sb)->nx_raw;
-+	struct apfs_node *vnode;
-+	struct apfs_omap_phys *msb_omap_raw;
-+	struct buffer_head *bh;
-+	struct apfs_omap *omap = NULL;
-+	u64 msb_omap, vb;
-+	int i;
-+	int err = 0;
-+
-+	/* Get the container's object map */
-+	msb_omap = le64_to_cpu(msb_raw->nx_omap_oid);
-+	bh = apfs_sb_bread(sb, msb_omap);
-+	if (!bh) {
-+		apfs_err(sb, "unable to read container object map");
-+		return -EIO;
-+	}
-+	msb_omap_raw = (struct apfs_omap_phys *)bh->b_data;
-+
-+	/* Get the Volume Block */
-+	vb = le64_to_cpu(msb_omap_raw->om_tree_oid);
-+	msb_omap_raw = NULL;
-+	brelse(bh);
-+	bh = NULL;
-+	vnode = apfs_read_node(sb, vb, APFS_OBJ_PHYSICAL, false /* write */);
-+	if (IS_ERR(vnode)) {
-+		apfs_err(sb, "unable to read volume block");
-+		return PTR_ERR(vnode);
-+	}
-+
-+	omap = apfs_alloc_omap();
-+	if (!omap) {
-+		err = -ENOMEM;
-+		goto fail;
-+	}
-+	omap->omap_root = vnode;
-+
-+	/* Iterate through the checkpoint superblocks and add the used blocks */
-+	*count = 0;
-+	for (i = 0; i < APFS_NX_MAX_FILE_SYSTEMS; i++) {
-+		struct apfs_superblock *vsb_raw;
-+		u64 vol_id;
-+		u64 vol_bno;
-+
-+		vol_id = le64_to_cpu(msb_raw->nx_fs_oid[i]);
-+		if (vol_id == 0) /* All volumes have been checked */
-+			break;
-+		err = apfs_omap_lookup_newest_block(sb, omap, vol_id, &vol_bno, false /* write */);
-+		if (err) {
-+			apfs_err(sb, "omap lookup failed for vol id 0x%llx", vol_id);
-+			break;
-+		}
-+
-+		bh = apfs_sb_bread(sb, vol_bno);
-+		if (!bh) {
-+			err = -EIO;
-+			apfs_err(sb, "unable to read volume superblock");
-+			break;
-+		}
-+		vsb_raw = (struct apfs_superblock *)bh->b_data;
-+		*count += le64_to_cpu(vsb_raw->apfs_fs_alloc_count);
-+		brelse(bh);
-+	}
-+
-+fail:
-+	kfree(omap);
-+	apfs_node_free(vnode);
-+	return err;
-+}
-+
 +static int apfs_statfs(struct dentry *dentry, struct kstatfs *buf)
 +{
 +	struct super_block *sb = dentry->d_sb;
@@ -23614,7 +23491,7 @@ index 000000000..e7243fe7c
 +	struct apfs_nxsb_info *nxi = APFS_NXI(sb);
 +	struct apfs_nx_superblock *msb_raw;
 +	struct apfs_superblock *vol;
-+	u64 fsid, used_blocks = 0;
++	u64 fsid, free_blocks;
 +	int err;
 +
 +	down_read(&nxi->nx_big_sem);
@@ -23627,11 +23504,16 @@ index 000000000..e7243fe7c
 +
 +	/* Volumes share the whole disk space */
 +	buf->f_blocks = le64_to_cpu(msb_raw->nx_block_count);
-+	err = apfs_count_used_blocks(sb, &used_blocks);
++	/*
++	 * It takes some work to retrieve the free block count because we
++	 * can't assume that the spaceman has been read yet. It would be
++	 * cleaner if we always did that on first mount (TODO).
++	 */
++	err = apfs_spaceman_get_free_blkcnt(sb, &free_blocks);
 +	if (err)
 +		goto fail;
-+	buf->f_bfree = buf->f_blocks - used_blocks;
-+	buf->f_bavail = buf->f_bfree; /* I don't know any better */
++	buf->f_bfree = free_blocks;
++	buf->f_bavail = free_blocks;
 +
 +	/* The file count is only for the mounted volume */
 +	buf->f_files = le64_to_cpu(vol->apfs_num_files) +
@@ -23682,14 +23564,13 @@ index 000000000..e7243fe7c
 +
 +int apfs_sync_fs(struct super_block *sb, int wait)
 +{
-+	struct apfs_max_ops maxops = {0};
 +	int err;
 +
 +	/* TODO: actually start the commit and return without waiting? */
 +	if (wait == 0)
 +		return 0;
 +
-+	err = apfs_transaction_start(sb, maxops);
++	err = apfs_transaction_start(sb, APFS_TRANS_SYNC);
 +	if (err)
 +		return err;
 +	APFS_SB(sb)->s_nxi->nx_transaction.t_state |= APFS_NX_TRANS_FORCE_COMMIT;
@@ -24751,10 +24632,10 @@ index 000000000..be4f9df8f
 +};
 diff --git a/fs/apfs/transaction.c b/fs/apfs/transaction.c
 new file mode 100644
-index 000000000..eb5c60ee3
+index 000000000..3fea8d5fe
 --- /dev/null
 +++ b/fs/apfs/transaction.c
-@@ -0,0 +1,989 @@
+@@ -0,0 +1,1034 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2019 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -24816,37 +24697,65 @@ index 000000000..eb5c60ee3
 +/**
 + * apfs_transaction_has_room - Is there enough free space for this transaction?
 + * @sb:		superblock structure
-+ * @maxops:	maximum operations expected
++ * @kind:	transaction kind for space preallocation
 + */
-+static bool apfs_transaction_has_room(struct super_block *sb, struct apfs_max_ops maxops)
++static bool apfs_transaction_has_room(struct super_block *sb, enum apfs_trans_kind kind)
 +{
-+	u64 max_cat_blks, max_omap_blks, max_extref_blks, max_blks;
-+	/* I don't know the actual maximum heights, just guessing */
-+	const u64 max_cat_height = 8, max_omap_height = 3, max_extref_height = 3;
++	struct apfs_nx_transaction *trans = NULL;
++	struct apfs_spaceman *sm = NULL;
++	u64 max_blks;
++
++	trans = &APFS_NXI(sb)->nx_transaction;
++	sm = APFS_SM(sb);
 +
 +	/*
-+	 * On the worst possible case (a tree of max_height), each new insertion
-+	 * to the catalog may both cow and split every node up to the root. The
-+	 * root though, is only cowed once.
++	 * It's hard to keep track of the maximum number of blocks that each
++	 * operation could need because of the complexities of apfs btrees,
++	 * plus snapshots and clones. I try to keep things simple here.
 +	 */
-+	max_cat_blks = 1 + 2 * maxops.cat * max_cat_height;
++	switch (kind) {
++	case APFS_TRANS_REG:
++		/*
++		 * For transactions that are expected to reduce free space, we
++		 * use a very coarse bound (512 KiB) that is certain to be much
++		 * more than enough, and will always leave room for deletions.
++		 */
++		max_blks = APFS_REG_ROOM;
++		break;
++	case APFS_TRANS_DEL:
++		/*
++		 * For transactions that are likely to increase free space, we
++		 * use a much tighter bound (80 KiB), so that users have the
++		 * opportunity to fix their ENOSPC situation.
++		 *
++		 * For huge filesystems with huge numbers of records, there is
++		 * a tiny chance that this might be too permissive, in which
++		 * case the transaction will later abort. I think that's
++		 * acceptable.
++		 */
++		max_blks = APFS_DEL_ROOM;
++		break;
++	case APFS_TRANS_SYNC:
++		/*
++		 * We try to allow sync as much as possible, for the user's
++		 * peace of mind and because flushing the free queues could
++		 * make some room.
++		 *
++		 * Even if we do nothing the transaction still allocates a new
++		 * volume superblock, and new roots for the omap and catalog,
++		 * which consumes 6 blocks in total. This could be avoided...
++		 */
++		if (trans->t_starts_count == 0)
++			max_blks = APFS_SYNC_ROOM;
++		else
++			max_blks = 0;
++		break;
++	default:
++		apfs_alert(sb, "invalid transaction kind %u - bug!", kind);
++		return false;
++	}
 +
-+	/*
-+	 * Any new catalog node could require a new entry in the object map,
-+	 * because the original might belong to a snapshot.
-+	 */
-+	max_omap_blks = 1 + 2 * max_cat_blks * max_omap_height;
-+
-+	/* The extent reference tree needs a maximum of one record per block */
-+	max_extref_blks = 1 + 2 * maxops.blks * max_extref_height;
-+
-+	/*
-+	 * Ephemeral allocations shouldn't fail, and neither should those in the
-+	 * internal pool. So just add the actual file blocks and we are done.
-+	 */
-+	max_blks = max_cat_blks + max_omap_blks + max_extref_blks + maxops.blks;
-+
-+	return max_blks < APFS_SM(sb)->sm_free_count;
++	return max_blks <= sm->sm_free_count;
 +}
 +
 +/**
@@ -24992,13 +24901,15 @@ index 000000000..eb5c60ee3
 +	return err;
 +}
 +
++static void apfs_force_readonly(struct apfs_nxsb_info *nxi);
++
 +/**
 + * apfs_read_ephemeral_objects - Read all ephemeral objects to memory
 + * @sb:	superblock structure
 + *
 + * Returns 0 on success or a negative error code in case of failure.
 + */
-+static int apfs_read_ephemeral_objects(struct super_block *sb)
++int apfs_read_ephemeral_objects(struct super_block *sb)
 +{
 +	struct apfs_nxsb_info *nxi = APFS_NXI(sb);
 +	struct apfs_nx_superblock *raw_sb = nxi->nx_raw;
@@ -25027,6 +24938,8 @@ index 000000000..eb5c60ee3
 +		err = apfs_read_single_cpm_block(sb, cpm_bno);
 +		if (err) {
 +			apfs_err(sb, "failed to read cpm block %u", i);
++			/* No transaction to abort yet */
++			apfs_force_readonly(nxi);
 +			return err;
 +		}
 +	}
@@ -25083,12 +24996,12 @@ index 000000000..eb5c60ee3
 +/**
 + * apfs_transaction_start - Begin a new transaction
 + * @sb:		superblock structure
-+ * @maxops:	maximum operations expected
++ * @kind:	transaction kind for space preallocation
 + *
 + * Also locks the filesystem for writing; returns 0 on success or a negative
 + * error code in case of failure.
 + */
-+int apfs_transaction_start(struct super_block *sb, struct apfs_max_ops maxops)
++int apfs_transaction_start(struct super_block *sb, enum apfs_trans_kind kind)
 +{
 +	struct apfs_nxsb_info *nxi = APFS_NXI(sb);
 +	struct apfs_nx_transaction *nx_trans = &nxi->nx_transaction;
@@ -25127,7 +25040,7 @@ index 000000000..eb5c60ee3
 +	}
 +
 +	/* Don't start transactions unless we are sure they fit in disk */
-+	if (!apfs_transaction_has_room(sb, maxops)) {
++	if (!apfs_transaction_has_room(sb, kind)) {
 +		/* Commit what we have so far to flush the queues */
 +		nx_trans->t_state |= APFS_NX_TRANS_FORCE_COMMIT;
 +		err = apfs_transaction_commit(sb);
@@ -25556,6 +25469,7 @@ index 000000000..eb5c60ee3
 +		int buffers_max = nxi->nx_trans_buffers_max;
 +		int starts_max = APFS_TRANS_STARTS_MAX;
 +		int mq_max = APFS_TRANS_MAIN_QUEUE_MAX;
++		int maxnodes;
 +
 +		/*
 +		 * Try to avoid committing halfway through a data block write,
@@ -25583,6 +25497,18 @@ index 000000000..eb5c60ee3
 +
 +		/* Don't let the main queue get too full either */
 +		if (le64_to_cpu(fq_main->sfq_count) > mq_max)
++			return true;
++
++		/*
++		 * The main free queue can become unbalanced enough to reach
++		 * the node limit while being mostly empty. For now, the only
++		 * way I have to rebalance it is to flush it entirely with a
++		 * new transaction. We could wait longer to do it, but I don't
++		 * see the point.
++		 */
++		maxnodes = le16_to_cpu(fq_main->sfq_tree_node_limit);
++		maxnodes = (maxnodes + 1) >> 1;
++		if (sm->sm_main_fq_nodes > 1 && sm->sm_main_fq_nodes >= maxnodes)
 +			return true;
 +	}
 +
@@ -28941,17 +28867,17 @@ index 000000000..e3b7edc51
 +#endif	/* _APFS_UNICODE_H */
 diff --git a/fs/apfs/version.h b/fs/apfs/version.h
 new file mode 100644
-index 000000000..e16b23c10
+index 000000000..d9b43c039
 --- /dev/null
 +++ b/fs/apfs/version.h
 @@ -0,0 +1 @@
-+#define GIT_COMMIT	""
++#define GIT_COMMIT	"v0.3.13"
 diff --git a/fs/apfs/xattr.c b/fs/apfs/xattr.c
 new file mode 100644
-index 000000000..0de1db140
+index 000000000..b8eb53796
 --- /dev/null
 +++ b/fs/apfs/xattr.c
-@@ -0,0 +1,922 @@
+@@ -0,0 +1,914 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -29753,10 +29679,6 @@ index 000000000..0de1db140
 +	apfs_free_query(query);
 +	return ret;
 +}
-+int APFS_XATTR_SET_MAXOPS(void)
-+{
-+	return 1;
-+}
 +
 +#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 12, 0)
 +static int apfs_xattr_osx_set(const struct xattr_handler *handler,
@@ -29775,13 +29697,9 @@ index 000000000..0de1db140
 +#endif
 +{
 +	struct super_block *sb = inode->i_sb;
-+	struct apfs_max_ops maxops;
 +	int err;
 +
-+	maxops.cat = APFS_XATTR_SET_MAXOPS();
-+	maxops.blks = 0;
-+
-+	err = apfs_transaction_start(sb, maxops);
++	err = apfs_transaction_start(sb, value ? APFS_TRANS_REG : APFS_TRANS_DEL);
 +	if (err)
 +		return err;
 +
