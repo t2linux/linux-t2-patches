@@ -936,9 +936,9 @@ diff --git a/drivers/hid/Kconfig b/drivers/hid/Kconfig
 index 2f6658702..85cbe1e7c 100644
 --- a/drivers/hid/Kconfig
 +++ b/drivers/hid/Kconfig
-@@ -1388,4 +1388,6 @@ source "drivers/hid/amd-sfh-hid/Kconfig"
+@@ -1393,4 +1393,6 @@ endif # HID
  
- source "drivers/hid/surface-hid/Kconfig"
+ source "drivers/hid/usbhid/Kconfig"
  
 +source "drivers/hid/spi-hid/Kconfig"
 +
@@ -947,10 +947,10 @@ diff --git a/drivers/hid/Makefile b/drivers/hid/Makefile
 index 24de45f36..f4b2e84c7 100644
 --- a/drivers/hid/Makefile
 +++ b/drivers/hid/Makefile
-@@ -171,3 +171,5 @@ obj-$(INTEL_ISH_FIRMWARE_DOWNLOADER)	+= intel-ish-hid/
- obj-$(CONFIG_AMD_SFH_HID)       += amd-sfh-hid/
- 
+@@ -173,3 +173,5 @@ obj-$(CONFIG_AMD_SFH_HID)       += amd-sfh-hid/
  obj-$(CONFIG_SURFACE_HID_CORE)  += surface-hid/
+ 
+ obj-$(CONFIG_INTEL_THC_HID)     += intel-thc-hid/
 +
 +obj-$(CONFIG_SPI_HID_APPLE_CORE)	+= spi-hid/
 diff --git a/drivers/hid/spi-hid/Kconfig b/drivers/hid/spi-hid/Kconfig
@@ -3054,7 +3054,7 @@ diff --git a/drivers/hid/Kconfig b/drivers/hid/Kconfig
 index 85cbe1e7c..e4f81de85 100644
 --- a/drivers/hid/Kconfig
 +++ b/drivers/hid/Kconfig
-@@ -1390,4 +1390,6 @@ source "drivers/hid/surface-hid/Kconfig"
+@@ -1395,4 +1395,6 @@ source "drivers/hid/usbhid/Kconfig"
  
  source "drivers/hid/spi-hid/Kconfig"
  
@@ -3065,8 +3065,8 @@ diff --git a/drivers/hid/Makefile b/drivers/hid/Makefile
 index f4b2e84c7..a5026febe 100644
 --- a/drivers/hid/Makefile
 +++ b/drivers/hid/Makefile
-@@ -173,3 +173,5 @@ obj-$(CONFIG_AMD_SFH_HID)       += amd-sfh-hid/
- obj-$(CONFIG_SURFACE_HID_CORE)  += surface-hid/
+@@ -175,3 +175,5 @@ obj-$(CONFIG_SURFACE_HID_CORE)  += surface-hid/
+ obj-$(CONFIG_INTEL_THC_HID)     += intel-thc-hid/
  
  obj-$(CONFIG_SPI_HID_APPLE_CORE)	+= spi-hid/
 +

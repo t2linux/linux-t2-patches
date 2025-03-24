@@ -69,8 +69,8 @@ index 0fa7c5728..bce57e844 100644
 +F:	drivers/gpu/drm/tiny/appletbdrm.c
 +
  DRM DRIVER FOR ARM PL111 CLCD
- S:	Orphan
- T:	git https://gitlab.freedesktop.org/drm/misc/kernel.git
+ M:	Linus Walleij <linus.walleij@linaro.org>
+ S:	Maintained
 diff --git a/drivers/gpu/drm/tiny/Kconfig b/drivers/gpu/drm/tiny/Kconfig
 index 94cbdb133..54c84c980 100644
 --- a/drivers/gpu/drm/tiny/Kconfig
@@ -103,7 +103,7 @@ index 4aaf56f87..d9add9c3e 100644
 +obj-$(CONFIG_DRM_APPLETBDRM)		+= appletbdrm.o
  obj-$(CONFIG_DRM_ARCPGU)		+= arcpgu.o
  obj-$(CONFIG_DRM_BOCHS)			+= bochs.o
- obj-$(CONFIG_DRM_CIRRUS_QEMU)		+= cirrus.o
+ obj-$(CONFIG_DRM_CIRRUS_QEMU)		+= cirrus-qemu.o
 diff --git a/drivers/gpu/drm/tiny/appletbdrm.c b/drivers/gpu/drm/tiny/appletbdrm.c
 new file mode 100644
 index 000000000..4370ba22d
