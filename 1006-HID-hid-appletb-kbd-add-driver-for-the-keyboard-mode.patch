@@ -1,4 +1,4 @@
-From e0707964b82b6994dacc06eb5899e69bdcc63bc0 Mon Sep 17 00:00:00 2001
+From 161110b264a47591baacb58053aab98420474e30 Mon Sep 17 00:00:00 2001
 From: Kerem Karabay <kekrby@gmail.com>
 Date: Sun, 5 Mar 2023 18:17:23 +0300
 Subject: [PATCH 2/2] HID: hid-appletb-kbd: add driver for the keyboard mode of
@@ -25,9 +25,9 @@ Signed-off-by: Aditya Garg <gargaditya08@live.com>
  .../ABI/testing/sysfs-driver-hid-appletb-kbd  |  13 +
  drivers/hid/Kconfig                           |  15 +
  drivers/hid/Makefile                          |   1 +
- drivers/hid/hid-appletb-kbd.c                 | 507 ++++++++++++++++++
+ drivers/hid/hid-appletb-kbd.c                 | 510 ++++++++++++++++++
  drivers/hid/hid-quirks.c                      |   4 +-
- 5 files changed, 539 insertions(+), 1 deletion(-)
+ 5 files changed, 542 insertions(+), 1 deletion(-)
  create mode 100644 Documentation/ABI/testing/sysfs-driver-hid-appletb-kbd
  create mode 100644 drivers/hid/hid-appletb-kbd.c
 
@@ -51,7 +51,7 @@ index 000000000..2a19584d0
 +		3  None
 +		== =================
 diff --git a/drivers/hid/Kconfig b/drivers/hid/Kconfig
-index 8d80a624f..e9da46dd4 100644
+index 00dfb7f42..4a19a7f6f 100644
 --- a/drivers/hid/Kconfig
 +++ b/drivers/hid/Kconfig
 @@ -158,6 +158,21 @@ config HID_APPLETB_BL
@@ -90,10 +90,10 @@ index d001c3ffd..0775269be 100644
  obj-$(CONFIG_HID_AUREAL)	+= hid-aureal.o
 diff --git a/drivers/hid/hid-appletb-kbd.c b/drivers/hid/hid-appletb-kbd.c
 new file mode 100644
-index 000000000..d4b95aa3e
+index 000000000..2f78db891
 --- /dev/null
 +++ b/drivers/hid/hid-appletb-kbd.c
-@@ -0,0 +1,507 @@
+@@ -0,0 +1,510 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
 + * Apple Touch Bar Keyboard Mode Driver
@@ -268,7 +268,8 @@ index 000000000..d4b95aa3e
 +		if (!kbd->has_dimmed) {
 +			backlight_device_set_brightness(kbd->backlight_dev, 1);
 +			kbd->has_dimmed = true;
-+			mod_timer(&kbd->inactivity_timer, jiffies + msecs_to_jiffies(appletb_tb_idle_timeout * 1000));
++			mod_timer(&kbd->inactivity_timer,
++				jiffies + secs_to_jiffies(appletb_tb_idle_timeout));
 +		} else if (!kbd->has_turned_off) {
 +			backlight_device_set_brightness(kbd->backlight_dev, 0);
 +			kbd->has_turned_off = true;
@@ -284,7 +285,8 @@ index 000000000..d4b95aa3e
 +			kbd->has_dimmed = false;
 +			kbd->has_turned_off = false;
 +		}
-+		mod_timer(&kbd->inactivity_timer, jiffies + msecs_to_jiffies(appletb_tb_dim_timeout * 1000));
++		mod_timer(&kbd->inactivity_timer,
++			jiffies + secs_to_jiffies(appletb_tb_dim_timeout));
 +	}
 +}
 +
@@ -503,7 +505,8 @@ index 000000000..d4b95aa3e
 +	} else {
 +		backlight_device_set_brightness(kbd->backlight_dev, 2);
 +		timer_setup(&kbd->inactivity_timer, appletb_inactivity_timer, 0);
-+		mod_timer(&kbd->inactivity_timer, jiffies + msecs_to_jiffies(appletb_tb_dim_timeout * 1000));
++		mod_timer(&kbd->inactivity_timer,
++			jiffies + secs_to_jiffies(appletb_tb_dim_timeout));
 +	}
 +
 +	kbd->inp_handler.event = appletb_kbd_inp_event;
