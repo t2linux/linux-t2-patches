@@ -1,4 +1,4 @@
-From 0773051dff8f9bb8ef4c21a017a907f078cba80a Mon Sep 17 00:00:00 2001
+From 08dec01da405ecf1c24d1d3c38b19b7654580b26 Mon Sep 17 00:00:00 2001
 From: Kerem Karabay <kekrby@gmail.com>
 Date: Wed, 26 Feb 2025 16:04:36 +0000
 Subject: [PATCH 2/2] drm/tiny: add driver for Apple Touch Bars in x86 Macs
@@ -53,10 +53,10 @@ Link: https://patchwork.freedesktop.org/patch/msgid/FCAC702C-F84A-47F9-8C78-BBBB
  create mode 100644 drivers/gpu/drm/tiny/appletbdrm.c
 
 diff --git a/MAINTAINERS b/MAINTAINERS
-index 0fa7c5728..bce57e844 100644
+index 00e94bec4..2c70390fc 100644
 --- a/MAINTAINERS
 +++ b/MAINTAINERS
-@@ -7066,6 +7066,14 @@ S:	Supported
+@@ -7163,6 +7163,14 @@ S:	Supported
  T:	git https://gitlab.freedesktop.org/drm/misc/kernel.git
  F:	drivers/gpu/drm/sun4i/sun8i*
  
@@ -94,7 +94,7 @@ index 94cbdb133..54c84c980 100644
  	tristate "ARC PGU"
  	depends on DRM && OF
 diff --git a/drivers/gpu/drm/tiny/Makefile b/drivers/gpu/drm/tiny/Makefile
-index 4aaf56f87..d9add9c3e 100644
+index 60816d2eb..0a3a7837a 100644
 --- a/drivers/gpu/drm/tiny/Makefile
 +++ b/drivers/gpu/drm/tiny/Makefile
 @@ -1,5 +1,6 @@
@@ -106,7 +106,7 @@ index 4aaf56f87..d9add9c3e 100644
  obj-$(CONFIG_DRM_CIRRUS_QEMU)		+= cirrus-qemu.o
 diff --git a/drivers/gpu/drm/tiny/appletbdrm.c b/drivers/gpu/drm/tiny/appletbdrm.c
 new file mode 100644
-index 000000000..4370ba22d
+index 000000000..8643216ba
 --- /dev/null
 +++ b/drivers/gpu/drm/tiny/appletbdrm.c
 @@ -0,0 +1,840 @@
@@ -326,7 +326,7 @@ index 000000000..4370ba22d
 +	}
 +
 +	if (response->msg != expected_response) {
-+		drm_err(drm, "Unexpected response from device (expected %p4cc found %p4cc)\n",
++		drm_err(drm, "Unexpected response from device (expected %p4cl found %p4cl)\n",
 +			&expected_response, &response->msg);
 +		return -EIO;
 +	}
@@ -400,7 +400,7 @@ index 000000000..4370ba22d
 +	}
 +
 +	if (pixel_format != APPLETBDRM_PIXEL_FORMAT) {
-+		drm_err(drm, "Encountered unknown pixel format (%p4cc)\n", &pixel_format);
++		drm_err(drm, "Encountered unknown pixel format (%p4cl)\n", &pixel_format);
 +		ret = -EINVAL;
 +		goto free_info;
 +	}
@@ -951,5 +951,5 @@ index 000000000..4370ba22d
 +MODULE_DESCRIPTION("Apple Touch Bar DRM Driver");
 +MODULE_LICENSE("GPL");
 -- 
-2.47.1
+2.49.0
 
