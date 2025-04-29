@@ -1,8 +1,8 @@
-From 4870ca09f6de64bb971ba649fc5b65b116b1d851 Mon Sep 17 00:00:00 2001
+From 0af1fbc1dcf698e9facfaabd9f0dd7395a7cb849 Mon Sep 17 00:00:00 2001
 From: Hector Martin <marcan@marcan.st>
 Date: Tue, 8 Apr 2025 12:17:57 +0530
-Subject: [PATCH 1/2] lib/vsprintf: Add support for generic FourCCs by
- extending %p4cc
+Subject: [PATCH 1/2] lib/vsprintf: Add support for generic FourCCs by extending
+ %p4cc
 
 %p4cc is designed for DRM/V4L2 FourCCs with their specific quirks, but
 it's useful to be able to print generic 4-character codes formatted as
@@ -29,13 +29,13 @@ Signed-off-by: Hector Martin <marcan@marcan.st>
 Signed-off-by: Aditya Garg <gargaditya08@live.com>
 Reviewed-by: Kees Cook <kees@kernel.org>
 ---
- Documentation/core-api/printk-formats.rst | 32 +++++++++++++++++++++
- lib/vsprintf.c                            | 35 +++++++++++++++++++----
+ Documentation/core-api/printk-formats.rst | 32 ++++++++++++++++++
+ lib/vsprintf.c                            | 40 +++++++++++++++++++----
  scripts/checkpatch.pl                     |  2 +-
- 3 files changed, 62 insertions(+), 7 deletions(-)
+ 3 files changed, 67 insertions(+), 7 deletions(-)
 
 diff --git a/Documentation/core-api/printk-formats.rst b/Documentation/core-api/printk-formats.rst
-index ecccc0473..bd420e8aa 100644
+index ecccc0473..7379d7ba1 100644
 --- a/Documentation/core-api/printk-formats.rst
 +++ b/Documentation/core-api/printk-formats.rst
 @@ -648,6 +648,38 @@ Examples::
@@ -46,7 +46,7 @@ index ecccc0473..bd420e8aa 100644
 +-------------------
 +
 +::
-+	%p4c[hnlb]	gP00 (0x67503030)
++	%p4c[h[R]lb]	gP00 (0x67503030)
 +
 +Print a generic FourCC code, as both ASCII characters and its numerical
 +value as hexadecimal.
@@ -54,23 +54,23 @@ index ecccc0473..bd420e8aa 100644
 +The generic FourCC code is always printed in the big-endian format,
 +the most significant byte first. This is the opposite of V4L/DRM FourCCs.
 +
-+The additional ``h``, ``n``, ``l``, and ``b`` specifiers define what
++The additional ``h``, ``hR``, ``l``, and ``b`` specifiers define what
 +endianness is used to load the stored bytes. The data might be interpreted
-+using the host byte order, network byte order, little-endian, or big-endian.
++using the host, reversed host byte order, little-endian, or big-endian.
 +
 +Passed by reference.
 +
 +Examples for a little-endian machine, given &(u32)0x67503030::
 +
 +	%p4ch	gP00 (0x67503030)
-+	%p4cn	00Pg (0x30305067)
++	%p4chR	00Pg (0x30305067)
 +	%p4cl	gP00 (0x67503030)
 +	%p4cb	00Pg (0x30305067)
 +
 +Examples for a big-endian machine, given &(u32)0x67503030::
 +
 +	%p4ch	gP00 (0x67503030)
-+	%p4cn	00Pg (0x30305067)
++	%p4chR	00Pg (0x30305067)
 +	%p4cl	00Pg (0x30305067)
 +	%p4cb	gP00 (0x67503030)
 +
@@ -78,10 +78,10 @@ index ecccc0473..bd420e8aa 100644
  ----
  
 diff --git a/lib/vsprintf.c b/lib/vsprintf.c
-index a8ac4c4ff..a434b58e8 100644
+index a8ac4c4ff..67cf6c542 100644
 --- a/lib/vsprintf.c
 +++ b/lib/vsprintf.c
-@@ -1781,27 +1781,50 @@ char *fourcc_string(char *buf, char *end, const u32 *fourcc,
+@@ -1781,27 +1781,49 @@ char *fourcc_string(char *buf, char *end, const u32 *fourcc,
  	char output[sizeof("0123 little-endian (0x01234567)")];
  	char *p = output;
  	unsigned int i;
@@ -99,9 +99,8 @@ index a8ac4c4ff..a434b58e8 100644
 -	val = orig & ~BIT(31);
 +	switch (fmt[2]) {
 +	case 'h':
-+		break;
-+	case 'n':
-+		orig = swab32(orig);
++		if (fmt[3] == 'R')
++			orig = swab32(orig);
 +		break;
 +	case 'l':
 +		orig = (__force u32)cpu_to_le32(orig);
@@ -138,6 +137,19 @@ index a8ac4c4ff..a434b58e8 100644
  
  	*p++ = ' ';
  	*p++ = '(';
+@@ -2365,6 +2387,12 @@ char *rust_fmt_argument(char *buf, char *end, const void *ptr);
+  *       read the documentation (path below) first.
+  * - 'NF' For a netdev_features_t
+  * - '4cc' V4L2 or DRM FourCC code, with endianness and raw numerical value.
++ * - '4c[h[R]lb]' For generic FourCC code with raw numerical value. Both are
++ *	 displayed in the big-endian format. This is the opposite of V4L2 or
++ *	 DRM FourCCs.
++ *	 The additional specifiers define what endianness is used to load
++ *	 the stored bytes. The data might be interpreted using the host,
++ *	 reversed host byte order, little-endian, or big-endian.
+  * - 'h[CDN]' For a variable-length buffer, it prints it as a hex string with
+  *            a certain separator (' ' by default):
+  *              C colon
 diff --git a/scripts/checkpatch.pl b/scripts/checkpatch.pl
 index 7b28ad331..5595a0898 100755
 --- a/scripts/checkpatch.pl
