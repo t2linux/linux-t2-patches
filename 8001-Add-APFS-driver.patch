@@ -1,4 +1,4 @@
-From 55d1a7c4fd8cf68c22bc5bdd4870b85bd4d146a8 Mon Sep 17 00:00:00 2001
+From c1e8adec9607df9df5e01f208e01472e8ae14850 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
 Date: Sat, 12 Apr 2025 18:45:24 +0000
@@ -6,14 +6,14 @@ Subject: [PATCH] Add APFS driver
 
 ---
  fs/apfs/Makefile                  |   28 +
- fs/apfs/apfs.h                    | 1294 ++++++++++++
+ fs/apfs/apfs.h                    | 1307 ++++++++++++
  fs/apfs/apfs_raw.h                | 1570 ++++++++++++++
  fs/apfs/btree.c                   | 1174 +++++++++++
  fs/apfs/compress.c                |  474 +++++
- fs/apfs/dir.c                     | 1497 ++++++++++++++
+ fs/apfs/dir.c                     | 1504 ++++++++++++++
  fs/apfs/extents.c                 | 2374 ++++++++++++++++++++++
- fs/apfs/file.c                    |  213 ++
- fs/apfs/inode.c                   | 2571 +++++++++++++++++++++++
+ fs/apfs/file.c                    |  220 ++
+ fs/apfs/inode.c                   | 2578 +++++++++++++++++++++++
  fs/apfs/key.c                     |  337 +++
  fs/apfs/libzbitmap.c              |  442 ++++
  fs/apfs/libzbitmap.h              |   31 +
@@ -39,7 +39,7 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/version.h                 |    1 +
  fs/apfs/xattr.c                   |  914 +++++++++
  fs/apfs/xfield.c                  |  171 ++
- 34 files changed, 26817 insertions(+)
+ 34 files changed, 26851 insertions(+)
  create mode 100644 fs/apfs/Makefile
  create mode 100644 fs/apfs/apfs.h
  create mode 100644 fs/apfs/apfs_raw.h
@@ -111,10 +111,10 @@ index 000000000..a2dbed980
 +	make -C $(KERNEL_DIR) M=$(PWD) clean
 diff --git a/fs/apfs/apfs.h b/fs/apfs/apfs.h
 new file mode 100644
-index 000000000..9a1c4baa2
+index 000000000..5da9bf3c7
 --- /dev/null
 +++ b/fs/apfs/apfs.h
-@@ -0,0 +1,1294 @@
+@@ -0,0 +1,1307 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -1072,11 +1072,20 @@ index 000000000..9a1c4baa2
 +		       struct dentry *new_dentry, unsigned int flags);
 +extern int apfs_create(struct user_namespace *mnt_userns, struct inode *dir,
 +		       struct dentry *dentry, umode_t mode, bool excl);
-+#else
++#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 15, 0)
 +extern int apfs_mknod(struct mnt_idmap *idmap, struct inode *dir,
 +		      struct dentry *dentry, umode_t mode, dev_t rdev);
 +extern int apfs_mkdir(struct mnt_idmap *idmap, struct inode *dir,
 +		      struct dentry *dentry, umode_t mode);
++extern int apfs_rename(struct mnt_idmap *idmap, struct inode *old_dir,
++		       struct dentry *old_dentry, struct inode *new_dir,
++		       struct dentry *new_dentry, unsigned int flags);
++extern int apfs_create(struct mnt_idmap *idmap, struct inode *dir,
++		       struct dentry *dentry, umode_t mode, bool excl);
++#else
++extern int apfs_mknod(struct mnt_idmap *idmap, struct inode *dir,
++		      struct dentry *dentry, umode_t mode, dev_t rdev);
++extern struct dentry *apfs_mkdir(struct mnt_idmap *idmap, struct inode *dir, struct dentry *dentry, umode_t mode);
 +extern int apfs_rename(struct mnt_idmap *idmap, struct inode *old_dir,
 +		       struct dentry *old_dentry, struct inode *new_dir,
 +		       struct dentry *new_dentry, unsigned int flags);
@@ -1310,6 +1319,10 @@ index 000000000..9a1c4baa2
 +{
 +	ASSERT(apfs_node_is_root(apfs_query_root(query)));
 +}
++
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 15, 0)
++#define page_has_buffers(page)	folio_buffers(page_folio(page))
++#endif
 +
 +/*
 + * TODO: the following are modified variants of buffer head functions that will
@@ -4647,10 +4660,10 @@ index 000000000..ecdd490ab
 +}
 diff --git a/fs/apfs/dir.c b/fs/apfs/dir.c
 new file mode 100644
-index 000000000..25797aa1e
+index 000000000..ce6582608
 --- /dev/null
 +++ b/fs/apfs/dir.c
-@@ -0,0 +1,1497 @@
+@@ -0,0 +1,1504 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -5377,12 +5390,19 @@ index 000000000..25797aa1e
 +	return apfs_mknod(mnt_userns, dir, dentry, mode | S_IFDIR, 0 /* rdev */);
 +}
 +
-+#else
++#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 15, 0)
 +
 +int apfs_mkdir(struct mnt_idmap *idmap, struct inode *dir,
 +	       struct dentry *dentry, umode_t mode)
 +{
 +	return apfs_mknod(idmap, dir, dentry, mode | S_IFDIR, 0 /* rdev */);
++}
++
++#else
++
++struct dentry *apfs_mkdir(struct mnt_idmap *idmap, struct inode *dir, struct dentry *dentry, umode_t mode)
++{
++	return ERR_PTR(apfs_mknod(idmap, dir, dentry, mode | S_IFDIR, 0 /* rdev */));
 +}
 +
 +#endif
@@ -8530,10 +8550,10 @@ index 000000000..fabb2d230
 +}
 diff --git a/fs/apfs/file.c b/fs/apfs/file.c
 new file mode 100644
-index 000000000..3d0923fa6
+index 000000000..6c411aaf3
 --- /dev/null
 +++ b/fs/apfs/file.c
-@@ -0,0 +1,213 @@
+@@ -0,0 +1,220 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -8546,6 +8566,13 @@ index 000000000..3d0923fa6
 +#endif
 +#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 17, 0)
 +typedef int vm_fault_t;
++#endif
++
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 15, 0)
++static void wait_for_stable_page(struct page *page)
++{
++	return folio_wait_stable(page_folio(page));
++}
 +#endif
 +
 +#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 11, 0)
@@ -8749,10 +8776,10 @@ index 000000000..3d0923fa6
 +};
 diff --git a/fs/apfs/inode.c b/fs/apfs/inode.c
 new file mode 100644
-index 000000000..6418f994d
+index 000000000..3f67b7a82
 --- /dev/null
 +++ b/fs/apfs/inode.c
-@@ -0,0 +1,2571 @@
+@@ -0,0 +1,2578 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -8774,6 +8801,13 @@ index 000000000..6418f994d
 +#endif
 +
 +#define MAX_PFK_LEN	512
++
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 15, 0)
++static struct page *grab_cache_page_write_begin(struct address_space *mapping, pgoff_t index)
++{
++	return pagecache_get_page(mapping, index, FGP_WRITEBEGIN, mapping_gfp_mask(mapping));
++}
++#endif
 +
 +#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0) || RHEL_VERSION_GE(9, 3)
 +
