@@ -1,30 +1,30 @@
-From 800727f7fa9d1d5fa2a8dadd1e2081fd86e6352c Mon Sep 17 00:00:00 2001
+From 8f0f3b2dbdcbc2b051158b62e87f1d4b7282a4d5 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Sat, 12 Apr 2025 18:45:22 +0000
+Date: Sat, 17 May 2025 18:47:15 +0000
 Subject: [PATCH] Add APFS driver
 
 ---
  fs/apfs/Makefile                  |   28 +
- fs/apfs/apfs.h                    | 1294 ++++++++++++
+ fs/apfs/apfs.h                    | 1307 ++++++++++++
  fs/apfs/apfs_raw.h                | 1570 ++++++++++++++
  fs/apfs/btree.c                   | 1174 +++++++++++
  fs/apfs/compress.c                |  474 +++++
- fs/apfs/dir.c                     | 1497 ++++++++++++++
+ fs/apfs/dir.c                     | 1504 ++++++++++++++
  fs/apfs/extents.c                 | 2374 ++++++++++++++++++++++
- fs/apfs/file.c                    |  213 ++
- fs/apfs/inode.c                   | 2571 +++++++++++++++++++++++
+ fs/apfs/file.c                    |  220 ++
+ fs/apfs/inode.c                   | 2578 +++++++++++++++++++++++
  fs/apfs/key.c                     |  337 +++
  fs/apfs/libzbitmap.c              |  442 ++++
  fs/apfs/libzbitmap.h              |   31 +
- fs/apfs/lzfse/lzfse.h             |   66 +
- fs/apfs/lzfse/lzfse_decode.c      |   78 +
- fs/apfs/lzfse/lzfse_decode_base.c |  738 +++++++
- fs/apfs/lzfse/lzfse_fse.c         |  122 ++
- fs/apfs/lzfse/lzfse_fse.h         |  559 +++++
- fs/apfs/lzfse/lzfse_internal.h    |  474 +++++
- fs/apfs/lzfse/lzvn_decode_base.c  |  472 +++++
- fs/apfs/lzfse/lzvn_decode_base.h  |   72 +
+ fs/apfs/lzfse/lzfse.h             |   67 +
+ fs/apfs/lzfse/lzfse_decode.c      |   80 +
+ fs/apfs/lzfse/lzfse_decode_base.c |  743 +++++++
+ fs/apfs/lzfse/lzfse_fse.c         |  126 ++
+ fs/apfs/lzfse/lzfse_fse.h         |  573 ++++++
+ fs/apfs/lzfse/lzfse_internal.h    |  482 +++++
+ fs/apfs/lzfse/lzvn_decode_base.c  |  487 +++++
+ fs/apfs/lzfse/lzvn_decode_base.h  |   73 +
  fs/apfs/message.c                 |   29 +
  fs/apfs/namei.c                   |  146 ++
  fs/apfs/node.c                    | 2069 +++++++++++++++++++
@@ -39,7 +39,7 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/version.h                 |    1 +
  fs/apfs/xattr.c                   |  914 +++++++++
  fs/apfs/xfield.c                  |  171 ++
- 34 files changed, 26817 insertions(+)
+ 34 files changed, 26901 insertions(+)
  create mode 100644 fs/apfs/Makefile
  create mode 100644 fs/apfs/apfs.h
  create mode 100644 fs/apfs/apfs_raw.h
@@ -111,10 +111,10 @@ index 000000000..a2dbed980
 +	make -C $(KERNEL_DIR) M=$(PWD) clean
 diff --git a/fs/apfs/apfs.h b/fs/apfs/apfs.h
 new file mode 100644
-index 000000000..9a1c4baa2
+index 000000000..2fbcf7b31
 --- /dev/null
 +++ b/fs/apfs/apfs.h
-@@ -0,0 +1,1294 @@
+@@ -0,0 +1,1307 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -1062,7 +1062,7 @@ index 000000000..9a1c4baa2
 +		       unsigned int flags);
 +extern int apfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 +		       bool excl);
-+#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
++#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0) && !RHEL_VERSION_GE(9, 6)
 +extern int apfs_mknod(struct user_namespace *mnt_userns, struct inode *dir,
 +		      struct dentry *dentry, umode_t mode, dev_t rdev);
 +extern int apfs_mkdir(struct user_namespace *mnt_userns, struct inode *dir,
@@ -1072,11 +1072,20 @@ index 000000000..9a1c4baa2
 +		       struct dentry *new_dentry, unsigned int flags);
 +extern int apfs_create(struct user_namespace *mnt_userns, struct inode *dir,
 +		       struct dentry *dentry, umode_t mode, bool excl);
-+#else
++#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 15, 0)
 +extern int apfs_mknod(struct mnt_idmap *idmap, struct inode *dir,
 +		      struct dentry *dentry, umode_t mode, dev_t rdev);
 +extern int apfs_mkdir(struct mnt_idmap *idmap, struct inode *dir,
 +		      struct dentry *dentry, umode_t mode);
++extern int apfs_rename(struct mnt_idmap *idmap, struct inode *old_dir,
++		       struct dentry *old_dentry, struct inode *new_dir,
++		       struct dentry *new_dentry, unsigned int flags);
++extern int apfs_create(struct mnt_idmap *idmap, struct inode *dir,
++		       struct dentry *dentry, umode_t mode, bool excl);
++#else
++extern int apfs_mknod(struct mnt_idmap *idmap, struct inode *dir,
++		      struct dentry *dentry, umode_t mode, dev_t rdev);
++extern struct dentry *apfs_mkdir(struct mnt_idmap *idmap, struct inode *dir, struct dentry *dentry, umode_t mode);
 +extern int apfs_rename(struct mnt_idmap *idmap, struct inode *old_dir,
 +		       struct dentry *old_dentry, struct inode *new_dir,
 +		       struct dentry *new_dentry, unsigned int flags);
@@ -1135,7 +1144,7 @@ index 000000000..9a1c4baa2
 +
 +#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 12, 0)
 +extern int apfs_setattr(struct dentry *dentry, struct iattr *iattr);
-+#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
++#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0) && !RHEL_VERSION_GE(9, 6)
 +extern int apfs_setattr(struct user_namespace *mnt_userns,
 +			struct dentry *dentry, struct iattr *iattr);
 +#else
@@ -1157,7 +1166,7 @@ index 000000000..9a1c4baa2
 +#elif LINUX_VERSION_CODE < KERNEL_VERSION(5, 12, 0)
 +extern int apfs_getattr(const struct path *path, struct kstat *stat,
 +			u32 request_mask, unsigned int query_flags);
-+#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
++#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0) && !RHEL_VERSION_GE(9, 6)
 +extern int apfs_getattr(struct user_namespace *mnt_userns,
 +		const struct path *path, struct kstat *stat, u32 request_mask,
 +		unsigned int query_flags);
@@ -1169,7 +1178,7 @@ index 000000000..9a1c4baa2
 +
 +extern int apfs_crypto_adj_refcnt(struct super_block *sb, u64 crypto_id, int delta);
 +
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0) || RHEL_VERSION_GE(9, 6)
 +extern int apfs_fileattr_get(struct dentry *dentry, struct fileattr *fa);
 +extern int apfs_fileattr_set(struct mnt_idmap *idmap, struct dentry *dentry, struct fileattr *fa);
 +#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 13, 0)
@@ -1310,6 +1319,10 @@ index 000000000..9a1c4baa2
 +{
 +	ASSERT(apfs_node_is_root(apfs_query_root(query)));
 +}
++
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 15, 0)
++#define page_has_buffers(page)	folio_buffers(page_folio(page))
++#endif
 +
 +/*
 + * TODO: the following are modified variants of buffer head functions that will
@@ -4647,10 +4660,10 @@ index 000000000..ecdd490ab
 +}
 diff --git a/fs/apfs/dir.c b/fs/apfs/dir.c
 new file mode 100644
-index 000000000..25797aa1e
+index 000000000..63507f6a5
 --- /dev/null
 +++ b/fs/apfs/dir.c
-@@ -0,0 +1,1497 @@
+@@ -0,0 +1,1504 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -5351,7 +5364,7 @@ index 000000000..25797aa1e
 +#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 12, 0)
 +int apfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
 +	       dev_t rdev)
-+#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
++#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0) && !RHEL_VERSION_GE(9, 6)
 +int apfs_mknod(struct user_namespace *mnt_userns, struct inode *dir,
 +	       struct dentry *dentry, umode_t mode, dev_t rdev)
 +#else
@@ -5369,7 +5382,7 @@ index 000000000..25797aa1e
 +	return apfs_mknod(dir, dentry, mode | S_IFDIR, 0 /* rdev */);
 +}
 +
-+#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
++#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0) && !RHEL_VERSION_GE(9, 6)
 +
 +int apfs_mkdir(struct user_namespace *mnt_userns, struct inode *dir,
 +	       struct dentry *dentry, umode_t mode)
@@ -5377,12 +5390,19 @@ index 000000000..25797aa1e
 +	return apfs_mknod(mnt_userns, dir, dentry, mode | S_IFDIR, 0 /* rdev */);
 +}
 +
-+#else
++#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 15, 0)
 +
 +int apfs_mkdir(struct mnt_idmap *idmap, struct inode *dir,
 +	       struct dentry *dentry, umode_t mode)
 +{
 +	return apfs_mknod(idmap, dir, dentry, mode | S_IFDIR, 0 /* rdev */);
++}
++
++#else
++
++struct dentry *apfs_mkdir(struct mnt_idmap *idmap, struct inode *dir, struct dentry *dentry, umode_t mode)
++{
++	return ERR_PTR(apfs_mknod(idmap, dir, dentry, mode | S_IFDIR, 0 /* rdev */));
 +}
 +
 +#endif
@@ -5396,7 +5416,7 @@ index 000000000..25797aa1e
 +	return apfs_mknod(dir, dentry, mode, 0 /* rdev */);
 +}
 +
-+#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
++#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0) && !RHEL_VERSION_GE(9, 6)
 +
 +int apfs_create(struct user_namespace *mnt_userns, struct inode *dir,
 +		struct dentry *dentry, umode_t mode, bool excl)
@@ -6026,7 +6046,7 @@ index 000000000..25797aa1e
 +int apfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 +		struct inode *new_dir, struct dentry *new_dentry,
 +		unsigned int flags)
-+#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
++#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0) && !RHEL_VERSION_GE(9, 6)
 +int apfs_rename(struct user_namespace *mnt_userns, struct inode *old_dir,
 +		struct dentry *old_dentry, struct inode *new_dir,
 +		struct dentry *new_dentry, unsigned int flags)
@@ -8530,10 +8550,10 @@ index 000000000..fabb2d230
 +}
 diff --git a/fs/apfs/file.c b/fs/apfs/file.c
 new file mode 100644
-index 000000000..3d0923fa6
+index 000000000..6c411aaf3
 --- /dev/null
 +++ b/fs/apfs/file.c
-@@ -0,0 +1,213 @@
+@@ -0,0 +1,220 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -8546,6 +8566,13 @@ index 000000000..3d0923fa6
 +#endif
 +#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 17, 0)
 +typedef int vm_fault_t;
++#endif
++
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 15, 0)
++static void wait_for_stable_page(struct page *page)
++{
++	return folio_wait_stable(page_folio(page));
++}
 +#endif
 +
 +#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 11, 0)
@@ -8749,10 +8776,10 @@ index 000000000..3d0923fa6
 +};
 diff --git a/fs/apfs/inode.c b/fs/apfs/inode.c
 new file mode 100644
-index 000000000..6418f994d
+index 000000000..09beeedb9
 --- /dev/null
 +++ b/fs/apfs/inode.c
-@@ -0,0 +1,2571 @@
+@@ -0,0 +1,2578 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -8774,6 +8801,13 @@ index 000000000..6418f994d
 +#endif
 +
 +#define MAX_PFK_LEN	512
++
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 15, 0)
++static struct page *grab_cache_page_write_begin(struct address_space *mapping, pgoff_t index)
++{
++	return pagecache_get_page(mapping, index, FGP_WRITEBEGIN, mapping_gfp_mask(mapping));
++}
++#endif
 +
 +#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0) || RHEL_VERSION_GE(9, 3)
 +
@@ -9826,7 +9860,7 @@ index 000000000..6418f994d
 +#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 12, 0)
 +int apfs_getattr(const struct path *path, struct kstat *stat,
 +		 u32 request_mask, unsigned int query_flags)
-+#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
++#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0) && !RHEL_VERSION_GE(9, 6)
 +int apfs_getattr(struct user_namespace *mnt_userns,
 +		 const struct path *path, struct kstat *stat, u32 request_mask,
 +		 unsigned int query_flags)
@@ -9858,7 +9892,7 @@ index 000000000..6418f994d
 +
 +#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 12, 0)
 +	generic_fillattr(inode, stat);
-+#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
++#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0) && !RHEL_VERSION_GE(9, 6)
 +	generic_fillattr(mnt_userns, inode, stat);
 +#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0)
 +	generic_fillattr(idmap, inode, stat);
@@ -10630,7 +10664,7 @@ index 000000000..6418f994d
 +
 +#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 12, 0)
 +	inode_init_owner(inode, dir, mode);
-+#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
++#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0) && !RHEL_VERSION_GE(9, 6)
 +	inode_init_owner(&init_user_ns, inode, dir, mode);
 +#else
 +	inode_init_owner(&nop_mnt_idmap, inode, dir, mode);
@@ -10778,7 +10812,7 @@ index 000000000..6418f994d
 +
 +#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 12, 0)
 +int apfs_setattr(struct dentry *dentry, struct iattr *iattr)
-+#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
++#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0) && !RHEL_VERSION_GE(9, 6)
 +int apfs_setattr(struct user_namespace *mnt_userns,
 +		 struct dentry *dentry, struct iattr *iattr)
 +#else
@@ -10799,7 +10833,7 @@ index 000000000..6418f994d
 +
 +#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 12, 0)
 +	err = setattr_prepare(dentry, iattr);
-+#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
++#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0) && !RHEL_VERSION_GE(9, 6)
 +	err = setattr_prepare(&init_user_ns, dentry, iattr);
 +#else
 +	err = setattr_prepare(&nop_mnt_idmap, dentry, iattr);
@@ -10823,7 +10857,7 @@ index 000000000..6418f994d
 +
 +#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 12, 0)
 +	setattr_copy(inode, iattr);
-+#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
++#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0) && !RHEL_VERSION_GE(9, 6)
 +	setattr_copy(&init_user_ns, inode, iattr);
 +#else
 +	setattr_copy(&nop_mnt_idmap, inode, iattr);
@@ -10855,7 +10889,7 @@ index 000000000..6418f994d
 +		return err;
 +	apfs_inode_join_transaction(sb, inode);
 +
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0)
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0) && !RHEL_VERSION_GE(9, 6)
 +	generic_update_time(inode, time, flags);
 +#else
 +	generic_update_time(inode, flags);
@@ -11191,7 +11225,7 @@ index 000000000..6418f994d
 +	return err;
 +}
 +
-+#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
++#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0) && !RHEL_VERSION_GE(9, 6)
 +
 +int apfs_fileattr_get(struct dentry *dentry, struct fileattr *fa)
 +{
@@ -12154,10 +12188,11 @@ index 000000000..5188d00d3
 +#endif /* _LIBZBITMAP_H */
 diff --git a/fs/apfs/lzfse/lzfse.h b/fs/apfs/lzfse/lzfse.h
 new file mode 100644
-index 000000000..8a1db0d0e
+index 000000000..017e0055d
 --- /dev/null
 +++ b/fs/apfs/lzfse/lzfse.h
-@@ -0,0 +1,66 @@
+@@ -0,0 +1,67 @@
++/* SPDX-License-Identifier: BSD-3-Clause */
 +/*
 + * Copyright (c) 2015-2016, Apple Inc. All rights reserved.
 + *
@@ -12226,10 +12261,11 @@ index 000000000..8a1db0d0e
 +#endif /* LZFSE_H */
 diff --git a/fs/apfs/lzfse/lzfse_decode.c b/fs/apfs/lzfse/lzfse_decode.c
 new file mode 100644
-index 000000000..2de6fae7b
+index 000000000..481e973b3
 --- /dev/null
 +++ b/fs/apfs/lzfse/lzfse_decode.c
-@@ -0,0 +1,78 @@
+@@ -0,0 +1,80 @@
++// SPDX-License-Identifier: BSD-3-Clause
 +/*
 + * Copyright (c) 2015-2016, Apple Inc. All rights reserved.
 + *
@@ -12268,6 +12304,7 @@ index 000000000..2de6fae7b
 +{
 +	int status;
 +	lzfse_decoder_state *s = (lzfse_decoder_state *)scratch_buffer;
++
 +	memset(s, 0x00, sizeof(*s));
 +
 +	/* Initialize state */
@@ -12310,10 +12347,11 @@ index 000000000..2de6fae7b
 +}
 diff --git a/fs/apfs/lzfse/lzfse_decode_base.c b/fs/apfs/lzfse/lzfse_decode_base.c
 new file mode 100644
-index 000000000..17525debc
+index 000000000..8cab7a340
 --- /dev/null
 +++ b/fs/apfs/lzfse/lzfse_decode_base.c
-@@ -0,0 +1,738 @@
+@@ -0,0 +1,743 @@
++// SPDX-License-Identifier: BSD-3-Clause
 +/*
 + * Copyright (c) 2015-2016, Apple Inc. All rights reserved.
 + *
@@ -12478,6 +12516,7 @@ index 000000000..17525debc
 +static inline void copy(uint8_t *dst, const uint8_t *src, size_t length)
 +{
 +	const uint8_t *dst_end = dst + length;
++
 +	do {
 +		copy8(dst, src);
 +		dst += 8;
@@ -12525,22 +12564,18 @@ index 000000000..17525debc
 +		int res;
 +		/* Decode the next L, M, D symbol from the input stream. */
 +		res = fse_in_flush(&in, &src, src_start);
-+		if (res) {
++		if (res)
 +			return LZFSE_STATUS_ERROR;
-+		}
 +		L = fse_value_decode(&l_state, bs->l_decoder, &in);
-+		if ((lit + L) >= (bs->literals + LZFSE_LITERALS_PER_BLOCK + 64)) {
++		if ((lit + L) >= (bs->literals + LZFSE_LITERALS_PER_BLOCK + 64))
 +			return LZFSE_STATUS_ERROR;
-+		}
 +		res = fse_in_flush2(&in, &src, src_start);
-+		if (res) {
++		if (res)
 +			return LZFSE_STATUS_ERROR;
-+		}
 +		M = fse_value_decode(&m_state, bs->m_decoder, &in);
 +		res = fse_in_flush2(&in, &src, src_start);
-+		if (res) {
++		if (res)
 +			return LZFSE_STATUS_ERROR;
-+		}
 +		new_d = fse_value_decode(&d_state, bs->d_decoder, &in);
 +		D = new_d ? new_d : D;
 +		symbols--;
@@ -12599,6 +12634,7 @@ index 000000000..17525debc
 +			 */
 +			if (L <= remaining_bytes) {
 +				size_t i;
++
 +				for (i = 0; i < L; i++)
 +					dst[i] = lit[i];
 +				dst += L;
@@ -12615,6 +12651,7 @@ index 000000000..17525debc
 +			 */
 +			else {
 +				size_t i;
++
 +				for (i = 0; i < remaining_bytes; i++)
 +					dst[i] = lit[i];
 +				dst += remaining_bytes;
@@ -12630,6 +12667,7 @@ index 000000000..17525debc
 +			 */
 +			if (M <= remaining_bytes) {
 +				size_t i;
++
 +				for (i = 0; i < M; i++)
 +					dst[i] = dst[i - D];
 +				dst += M;
@@ -12650,6 +12688,7 @@ index 000000000..17525debc
 +				 */
 +			} else {
 +				size_t i;
++
 +				for (i = 0; i < remaining_bytes; i++)
 +					dst[i] = dst[i - D];
 +				dst += remaining_bytes;
@@ -12717,6 +12756,7 @@ index 000000000..17525debc
 +
 +			if (magic == LZFSE_UNCOMPRESSED_BLOCK_MAGIC) {
 +				uncompressed_block_decoder_state *bs = NULL;
++
 +				if (s->src + sizeof(uncompressed_block_header) > s->src_end)
 +					return LZFSE_STATUS_SRC_EMPTY; /* SRC truncated */
 +				/* Setup state for uncompressed block */
@@ -12730,6 +12770,7 @@ index 000000000..17525debc
 +
 +			if (magic == LZFSE_COMPRESSEDLZVN_BLOCK_MAGIC) {
 +				lzvn_compressed_block_decoder_state *bs = NULL;
++
 +				if (s->src + sizeof(lzvn_compressed_block_header) > s->src_end)
 +					return LZFSE_STATUS_SRC_EMPTY; /* SRC truncated */
 +				/* Setup state for compressed LZVN block */
@@ -12796,9 +12837,8 @@ index 000000000..17525debc
 +					return LZFSE_STATUS_SRC_EMPTY; /* need all encoded block */
 +
 +				/* Sanity checks */
-+				if (lzfse_check_block_header_v1(&header1) != 0) {
++				if (lzfse_check_block_header_v1(&header1) != 0)
 +					return LZFSE_STATUS_ERROR;
-+				}
 +
 +				/* Skip header */
 +				s->src += header_size;
@@ -12847,8 +12887,7 @@ index 000000000..17525debc
 +					state3 = header1.literal_state[3];
 +
 +					for (i = 0; i < header1.n_literals;
-+					     i += 4) /* n_literals is multiple of 4 */
-+					{
++					     i += 4 /* n_literals is multiple of 4 */) {
 +#if FSE_IOSTREAM_64
 +						if (fse_in_flush(&in, &buf, buf_start) != 0)
 +							return LZFSE_STATUS_ERROR; /* [57, 64] bits */
@@ -12903,6 +12942,7 @@ index 000000000..17525debc
 +					fse_in_stream in;
 +					/* read bits backwards from the end */
 +					const uint8_t *buf = s->src + header1.n_lmd_payload_bytes;
++
 +					if (fse_in_init(&in, header1.lmd_bits, &buf, s->src) != 0)
 +						return LZFSE_STATUS_ERROR;
 +
@@ -12939,6 +12979,7 @@ index 000000000..17525debc
 +
 +			uint32_t copy_size = bs->n_raw_bytes; /* bytes left to copy */
 +			size_t src_space, dst_space;
++
 +			if (copy_size == 0) {
 +				s->block_magic = 0;
 +				break;
@@ -12992,6 +13033,7 @@ index 000000000..17525debc
 +			lzvn_compressed_block_decoder_state *bs = &(s->compressed_lzvn_block_state);
 +			lzvn_decoder_state dstate;
 +			size_t src_used, dst_used;
++
 +			if (bs->n_payload_bytes > 0 && s->src_end <= s->src)
 +				return LZFSE_STATUS_SRC_EMPTY; /* need more SRC data */
 +
@@ -13054,10 +13096,11 @@ index 000000000..17525debc
 +}
 diff --git a/fs/apfs/lzfse/lzfse_fse.c b/fs/apfs/lzfse/lzfse_fse.c
 new file mode 100644
-index 000000000..4825a97f1
+index 000000000..7005bbe72
 --- /dev/null
 +++ b/fs/apfs/lzfse/lzfse_fse.c
-@@ -0,0 +1,122 @@
+@@ -0,0 +1,126 @@
++// SPDX-License-Identifier: BSD-3-Clause
 +/*
 + * Copyright (c) 2015-2016, Apple Inc. All rights reserved.
 + *
@@ -13096,17 +13139,18 @@ index 000000000..4825a97f1
 +	int n_clz = __builtin_clz(nstates);
 +	int sum_of_freq = 0;
 +	int i, j0, j;
++
 +	for (i = 0; i < nsymbols; i++) {
 +		int f = (int)freq[i];
 +		int k;
++
 +		if (f == 0)
 +			continue; /* skip this symbol, no occurrences */
 +
 +		sum_of_freq += f;
 +
-+		if (sum_of_freq > nstates) {
++		if (sum_of_freq > nstates)
 +			return -1;
-+		}
 +
 +		k = __builtin_clz(f) - n_clz; /* shift needed to ensure N <= (F<<K) < 2*N */
 +		j0 = ((2 * nstates) >> k) - f;
@@ -13146,14 +13190,16 @@ index 000000000..4825a97f1
 +void fse_init_value_decoder_table(int nstates, int nsymbols, const uint16_t *__restrict freq,
 +				  const uint8_t *__restrict symbol_vbits,
 +				  const int32_t *__restrict symbol_vbase,
-+				  fse_value_decoder_entry *__restrict t)
++				  struct fse_value_decoder_entry *__restrict t)
 +{
 +	int n_clz = __builtin_clz(nstates);
 +	int i;
++
 +	for (i = 0; i < nsymbols; i++) {
-+		fse_value_decoder_entry ei = { 0 };
++		struct fse_value_decoder_entry ei = { 0 };
 +		int f = (int)freq[i];
 +		int k, j0, j;
++
 +		if (f == 0)
 +			continue; /* skip this symbol, no occurrences */
 +
@@ -13165,7 +13211,7 @@ index 000000000..4825a97f1
 +
 +		/* Initialize all states S reached by this symbol: OFFSET <= S < OFFSET + F */
 +		for (j = 0; j < f; j++) {
-+			fse_value_decoder_entry e = ei;
++			struct fse_value_decoder_entry e = ei;
 +
 +			if (j < j0) {
 +				e.total_bits = (uint8_t)k + e.value_bits;
@@ -13182,10 +13228,11 @@ index 000000000..4825a97f1
 +}
 diff --git a/fs/apfs/lzfse/lzfse_fse.h b/fs/apfs/lzfse/lzfse_fse.h
 new file mode 100644
-index 000000000..79d8b0b17
+index 000000000..35b46866d
 --- /dev/null
 +++ b/fs/apfs/lzfse/lzfse_fse.h
-@@ -0,0 +1,559 @@
+@@ -0,0 +1,573 @@
++/* SPDX-License-Identifier: BSD-3-Clause */
 +/*
 + * Copyright (c) 2015-2016, Apple Inc. All rights reserved.
 + *
@@ -13213,7 +13260,8 @@ index 000000000..79d8b0b17
 + * we use the more descriptive name "Finite State Entropy".
 + */
 +
-+#pragma once
++#ifndef LZFSE_FSE_H
++#define LZFSE_FSE_H
 +
 +#include <linux/types.h>
 +#include <linux/string.h>
@@ -13484,7 +13532,11 @@ index 000000000..79d8b0b17
 +	}
 +
 +	if ((s->accum_nbits < 56 || s->accum_nbits >= 64) || ((s->accum >> s->accum_nbits) != 0)) {
-+		return -1; /* the incoming input is wrong (encoder should have zeroed the upper bits) */
++		/*
++		 * the incoming input is wrong (encoder should have zeroed the
++		 * upper bits)
++		 */
++		return -1;
 +	}
 +
 +	return 0; /* OK */
@@ -13512,7 +13564,11 @@ index 000000000..79d8b0b17
 +	}
 +
 +	if ((s->accum_nbits < 24 || s->accum_nbits >= 32) || ((s->accum >> s->accum_nbits) != 0)) {
-+		return -1; /* the incoming input is wrong (encoder should have zeroed the upper bits) */
++		/*
++		 * the incoming input is wrong (encoder should have zeroed the
++		 * upper bits)
++		 */
++		return -1;
 +	}
 +
 +	return 0; /* OK */
@@ -13532,9 +13588,9 @@ index 000000000..79d8b0b17
 +	/* Convert bits to bytes and decrement buffer address, then load new data. */
 +	const uint8_t *buf = (*pbuf) - (nbits >> 3);
 +	uint64_t incoming;
-+	if (buf < buf_start) {
++
++	if (buf < buf_start)
 +		return -1; /* out of range */
-+	}
 +	*pbuf = buf;
 +	memcpy(&incoming, buf, 8);
 +	/* Update the state object and verify its validity (in DEBUG). */
@@ -13557,9 +13613,9 @@ index 000000000..79d8b0b17
 +		/* Convert bits to bytes and decrement buffer address, then load new data. */
 +		const uint8_t *buf = (*pbuf) - (nbits >> 3);
 +		uint32_t incoming;
-+		if (buf < buf_start) {
++
++		if (buf < buf_start)
 +			return -1; /* out of range */
-+		}
 +
 +		*pbuf = buf;
 +
@@ -13577,6 +13633,7 @@ index 000000000..79d8b0b17
 +static __always_inline uint64_t fse_in_pull64(fse_in_stream64 *s, fse_bit_count n)
 +{
 +	uint64_t result;
++
 +	s->accum_nbits -= n;
 +	result = s->accum >> s->accum_nbits;
 +	s->accum = fse_mask_lsb64(s->accum, s->accum_nbits);
@@ -13587,6 +13644,7 @@ index 000000000..79d8b0b17
 +static __always_inline uint32_t fse_in_pull32(fse_in_stream32 *s, fse_bit_count n)
 +{
 +	uint32_t result;
++
 +	s->accum_nbits -= n;
 +	result = s->accum >> s->accum_nbits;
 +	s->accum = fse_mask_lsb32(s->accum, s->accum_nbits);
@@ -13644,12 +13702,12 @@ index 000000000..79d8b0b17
 +} fse_decoder_entry;
 +
 +/*! @abstract  Entry for one state in the value decoder table (64b). */
-+typedef struct { /* DO NOT REORDER THE FIELDS */
++struct fse_value_decoder_entry { /* DO NOT REORDER THE FIELDS */
 +	uint8_t total_bits; /* state bits + extra value bits = shift for next decode */
 +	uint8_t value_bits; /* extra value bits */
 +	int16_t delta; /* state base (delta) */
 +	int32_t vbase; /* value base */
-+} fse_value_decoder_entry;
++};
 +
 +/*! @abstract Decode and return symbol using the decoder table, and update
 + *  \c *pstate, \c in.
@@ -13676,10 +13734,10 @@ index 000000000..79d8b0b17
 + * stream accumulator.
 + */
 +static __always_inline int32_t fse_value_decode(fse_state *__restrict pstate,
-+						const fse_value_decoder_entry *value_decoder_table,
++						const struct fse_value_decoder_entry *value_decoder_table,
 +						fse_in_stream *__restrict in)
 +{
-+	fse_value_decoder_entry entry = value_decoder_table[*pstate];
++	struct fse_value_decoder_entry entry = value_decoder_table[*pstate];
 +	uint32_t state_and_value_bits = (uint32_t)fse_in_pull(in, entry.total_bits);
 +	*pstate = (fse_state)(entry.delta + (state_and_value_bits >> entry.value_bits));
 +	return (int32_t)(entry.vbase + fse_mask_lsb(state_and_value_bits, entry.value_bits));
@@ -13701,9 +13759,9 @@ index 000000000..79d8b0b17
 +{
 +	size_t sum_of_freq = 0;
 +	int i;
-+	for (i = 0; i < table_size; i++) {
++
++	for (i = 0; i < table_size; i++)
 +		sum_of_freq += freq_table[i];
-+	}
 +	return (sum_of_freq > number_of_states) ? -1 : 0;
 +}
 +
@@ -13744,13 +13802,16 @@ index 000000000..79d8b0b17
 +void fse_init_value_decoder_table(int nstates, int nsymbols, const uint16_t *__restrict freq,
 +				  const uint8_t *__restrict symbol_vbits,
 +				  const int32_t *__restrict symbol_vbase,
-+				  fse_value_decoder_entry *__restrict t);
++				  struct fse_value_decoder_entry *__restrict t);
++
++#endif /* LZFSE_FSE_H */
 diff --git a/fs/apfs/lzfse/lzfse_internal.h b/fs/apfs/lzfse/lzfse_internal.h
 new file mode 100644
-index 000000000..93177f781
+index 000000000..148748082
 --- /dev/null
 +++ b/fs/apfs/lzfse/lzfse_internal.h
-@@ -0,0 +1,474 @@
+@@ -0,0 +1,482 @@
++/* SPDX-License-Identifier: BSD-3-Clause */
 +/*
 + * Copyright (c) 2015-2016, Apple Inc. All rights reserved.
 + *
@@ -13853,9 +13914,9 @@ index 000000000..93177f781
 +	 * alignment forced to 8 bytes to guarantee that a single state's
 +	 * entry cannot span two cachelines.
 +	 */
-+	fse_value_decoder_entry l_decoder[LZFSE_ENCODE_L_STATES] __attribute__((__aligned__(8)));
-+	fse_value_decoder_entry m_decoder[LZFSE_ENCODE_M_STATES] __attribute__((__aligned__(8)));
-+	fse_value_decoder_entry d_decoder[LZFSE_ENCODE_D_STATES] __attribute__((__aligned__(8)));
++	struct fse_value_decoder_entry l_decoder[LZFSE_ENCODE_L_STATES] __aligned(8);
++	struct fse_value_decoder_entry m_decoder[LZFSE_ENCODE_M_STATES] __aligned(8);
++	struct fse_value_decoder_entry d_decoder[LZFSE_ENCODE_D_STATES] __aligned(8);
 +	int32_t literal_decoder[LZFSE_ENCODE_LITERAL_STATES];
 +	/*
 +	 * The literal stream for the block, plus padding to allow for faster
@@ -14019,7 +14080,7 @@ index 000000000..93177f781
 +	 */
 +	uint8_t freq[2 * (LZFSE_ENCODE_L_SYMBOLS + LZFSE_ENCODE_M_SYMBOLS + LZFSE_ENCODE_D_SYMBOLS +
 +			  LZFSE_ENCODE_LITERAL_SYMBOLS)];
-+} __attribute__((__packed__, __aligned__(1))) lzfse_compressed_block_header_v2;
++} __packed __aligned(1) lzfse_compressed_block_header_v2;
 +
 +/*! @abstract LZVN compressed block header. */
 +typedef struct {
@@ -14049,38 +14110,41 @@ index 000000000..93177f781
 +static __always_inline uint16_t load2(const void *ptr)
 +{
 +	uint16_t data;
-+	memcpy(&data, ptr, sizeof data);
++
++	memcpy(&data, ptr, sizeof(data));
 +	return data;
 +}
 +
 +static __always_inline uint32_t load4(const void *ptr)
 +{
 +	uint32_t data;
-+	memcpy(&data, ptr, sizeof data);
++
++	memcpy(&data, ptr, sizeof(data));
 +	return data;
 +}
 +
 +static __always_inline uint64_t load8(const void *ptr)
 +{
 +	uint64_t data;
-+	memcpy(&data, ptr, sizeof data);
++
++	memcpy(&data, ptr, sizeof(data));
 +	return data;
 +}
 +
 +/*! @abstract Store bytes to memory location DST. */
 +static __always_inline void store2(void *ptr, uint16_t data)
 +{
-+	memcpy(ptr, &data, sizeof data);
++	memcpy(ptr, &data, sizeof(data));
 +}
 +
 +static __always_inline void store4(void *ptr, uint32_t data)
 +{
-+	memcpy(ptr, &data, sizeof data);
++	memcpy(ptr, &data, sizeof(data));
 +}
 +
 +static __always_inline void store8(void *ptr, uint64_t data)
 +{
-+	memcpy(ptr, &data, sizeof data);
++	memcpy(ptr, &data, sizeof(data));
 +}
 +
 +/*! @abstract Load+store bytes from locations SRC to DST. Not intended for use
@@ -14097,6 +14161,7 @@ index 000000000..93177f781
 +{
 +	uint64_t m0 = load8(src);
 +	uint64_t m1 = load8((const unsigned char *)src + 8);
++
 +	store8(dst, m0);
 +	store8((unsigned char *)dst + 8, m1);
 +}
@@ -14109,9 +14174,10 @@ index 000000000..93177f781
 +/*! @abstract Extracts \p width bits from \p container, starting with \p lsb; if
 + * we view \p container as a bit array, we extract \c container[lsb:lsb+width].
 + */
-+static __always_inline uintmax_t extract(uintmax_t container, unsigned lsb, unsigned width)
++static __always_inline uintmax_t extract(uintmax_t container, unsigned int lsb, unsigned int width)
 +{
-+	static const size_t container_width = sizeof container * 8;
++	static const size_t container_width = sizeof(container) * 8;
++
 +	if (width == container_width)
 +		return container;
 +	return (container >> lsb) & (((uintmax_t)1 << width) - 1);
@@ -14125,11 +14191,12 @@ index 000000000..93177f781
 + * container[lsb+width:] is unchanged
 + * @endcode
 + */
-+static __always_inline uintmax_t insert(uintmax_t container, uintmax_t data, unsigned lsb,
-+					unsigned width)
++static __always_inline uintmax_t insert(uintmax_t container, uintmax_t data, unsigned int lsb,
++					unsigned int width)
 +{
-+	static const size_t container_width = sizeof container * 8;
++	static const size_t container_width = sizeof(container) * 8;
 +	uintmax_t mask;
++
 +	if (width == container_width)
 +		return container;
 +	mask = ((uintmax_t)1 << width) - 1;
@@ -14148,6 +14215,7 @@ index 000000000..93177f781
 +	int tests_results = 0;
 +	uint16_t literal_state[4];
 +	int res;
++
 +	tests_results = tests_results |
 +			((header->magic == LZFSE_COMPRESSEDV1_BLOCK_MAGIC) ? 0 : (1 << 0));
 +	tests_results = tests_results |
@@ -14227,10 +14295,11 @@ index 000000000..93177f781
 +#endif /* LZFSE_INTERNAL_H */
 diff --git a/fs/apfs/lzfse/lzvn_decode_base.c b/fs/apfs/lzfse/lzvn_decode_base.c
 new file mode 100644
-index 000000000..9b4e990d7
+index 000000000..f2cb2afce
 --- /dev/null
 +++ b/fs/apfs/lzfse/lzvn_decode_base.c
-@@ -0,0 +1,472 @@
+@@ -0,0 +1,487 @@
++// SPDX-License-Identifier: BSD-3-Clause
 +/*
 + * Copyright (c) 2015-2016, Apple Inc. All rights reserved.
 + *
@@ -14255,7 +14324,13 @@ index 000000000..9b4e990d7
 +/* LZVN low-level decoder */
 +
 +#include <linux/compiler.h>
++#include <linux/version.h>
 +#include "lzvn_decode_base.h"
++
++/* Older kernel versions will still get an objtool warning here */
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 3, 0)
++#define __annotate_jump_table
++#endif
 +
 +/*
 + * Both the source and destination buffers are represented by a pointer and
@@ -14456,6 +14531,7 @@ index 000000000..9b4e990d7
 +		 * buffer, so it is not an important case to optimize.
 +		 */
 +		size_t i;
++
 +		for (i = 0; i < L; ++i)
 +			dst_ptr[i] = src_ptr[i];
 +	} else {
@@ -14463,6 +14539,7 @@ index 000000000..9b4e990d7
 +
 +		/* Copy partial literal */
 +		size_t i;
++
 +		for (i = 0; i < dst_len; ++i)
 +			dst_ptr[i] = src_ptr[i];
 +		/* Save state */
@@ -14511,6 +14588,7 @@ index 000000000..9b4e990d7
 +		 * bound away from the end of the destination buffer.
 +		 */
 +		size_t i;
++
 +		for (i = 0; i < M; i += 8)
 +			store8(&dst_ptr[i], load8(&dst_ptr[i - D]));
 +	} else if (M <= dst_len) {
@@ -14520,6 +14598,7 @@ index 000000000..9b4e990d7
 +		 * Fall back on a simple byte-by-byte implementation.
 +		 */
 +		size_t i;
++
 +		for (i = 0; i < M; ++i)
 +			dst_ptr[i] = dst_ptr[i - D];
 +	} else {
@@ -14527,6 +14606,7 @@ index 000000000..9b4e990d7
 +
 +		/* Copy partial match */
 +		size_t i;
++
 +		for (i = 0; i < dst_len; ++i)
 +			dst_ptr[i] = dst_ptr[i - D];
 +		/* Save state */
@@ -14636,6 +14716,7 @@ index 000000000..9b4e990d7
 +		 * either buffer.
 +		 */
 +		size_t i;
++
 +		for (i = 0; i < L; i += 8)
 +			store8(&dst_ptr[i], load8(&src_ptr[i]));
 +	} else if (L <= dst_len) {
@@ -14645,6 +14726,7 @@ index 000000000..9b4e990d7
 +		 * we copy the literal byte-by-byte.
 +		 */
 +		size_t i;
++
 +		for (i = 0; i < L; ++i)
 +			dst_ptr[i] = src_ptr[i];
 +	} else {
@@ -14652,6 +14734,7 @@ index 000000000..9b4e990d7
 +
 +		/* Copy partial literal */
 +		size_t i;
++
 +		for (i = 0; i < dst_len; ++i)
 +			dst_ptr[i] = src_ptr[i];
 +		/* Save state */
@@ -14705,10 +14788,11 @@ index 000000000..9b4e990d7
 +}
 diff --git a/fs/apfs/lzfse/lzvn_decode_base.h b/fs/apfs/lzfse/lzvn_decode_base.h
 new file mode 100644
-index 000000000..ee1438bdd
+index 000000000..90826f4d3
 --- /dev/null
 +++ b/fs/apfs/lzfse/lzvn_decode_base.h
-@@ -0,0 +1,72 @@
+@@ -0,0 +1,73 @@
++/* SPDX-License-Identifier: BSD-3-Clause */
 +/*
 + * Copyright (c) 2015-2016, Apple Inc. All rights reserved.
 + *
@@ -14818,7 +14902,7 @@ index 000000000..fdd74ccb8
 +}
 diff --git a/fs/apfs/namei.c b/fs/apfs/namei.c
 new file mode 100644
-index 000000000..59b2b4a85
+index 000000000..626de9f6b
 --- /dev/null
 +++ b/fs/apfs/namei.c
 @@ -0,0 +1,146 @@
@@ -14861,7 +14945,7 @@ index 000000000..59b2b4a85
 +#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 12, 0)
 +static int apfs_symlink(struct inode *dir, struct dentry *dentry,
 +			const char *symname)
-+#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
++#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0) && !RHEL_VERSION_GE(9, 6)
 +static int apfs_symlink(struct user_namespace *mnt_userns, struct inode *dir,
 +			struct dentry *dentry, const char *symname)
 +#else
@@ -17366,7 +17450,7 @@ index 000000000..9636a9a29
 +}
 diff --git a/fs/apfs/snapshot.c b/fs/apfs/snapshot.c
 new file mode 100644
-index 000000000..f76d2f70a
+index 000000000..8459a8d2a
 --- /dev/null
 +++ b/fs/apfs/snapshot.c
 @@ -0,0 +1,687 @@
@@ -17874,7 +17958,7 @@ index 000000000..f76d2f70a
 +
 +#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 12, 0)
 +	if (!inode_owner_or_capable(inode))
-+#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
++#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0) && !RHEL_VERSION_GE(9, 6)
 +	if (!inode_owner_or_capable(&init_user_ns, inode))
 +#else
 +	if (!inode_owner_or_capable(&nop_mnt_idmap, inode))
@@ -26001,7 +26085,7 @@ index 000000000..e16b23c10
 +#define GIT_COMMIT	""
 diff --git a/fs/apfs/xattr.c b/fs/apfs/xattr.c
 new file mode 100644
-index 000000000..b8eb53796
+index 000000000..c21b8e469
 --- /dev/null
 +++ b/fs/apfs/xattr.c
 @@ -0,0 +1,914 @@
@@ -26811,7 +26895,7 @@ index 000000000..b8eb53796
 +static int apfs_xattr_osx_set(const struct xattr_handler *handler,
 +	      struct dentry *unused, struct inode *inode, const char *name,
 +	      const void *value, size_t size, int flags)
-+#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
++#elif LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0) && !RHEL_VERSION_GE(9, 6)
 +static int apfs_xattr_osx_set(const struct xattr_handler *handler,
 +		  struct user_namespace *mnt_userns, struct dentry *unused,
 +		  struct inode *inode, const char *name, const void *value,
