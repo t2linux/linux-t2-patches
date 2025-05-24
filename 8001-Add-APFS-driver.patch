@@ -1,7 +1,7 @@
-From c51a23bad487ee190325526a56ca7a7872a92984 Mon Sep 17 00:00:00 2001
+From 52309d39bd407e38dad49cb88497bc2d0795bb04 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Sat, 17 May 2025 18:47:17 +0000
+Date: Sat, 24 May 2025 18:47:04 +0000
 Subject: [PATCH] Add APFS driver
 
 ---
@@ -26078,11 +26078,11 @@ index 000000000..e3b7edc51
 +#endif	/* _APFS_UNICODE_H */
 diff --git a/fs/apfs/version.h b/fs/apfs/version.h
 new file mode 100644
-index 000000000..e16b23c10
+index 000000000..6919b5617
 --- /dev/null
 +++ b/fs/apfs/version.h
 @@ -0,0 +1 @@
-+#define GIT_COMMIT	""
++#define GIT_COMMIT	"v0.3.14"
 diff --git a/fs/apfs/xattr.c b/fs/apfs/xattr.c
 new file mode 100644
 index 000000000..c21b8e469
