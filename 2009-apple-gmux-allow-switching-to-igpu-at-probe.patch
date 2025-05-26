@@ -28,9 +28,9 @@ index 81edf66dbea8..8f3daf28665b 100644
 +	if (vga_switcheroo_client_probe_defer(pdev))
 +		return -EPROBE_DEFER;
 +
- 	/* skip devices which are owned by radeon */
- 	for (i = 0; i < ARRAY_SIZE(amdgpu_unsupported_pciidlist); i++) {
- 		if (amdgpu_unsupported_pciidlist[i] == pdev->device)
+ 	if ((pdev->class >> 8) == PCI_CLASS_DISPLAY_VGA ||
+ 	    (pdev->class >> 8) == PCI_CLASS_DISPLAY_OTHER) {
+ 		if (drm_firmware_drivers_only() && amdgpu_modeset == -1)
 diff --git a/drivers/gpu/vga/vga_switcheroo.c b/drivers/gpu/vga/vga_switcheroo.c
 index 365e6ddbe90f..cf357cd3389d 100644
 --- a/drivers/gpu/vga/vga_switcheroo.c

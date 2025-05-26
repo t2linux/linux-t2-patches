@@ -1,6 +1,6 @@
-From 54a49b19e01908431a429bd136dacd30c3db0d02 Mon Sep 17 00:00:00 2001
+From f2f8fd2a8dba6f72a03d2aeb0fa66d26974ee735 Mon Sep 17 00:00:00 2001
 From: Aditya Garg <gargaditya08@live.com>
-Date: Thu, 11 Jul 2024 10:59:04 +0000
+Date: Mon, 26 May 2025 07:08:30 +0000
 Subject: [PATCH] Add apple-bce driver
 
 ---
@@ -16,20 +16,20 @@ Subject: [PATCH] Add apple-bce driver
  drivers/staging/apple-bce/audio/protocol.h    | 147 ++++
  .../staging/apple-bce/audio/protocol_bce.c    | 226 ++++++
  .../staging/apple-bce/audio/protocol_bce.h    |  72 ++
- drivers/staging/apple-bce/mailbox.c           | 151 ++++
+ drivers/staging/apple-bce/mailbox.c           | 155 ++++
  drivers/staging/apple-bce/mailbox.h           |  53 ++
  drivers/staging/apple-bce/queue.c             | 390 +++++++++
  drivers/staging/apple-bce/queue.h             | 177 ++++
  drivers/staging/apple-bce/queue_dma.c         | 220 +++++
  drivers/staging/apple-bce/queue_dma.h         |  50 ++
  drivers/staging/apple-bce/vhci/command.h      | 204 +++++
- drivers/staging/apple-bce/vhci/queue.c        | 268 +++++++
+ drivers/staging/apple-bce/vhci/queue.c        | 268 ++++++
  drivers/staging/apple-bce/vhci/queue.h        |  76 ++
  drivers/staging/apple-bce/vhci/transfer.c     | 661 +++++++++++++++
  drivers/staging/apple-bce/vhci/transfer.h     |  73 ++
- drivers/staging/apple-bce/vhci/vhci.c         | 759 ++++++++++++++++++
+ drivers/staging/apple-bce/vhci/vhci.c         | 763 ++++++++++++++++++
  drivers/staging/apple-bce/vhci/vhci.h         |  52 ++
- 25 files changed, 5639 insertions(+)
+ 25 files changed, 5647 insertions(+)
  create mode 100644 drivers/staging/apple-bce/Makefile
  create mode 100644 drivers/staging/apple-bce/apple_bce.c
  create mode 100644 drivers/staging/apple-bce/apple_bce.h
@@ -2637,13 +2637,14 @@ index 000000000..14d26c05d
 +#endif //AAUDIO_PROTOCOL_BCE_H
 diff --git a/drivers/staging/apple-bce/mailbox.c b/drivers/staging/apple-bce/mailbox.c
 new file mode 100644
-index 000000000..e24bd3521
+index 000000000..07ce11928
 --- /dev/null
 +++ b/drivers/staging/apple-bce/mailbox.c
-@@ -0,0 +1,151 @@
+@@ -0,0 +1,155 @@
 +#include "mailbox.h"
 +#include <linux/atomic.h>
 +#include "apple_bce.h"
++#include <linux/version.h>
 +
 +#define REG_MBOX_OUT_BASE 0x820
 +#define REG_MBOX_REPLY_COUNTER 0x108
@@ -2764,8 +2765,11 @@ index 000000000..e24bd3521
 +    spin_lock_irqsave(&ts->stop_sl, flags);
 +    ts->stopped = true;
 +    spin_unlock_irqrestore(&ts->stop_sl, flags);
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6,15,0)
++    del_timer_sync(&ts->timer);
++#else
 +    timer_delete_sync(&ts->timer);
-+
++#endif
 +    iowrite32((u32) -2, regb + 2);
 +    iowrite32((u32) -1, regb);
 +}
@@ -2792,7 +2796,6 @@ index 000000000..e24bd3521
 +    spin_unlock(&ts->stop_sl);
 +    local_irq_restore(flags);
 +}
-\ No newline at end of file
 diff --git a/drivers/staging/apple-bce/mailbox.h b/drivers/staging/apple-bce/mailbox.h
 new file mode 100644
 index 000000000..f3323f95b
@@ -5029,10 +5032,10 @@ index 000000000..89ecad6bc
 +#endif //BCEDRIVER_TRANSFER_H
 diff --git a/drivers/staging/apple-bce/vhci/vhci.c b/drivers/staging/apple-bce/vhci/vhci.c
 new file mode 100644
-index 000000000..eb26f5500
+index 000000000..3394e0aa2
 --- /dev/null
 +++ b/drivers/staging/apple-bce/vhci/vhci.c
-@@ -0,0 +1,759 @@
+@@ -0,0 +1,763 @@
 +#include "vhci.h"
 +#include "../apple_bce.h"
 +#include "command.h"
@@ -5275,7 +5278,11 @@ index 000000000..eb26f5500
 +    return 0;
 +}
 +
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6,8,0)
++static int bce_vhci_address_device(struct usb_hcd *hcd, struct usb_device *udev)
++#else
 +static int bce_vhci_address_device(struct usb_hcd *hcd, struct usb_device *udev, unsigned int timeout_ms) //TODO: follow timeout
++#endif
 +{
 +    /* This is the same as enable_device, but instead in the old scheme */
 +    return bce_vhci_enable_device(hcd, udev);
@@ -5851,5 +5858,5 @@ index 000000000..6c2e22622
 +
 +#endif //BCE_VHCI_H
 -- 
-2.45.2
+2.49.0
 
