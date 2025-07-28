@@ -16,14 +16,6 @@ diff --git a/drivers/gpu/drm/i915/display/intel_ddi.c b/drivers/gpu/drm/i915/dis
 index 49b5cc01c..1435f49f2 100644
 --- a/drivers/gpu/drm/i915/display/intel_ddi.c
 +++ b/drivers/gpu/drm/i915/display/intel_ddi.c
-@@ -4685,6 +4685,7 @@ intel_ddi_init_hdmi_connector(struct intel_digital_port *dig_port)
- 
- static bool intel_ddi_a_force_4_lanes(struct intel_digital_port *dig_port)
- {
-+	struct intel_display *display = to_intel_display(dig_port);
- 	struct drm_i915_private *dev_priv = to_i915(dig_port->base.base.dev);
- 
- 	if (dig_port->base.port != PORT_A)
 @@ -4693,6 +4694,9 @@ static bool intel_ddi_a_force_4_lanes(struct intel_digital_port *dig_port)
  	if (dig_port->ddi_a_4_lanes)
  		return false;

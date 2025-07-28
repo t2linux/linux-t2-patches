@@ -1,7 +1,7 @@
-From 8a980335aa7495020760fb507bb906975b864ada Mon Sep 17 00:00:00 2001
+From 9e5a69ced6bf9e879a93215dc498bfb07f0fa518 Mon Sep 17 00:00:00 2001
 From: Aditya Garg <gargaditya08@live.com>
 Date: Tue, 18 Mar 2025 21:27:25 +0530
-Subject: [PATCH 5/5] HID: magicmouse: Add MacBookPro15,1 replacement trackpad
+Subject: [PATCH] HID: magicmouse: Add MacBookPro15,1 replacement trackpad
  support
 
 This commit adds support for third party replacement trackpad for
@@ -13,10 +13,10 @@ Signed-off-by: Aditya Garg <gargaditya08@live.com>
  1 file changed, 18 insertions(+)
 
 diff --git a/drivers/hid/hid-magicmouse.c b/drivers/hid/hid-magicmouse.c
-index eb62752d7..769c31706 100644
+index 41926b389..328df8118 100644
 --- a/drivers/hid/hid-magicmouse.c
 +++ b/drivers/hid/hid-magicmouse.c
-@@ -150,6 +150,17 @@ MODULE_PARM_DESC(report_undeciphered, "Report undeciphered multi-touch state fie
+@@ -151,6 +151,17 @@ MODULE_PARM_DESC(report_undeciphered, "Report undeciphered multi-touch state fie
  #define J680_TP_RES_Y \
  	((J680_TP_MAX_Y - J680_TP_MIN_Y) / (J680_TP_DIMENSION_Y / 100))
  
@@ -34,7 +34,7 @@ index eb62752d7..769c31706 100644
  #define J213_TP_DIMENSION_X (float)13500
  #define J213_TP_MIN_X -6243
  #define J213_TP_MAX_X 6749
-@@ -311,6 +322,7 @@ static int magicmouse_enable_multitouch(struct hid_device *hdev)
+@@ -312,6 +323,7 @@ static int magicmouse_enable_multitouch(struct hid_device *hdev)
  		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J140K:
  		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J132:
  		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J680:
@@ -42,7 +42,7 @@ index eb62752d7..769c31706 100644
  		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J213:
  		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J214K:
  		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J223:
-@@ -1204,6 +1216,7 @@ static const struct magicmouse_t2_properties magicmouse_t2_configs[] = {
+@@ -1215,6 +1227,7 @@ static const struct magicmouse_t2_properties magicmouse_t2_configs[] = {
  	T2_TOUCHPAD_ENTRY(J140K),
  	T2_TOUCHPAD_ENTRY(J132),
  	T2_TOUCHPAD_ENTRY(J680),
@@ -50,7 +50,7 @@ index eb62752d7..769c31706 100644
  	T2_TOUCHPAD_ENTRY(J213),
  	T2_TOUCHPAD_ENTRY(J214K),
  	T2_TOUCHPAD_ENTRY(J223),
-@@ -1439,6 +1452,7 @@ static int magicmouse_probe(struct hid_device *hdev,
+@@ -1451,6 +1464,7 @@ static int magicmouse_probe(struct hid_device *hdev,
  	case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J140K:
  	case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J132:
  	case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J680:
@@ -58,7 +58,7 @@ index eb62752d7..769c31706 100644
  	case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J213:
  	case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J214K:
  	case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J223:
-@@ -1471,6 +1485,7 @@ static int magicmouse_probe(struct hid_device *hdev,
+@@ -1483,6 +1497,7 @@ static int magicmouse_probe(struct hid_device *hdev,
  		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J140K:
  		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J132:
  		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J680:
@@ -66,15 +66,15 @@ index eb62752d7..769c31706 100644
  		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J213:
  		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J214K:
  		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J223:
-@@ -1552,6 +1567,7 @@ static int magicmouse_probe(struct hid_device *hdev,
- 		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J140K:
- 		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J132:
- 		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J680:
-+		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J680_ALT:
- 		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J213:
- 		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J214K:
- 		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J223:
-@@ -1659,6 +1675,8 @@ static const struct hid_device_id magic_mice[] = {
+@@ -1558,6 +1573,7 @@ static int magicmouse_probe(struct hid_device *hdev,
+ 	case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J140K:
+ 	case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J132:
+ 	case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J680:
++	case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J680_ALT:
+ 	case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J213:
+ 	case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J214K:
+ 	case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J223:
+@@ -1687,6 +1703,8 @@ static const struct hid_device_id magic_mice[] = {
  		USB_DEVICE_ID_APPLE_WELLSPRINGT2_J132), .driver_data = 0 },
  	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE,
  		USB_DEVICE_ID_APPLE_WELLSPRINGT2_J680), .driver_data = 0 },
@@ -84,5 +84,5 @@ index eb62752d7..769c31706 100644
  		USB_DEVICE_ID_APPLE_WELLSPRINGT2_J213), .driver_data = 0 },
  	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE,
 -- 
-2.43.0
+2.49.0
 

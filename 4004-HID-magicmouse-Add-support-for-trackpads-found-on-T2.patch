@@ -125,7 +125,7 @@ index d5ab547b1..eb62752d7 100644
  
  struct magicmouse_input_ops {
  	int (*raw_event)(struct hid_device *hdev,
-@@ -196,24 +288,45 @@ static int magicmouse_enable_multitouch(struct hid_device *hdev)
+@@ -196,24 +288,46 @@ static int magicmouse_enable_multitouch(struct hid_device *hdev)
  	int ret;
  	int feature_size;
  
@@ -167,6 +167,7 @@ index d5ab547b1..eb62752d7 100644
  			feature = feature_mt_trackpad2_usb;
 +			break;
 +		case USB_DEVICE_ID_APPLE_MAGICMOUSE2:
++		case USB_DEVICE_ID_APPLE_MAGICMOUSE2_USBC:
 +			feature_size = sizeof(feature_mt_mouse2);
 +			feature = feature_mt_mouse2;
 +			break;
@@ -177,7 +178,7 @@ index d5ab547b1..eb62752d7 100644
 -	} else if (hdev->vendor == SPI_VENDOR_ID_APPLE) {
 -		feature_size = sizeof(feature_mt_trackpad2_usb);
 -		feature = feature_mt_trackpad2_usb;
--	} else if (hdev->product == USB_DEVICE_ID_APPLE_MAGICMOUSE2) {
+-	} else if (hdev->product == USB_DEVICE_ID_APPLE_MAGICMOUSE2 || hdev->product == USB_DEVICE_ID_APPLE_MAGICMOUSE2_USBC) {
 -		feature_size = sizeof(feature_mt_mouse2);
 -		feature = feature_mt_mouse2;
 -	} else {
@@ -398,78 +399,24 @@ index d5ab547b1..eb62752d7 100644
  	}
  
  	msc->scroll_accel = SCROLL_ACCEL_DEFAULT;
-@@ -1304,29 +1522,50 @@ static int magicmouse_probe(struct hid_device *hdev,
- 		goto err_stop_hw;
- 	}
- 
--	if (id->product == USB_DEVICE_ID_APPLE_MAGICMOUSE)
--		report = hid_register_report(hdev, HID_INPUT_REPORT,
--			MOUSE_REPORT_ID, 0);
--	else if (id->product == USB_DEVICE_ID_APPLE_MAGICMOUSE2)
--		report = hid_register_report(hdev, HID_INPUT_REPORT,
--			MOUSE2_REPORT_ID, 0);
--	else if (id->product == USB_DEVICE_ID_APPLE_MAGICTRACKPAD2 ||
--		 id->product == USB_DEVICE_ID_APPLE_MAGICTRACKPAD2_USBC) {
--		if (id->vendor == BT_VENDOR_ID_APPLE)
--			report = hid_register_report(hdev, HID_INPUT_REPORT,
--				TRACKPAD2_BT_REPORT_ID, 0);
--		else /* USB_VENDOR_ID_APPLE */
--			report = hid_register_report(hdev, HID_INPUT_REPORT,
--				TRACKPAD2_USB_REPORT_ID, 0);
--	} else if (id->bus == BUS_SPI) {
-+	switch (id->bus) {
-+	case BUS_SPI:
- 		report = hid_register_report(hdev, HID_INPUT_REPORT, SPI_REPORT_ID, 0);
--	} else if (id->bus == BUS_HOST) {
+@@ -1336,6 +1336,17 @@ static int magicmouse_probe(struct hid_device *hdev,
+ 				TRACKPAD2_USB_REPORT_ID, 0);
+ 		}
+ 		break;
++	case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J140K:
++	case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J132:
++	case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J680:
++	case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J213:
++	case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J214K:
++	case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J223:
++	case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J230K:
++	case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J152F:
++		report = hid_register_report(hdev, HID_INPUT_REPORT,
++			TRACKPAD2_USB_REPORT_ID, 0);
 +		break;
-+	case BUS_HOST:
- 		report = hid_register_report(hdev, HID_INPUT_REPORT, MTP_REPORT_ID, 0);
--	} else { /* USB_DEVICE_ID_APPLE_MAGICTRACKPAD */
--		report = hid_register_report(hdev, HID_INPUT_REPORT,
--			TRACKPAD_REPORT_ID, 0);
--		report = hid_register_report(hdev, HID_INPUT_REPORT,
--			DOUBLE_REPORT_ID, 0);
-+		break;
-+	default:
-+		switch (id->product) {
-+		case USB_DEVICE_ID_APPLE_MAGICMOUSE:
-+			report = hid_register_report(hdev, HID_INPUT_REPORT, MOUSE_REPORT_ID, 0);
-+			break;
-+		case USB_DEVICE_ID_APPLE_MAGICMOUSE2:
-+			report = hid_register_report(hdev, HID_INPUT_REPORT, MOUSE2_REPORT_ID, 0);
-+			break;
-+		case USB_DEVICE_ID_APPLE_MAGICTRACKPAD2:
-+		case USB_DEVICE_ID_APPLE_MAGICTRACKPAD2_USBC:
-+			switch (id->vendor) {
-+ 			case BT_VENDOR_ID_APPLE:
-+ 				report = hid_register_report(hdev, HID_INPUT_REPORT,
-+					TRACKPAD2_BT_REPORT_ID, 0);
-+				break;
-+			default:
-+				report = hid_register_report(hdev, HID_INPUT_REPORT,
-+					TRACKPAD2_USB_REPORT_ID, 0);
-+			}
-+			break;
-+		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J140K:
-+		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J132:
-+		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J680:
-+		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J213:
-+		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J214K:
-+		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J223:
-+		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J230K:
-+		case USB_DEVICE_ID_APPLE_WELLSPRINGT2_J152F:
-+			report = hid_register_report(hdev, HID_INPUT_REPORT,
-+				TRACKPAD2_USB_REPORT_ID, 0);
-+			break;
-+		default: /* USB_DEVICE_ID_APPLE_MAGICTRACKPAD */
-+			report = hid_register_report(hdev, HID_INPUT_REPORT,
-+				TRACKPAD_REPORT_ID, 0);
-+			report = hid_register_report(hdev, HID_INPUT_REPORT,
-+				DOUBLE_REPORT_ID, 0);
-+		}		
- 	}
- 
- 	if (!report) {
+ 	default: /* USB_DEVICE_ID_APPLE_MAGICTRACKPAD */
+ 		if (id->bus == BUS_SPI) {
+ 			report = hid_register_report(hdev, HID_INPUT_REPORT, SPI_REPORT_ID, 0);
 @@ -1414,6 +1653,22 @@ static const struct hid_device_id magic_mice[] = {
  		USB_DEVICE_ID_APPLE_MAGICTRACKPAD2_USBC), .driver_data = 0 },
  	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE,

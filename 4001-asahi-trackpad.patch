@@ -698,16 +698,22 @@ index e3f5776ad..09e8a7c2d 100644
  static int magicmouse_input_mapping(struct hid_device *hdev,
  		struct hid_input *hi, struct hid_field *field,
  		struct hid_usage *usage, unsigned long **bit, int *max)
-@@ -779,6 +1015,9 @@ static int magicmouse_enable_multitouch(struct hid_device *hdev)
- 			feature_size = sizeof(feature_mt_trackpad2_usb);
- 			feature = feature_mt_trackpad2_usb;
- 		}
-+	} else if (hdev->vendor == SPI_VENDOR_ID_APPLE) {
-+		feature_size = sizeof(feature_mt_trackpad2_usb);
-+		feature = feature_mt_trackpad2_usb;
- 	} else if (hdev->product == USB_DEVICE_ID_APPLE_MAGICMOUSE2) {
- 		feature_size = sizeof(feature_mt_mouse2);
+@@ -766,8 +766,13 @@ static int magicmouse_enable_multitouch(struct hid_device *hdev)
  		feature = feature_mt_mouse2;
+ 		break;
+ 	default:
+-		feature_size = sizeof(feature_mt);
+-		feature = feature_mt;
++		if (hdev->vendor == SPI_VENDOR_ID_APPLE) {
++			feature_size = sizeof(feature_mt_trackpad2_usb);
++			feature = feature_mt_trackpad2_usb;
++		} else {
++			feature_size = sizeof(feature_mt);
++			feature = feature_mt;
++		}
+ 	}
+ 
+ 	buf = kmemdup(feature, feature_size, GFP_KERNEL);
 @@ -854,14 +1093,26 @@ static int magicmouse_probe(struct hid_device *hdev,
  	struct hid_report *report;
  	int ret;
@@ -737,15 +743,25 @@ index e3f5776ad..09e8a7c2d 100644
  
  	msc->scroll_accel = SCROLL_ACCEL_DEFAULT;
  	msc->hdev = hdev;
-@@ -914,6 +1165,8 @@ static int magicmouse_probe(struct hid_device *hdev,
- 		else /* USB_VENDOR_ID_APPLE */
- 			report = hid_register_report(hdev, HID_INPUT_REPORT,
- 				TRACKPAD2_USB_REPORT_ID, 0);
-+	} else if (id->vendor == SPI_VENDOR_ID_APPLE) {
-+		report = hid_register_report(hdev, HID_INPUT_REPORT, 2, 0);
- 	} else { /* USB_DEVICE_ID_APPLE_MAGICTRACKPAD */
- 		report = hid_register_report(hdev, HID_INPUT_REPORT,
- 			TRACKPAD_REPORT_ID, 0);
+@@ -908,10 +908,14 @@ static int magicmouse_probe(struct hid_device *hdev,
+ 		}
+ 		break;
+ 	default: /* USB_DEVICE_ID_APPLE_MAGICTRACKPAD */
+-		report = hid_register_report(hdev, HID_INPUT_REPORT,
+-			TRACKPAD_REPORT_ID, 0);
+-		report = hid_register_report(hdev, HID_INPUT_REPORT,
+-			DOUBLE_REPORT_ID, 0);
++		if (id->vendor == SPI_VENDOR_ID_APPLE) {
++			report = hid_register_report(hdev, HID_INPUT_REPORT, 2, 0);
++		} else {
++			report = hid_register_report(hdev, HID_INPUT_REPORT,
++				TRACKPAD_REPORT_ID, 0);
++			report = hid_register_report(hdev, HID_INPUT_REPORT,
++				DOUBLE_REPORT_ID, 0);
++		}
+ 	}
+ 
+ 	if (!report) {
 @@ -1013,6 +1266,8 @@ static const struct hid_device_id magic_mice[] = {
  		USB_DEVICE_ID_APPLE_MAGICTRACKPAD2_USBC), .driver_data = 0 },
  	{ HID_USB_DEVICE(USB_VENDOR_ID_APPLE,
@@ -2353,19 +2369,19 @@ index 09e8a7c2d..82c9ca7ea 100644
  		msc->input_ops.raw_event = magicmouse_raw_event_spi;
  		msc->input_ops.setup_input = magicmouse_setup_input_spi;
  
-@@ -1165,8 +1188,10 @@ static int magicmouse_probe(struct hid_device *hdev,
- 		else /* USB_VENDOR_ID_APPLE */
+@@ -908,8 +908,10 @@ static int magicmouse_probe(struct hid_device *hdev,
+ 		}
+ 		break;
+ 	default: /* USB_DEVICE_ID_APPLE_MAGICTRACKPAD */
+-		if (id->vendor == SPI_VENDOR_ID_APPLE) {
+-			report = hid_register_report(hdev, HID_INPUT_REPORT, 2, 0);
++		if (id->bus == BUS_SPI) {
++			report = hid_register_report(hdev, HID_INPUT_REPORT, SPI_REPORT_ID, 0);
++		} else if (id->bus == BUS_HOST) {
++			report = hid_register_report(hdev, HID_INPUT_REPORT, MTP_REPORT_ID, 0);
+ 		} else {
  			report = hid_register_report(hdev, HID_INPUT_REPORT,
- 				TRACKPAD2_USB_REPORT_ID, 0);
--	} else if (id->vendor == SPI_VENDOR_ID_APPLE) {
--		report = hid_register_report(hdev, HID_INPUT_REPORT, 2, 0);
-+	} else if (id->bus == BUS_SPI) {
-+		report = hid_register_report(hdev, HID_INPUT_REPORT, SPI_REPORT_ID, 0);
-+	} else if (id->bus == BUS_HOST) {
-+		report = hid_register_report(hdev, HID_INPUT_REPORT, MTP_REPORT_ID, 0);
- 	} else { /* USB_DEVICE_ID_APPLE_MAGICTRACKPAD */
- 		report = hid_register_report(hdev, HID_INPUT_REPORT,
- 			TRACKPAD_REPORT_ID, 0);
+ 				TRACKPAD_REPORT_ID, 0);
 @@ -1181,6 +1206,10 @@ static int magicmouse_probe(struct hid_device *hdev,
  	}
  	report->size = 6;
@@ -4809,7 +4825,7 @@ index 7ec80fe86..71ba59b84 100644
 +	} else if (hdev->vendor == SPI_VENDOR_ID_APPLE) {
 +		feature_size = sizeof(feature_mt_trackpad2_usb);
 +		feature = feature_mt_trackpad2_usb;
-+	} else if (hdev->product == USB_DEVICE_ID_APPLE_MAGICMOUSE2) {
++	} else if (hdev->product == USB_DEVICE_ID_APPLE_MAGICMOUSE2 || hdev->product == USB_DEVICE_ID_APPLE_MAGICMOUSE2_USBC) {
 +		feature_size = sizeof(feature_mt_mouse2);
 +		feature = feature_mt_mouse2;
 +	} else {
@@ -4948,7 +4964,7 @@ index 7ec80fe86..71ba59b84 100644
  static int magicmouse_input_mapping(struct hid_device *hdev,
  		struct hid_input *hi, struct hid_field *field,
  		struct hid_usage *usage, unsigned long **bit, int *max)
-@@ -1015,58 +1141,6 @@ static int magicmouse_input_configured(struct hid_device *hdev,
+@@ -736,66 +736,6 @@ static int magicmouse_input_configured(struct hid_device *hdev,
  	return 0;
  }
  
@@ -4963,24 +4979,32 @@ index 7ec80fe86..71ba59b84 100644
 -	int ret;
 -	int feature_size;
 -
--	if (hdev->product == USB_DEVICE_ID_APPLE_MAGICTRACKPAD2 ||
--	    hdev->product == USB_DEVICE_ID_APPLE_MAGICTRACKPAD2_USBC) {
--		if (hdev->vendor == BT_VENDOR_ID_APPLE) {
+-	switch (hdev->product) {
+-	case USB_DEVICE_ID_APPLE_MAGICTRACKPAD2:
+-	case USB_DEVICE_ID_APPLE_MAGICTRACKPAD2_USBC:
+-		switch (hdev->vendor) {
+-		case BT_VENDOR_ID_APPLE:
 -			feature_size = sizeof(feature_mt_trackpad2_bt);
 -			feature = feature_mt_trackpad2_bt;
--		} else { /* USB_VENDOR_ID_APPLE */
+-			break;
+-		default: /* USB_VENDOR_ID_APPLE */
 -			feature_size = sizeof(feature_mt_trackpad2_usb);
 -			feature = feature_mt_trackpad2_usb;
 -		}
--	} else if (hdev->vendor == SPI_VENDOR_ID_APPLE) {
--		feature_size = sizeof(feature_mt_trackpad2_usb);
--		feature = feature_mt_trackpad2_usb;
--	} else if (hdev->product == USB_DEVICE_ID_APPLE_MAGICMOUSE2) {
+-		break;
+-	case USB_DEVICE_ID_APPLE_MAGICMOUSE2:
+-	case USB_DEVICE_ID_APPLE_MAGICMOUSE2_USBC:
 -		feature_size = sizeof(feature_mt_mouse2);
 -		feature = feature_mt_mouse2;
--	} else {
--		feature_size = sizeof(feature_mt);
--		feature = feature_mt;
+-		break;
+-	default:
+-		if (hdev->vendor == SPI_VENDOR_ID_APPLE) {
+-			feature_size = sizeof(feature_mt_trackpad2_usb);
+-			feature = feature_mt_trackpad2_usb;
+-		} else {
+-			feature_size = sizeof(feature_mt);
+-			feature = feature_mt;
+-		}
 -	}
 -
 -	buf = kmemdup(feature, feature_size, GFP_KERNEL);
@@ -5016,32 +5040,6 @@ index 7ec80fe86..71ba59b84 100644
  	} else if (id->bus == BUS_SPI) {
  		msc->input_ops.raw_event = magicmouse_raw_event_spi;
  		msc->input_ops.setup_input = magicmouse_setup_input_spi;
-@@ -1210,21 +1284,10 @@ static int magicmouse_probe(struct hid_device *hdev,
- 	if (id->bus == BUS_HOST)
- 		return 0;
- 
--	/*
--	 * Some devices repond with 'invalid report id' when feature
--	 * report switching it into multitouch mode is sent to it.
--	 *
--	 * This results in -EIO from the _raw low-level transport callback,
--	 * but there seems to be no other way of switching the mode.
--	 * Thus the super-ugly hacky success check below.
--	 */
--	ret = magicmouse_enable_multitouch(hdev);
--	if (ret != -EIO && ret < 0) {
--		hid_err(hdev, "unable to request touch data (%d)\n", ret);
--		goto err_stop_hw;
--	}
--	if (ret == -EIO && id->product == USB_DEVICE_ID_APPLE_MAGICMOUSE2) {
--		schedule_delayed_work(&msc->work, msecs_to_jiffies(500));
-+	/* SPI devices need to watch for reset events to re-send the MT enable */
-+	if (id->bus == BUS_SPI) {
-+		report = hid_register_report(hdev, HID_INPUT_REPORT, SPI_RESET_REPORT_ID, 0);
-+		report->size = 2;
- 	}
- 
- 	return 0;
 -- 
 2.49.0
 
