@@ -39,11 +39,12 @@ jobs:
       run: |
         source ./version
         cd linux-$KVER
+        git apply ../*.patch
         
-        for patch in ../*.patch; do
-          echo "Applying patch $patch..."
-          patch -Np1 < $patch
-        done
+        #for patch in ../*.patch; do
+        #  echo "Applying patch $patch..."
+        #  patch -Np1 < $patch
+        #done
     - name: Print reject hunks
       run: |
             source ./version
