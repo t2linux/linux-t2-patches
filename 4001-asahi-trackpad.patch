@@ -5132,9 +5132,9 @@ index a2cbf8652..87f5f371c 100644
 -		hid_err(msc->hdev, "unable to request touch data (%d)\n", ret);
 -}
 -
- static int magicmouse_fetch_battery(struct hid_device *hdev)
+ static bool is_usb_magicmouse2(__u32 vendor, __u32 product)
  {
- #ifdef CONFIG_HID_BATTERY_STRENGTH
+ 	if (vendor != USB_VENDOR_ID_APPLE)
 @@ -1123,7 +1197,7 @@ static int magicmouse_probe(struct hid_device *hdev,
  	// conflicts with the report ID.
  	if (id->bus == BUS_HOST) {
