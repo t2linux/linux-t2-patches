@@ -1,4 +1,4 @@
-From 9ac3368a00fc832163714878bbb3dc74bf23f325 Mon Sep 17 00:00:00 2001
+From 2a61d561add01926e19b2ae370c99b93a836bca9 Mon Sep 17 00:00:00 2001
 From: Aditya Garg <gargaditya08@live.com>
 Date: Fri, 12 Sep 2025 12:09:01 +0000
 Subject: [PATCH 2/5] HID: apple: ignore the trackpad on T2 Macs
@@ -9,13 +9,22 @@ the existing APPLE_IGNORE_MOUSE quirk for the same.
 
 Signed-off-by: Aditya Garg <gargaditya08@live.com>
 ---
- drivers/hid/hid-apple.c | 25 ++++++++++++++++---------
- 1 file changed, 16 insertions(+), 9 deletions(-)
+ drivers/hid/hid-apple.c | 27 +++++++++++++++++----------
+ 1 file changed, 17 insertions(+), 10 deletions(-)
 
 diff --git a/drivers/hid/hid-apple.c b/drivers/hid/hid-apple.c
-index 430ceee0f..00bd9d204 100644
+index 4505e5839..cdc008c66 100644
 --- a/drivers/hid/hid-apple.c
 +++ b/drivers/hid/hid-apple.c
+@@ -30,7 +30,7 @@
+ #include "hid-ids.h"
+ 
+ #define APPLE_RDESC_JIS		BIT(0)
+-/* BIT(1) reserved, was: APPLE_IGNORE_MOUSE */
++#define APPLE_IGNORE_MOUSE	BIT(1)
+ #define APPLE_HAS_FN		BIT(2)
+ /* BIT(3) reserved, was: APPLE_HIDDEV */
+ #define APPLE_ISO_TILDE_QUIRK	BIT(4)
 @@ -951,6 +951,9 @@ static int apple_probe(struct hid_device *hdev,
  	    hdev->type != HID_TYPE_SPI_KEYBOARD)
  		return -ENODEV;

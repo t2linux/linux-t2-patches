@@ -250,7 +250,7 @@ index 61404d7a4..7de5f66c0 100644
 +					table = macbookpro_dedicated_esc_fn_keys;
 +					break;
 +				default:
-+					table = apple2021_fn_keys;
++					table = magic_keyboard_2021_and_2024_fn_keys;
 +					break;
 +				}
  			else
