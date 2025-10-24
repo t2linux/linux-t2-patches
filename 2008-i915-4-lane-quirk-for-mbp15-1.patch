@@ -50,9 +50,9 @@ index 28f497ae7..c2952b0f8 100644
  {
  	intel_set_quirk(display, QUIRK_NO_PPS_BACKLIGHT_POWER_HOOK);
 @@ -229,6 +241,9 @@ static struct intel_quirk intel_quirks[] = {
- 	{ 0x3184, 0x1019, 0xa94d, quirk_increase_ddi_disabled_time },
- 	/* HP Notebook - 14-r206nv */
- 	{ 0x0f31, 0x103c, 0x220f, quirk_invert_brightness },
+ 
+ 	/* Dell XPS 13 7390 2-in-1 */
+ 	{ 0x8a12, 0x1028, 0x08b0, quirk_edp_limit_rate_hbr2 },
 +
 +	/* Apple MacBookPro15,1 */
 +	{ 0x3e9b, 0x106b, 0x0176, quirk_ddi_a_force_4_lanes },
@@ -64,9 +64,9 @@ index cafdebda7..a5296f827 100644
 --- a/drivers/gpu/drm/i915/display/intel_quirks.h
 +++ b/drivers/gpu/drm/i915/display/intel_quirks.h
 @@ -20,6 +20,7 @@ enum intel_quirk_id {
- 	QUIRK_LVDS_SSC_DISABLE,
  	QUIRK_NO_PPS_BACKLIGHT_POWER_HOOK,
  	QUIRK_FW_SYNC_LEN,
+ 	QUIRK_EDP_LIMIT_RATE_HBR2,
 +	QUIRK_DDI_A_FORCE_4_LANES,
  };
  
