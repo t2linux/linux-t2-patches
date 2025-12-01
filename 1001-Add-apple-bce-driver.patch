@@ -1,12 +1,12 @@
-From f2f8fd2a8dba6f72a03d2aeb0fa66d26974ee735 Mon Sep 17 00:00:00 2001
+From 566afa6e0fb7f670eb429c86d5c57c4741d38c9a Mon Sep 17 00:00:00 2001
 From: Aditya Garg <gargaditya08@live.com>
-Date: Mon, 26 May 2025 07:08:30 +0000
+Date: Sat, 25 Oct 2025 08:13:34 +0000
 Subject: [PATCH] Add apple-bce driver
 
 ---
  drivers/staging/apple-bce/Makefile            |  28 +
  drivers/staging/apple-bce/apple_bce.c         | 445 ++++++++++
- drivers/staging/apple-bce/apple_bce.h         |  38 +
+ drivers/staging/apple-bce/apple_bce.h         |  41 +
  drivers/staging/apple-bce/audio/audio.c       | 711 ++++++++++++++++
  drivers/staging/apple-bce/audio/audio.h       | 125 +++
  drivers/staging/apple-bce/audio/description.h |  42 +
@@ -18,7 +18,7 @@ Subject: [PATCH] Add apple-bce driver
  .../staging/apple-bce/audio/protocol_bce.h    |  72 ++
  drivers/staging/apple-bce/mailbox.c           | 155 ++++
  drivers/staging/apple-bce/mailbox.h           |  53 ++
- drivers/staging/apple-bce/queue.c             | 390 +++++++++
+ drivers/staging/apple-bce/queue.c             | 415 ++++++++++
  drivers/staging/apple-bce/queue.h             | 177 ++++
  drivers/staging/apple-bce/queue_dma.c         | 220 +++++
  drivers/staging/apple-bce/queue_dma.h         |  50 ++
@@ -29,7 +29,7 @@ Subject: [PATCH] Add apple-bce driver
  drivers/staging/apple-bce/vhci/transfer.h     |  73 ++
  drivers/staging/apple-bce/vhci/vhci.c         | 763 ++++++++++++++++++
  drivers/staging/apple-bce/vhci/vhci.h         |  52 ++
- 25 files changed, 5647 insertions(+)
+ 25 files changed, 5675 insertions(+)
  create mode 100644 drivers/staging/apple-bce/Makefile
  create mode 100644 drivers/staging/apple-bce/apple_bce.c
  create mode 100644 drivers/staging/apple-bce/apple_bce.h
@@ -543,11 +543,12 @@ index 000000000..4fd2415d7
 +module_exit(apple_bce_module_exit);
 diff --git a/drivers/staging/apple-bce/apple_bce.h b/drivers/staging/apple-bce/apple_bce.h
 new file mode 100644
-index 000000000..f13ab8d57
+index 000000000..58dbeff79
 --- /dev/null
 +++ b/drivers/staging/apple-bce/apple_bce.h
-@@ -0,0 +1,38 @@
-+#pragma once
+@@ -0,0 +1,41 @@
++#ifndef APPLE_BCE_H
++#define APPLE_BCE_H
 +
 +#include <linux/pci.h>
 +#include <linux/spinlock.h>
@@ -585,7 +586,8 @@ index 000000000..f13ab8d57
 +};
 +
 +extern struct apple_bce_device *global_bce;
-\ No newline at end of file
++
++#endif //APPLE_BCE_H
 diff --git a/drivers/staging/apple-bce/audio/audio.c b/drivers/staging/apple-bce/audio/audio.c
 new file mode 100644
 index 000000000..bd16ddd16
@@ -2857,12 +2859,13 @@ index 000000000..f3323f95b
 +#endif //BCEDRIVER_MAILBOX_H
 diff --git a/drivers/staging/apple-bce/queue.c b/drivers/staging/apple-bce/queue.c
 new file mode 100644
-index 000000000..bc9cd3bc6
+index 000000000..948286157
 --- /dev/null
 +++ b/drivers/staging/apple-bce/queue.c
-@@ -0,0 +1,390 @@
+@@ -0,0 +1,415 @@
 +#include "queue.h"
 +#include "apple_bce.h"
++#include <linux/version.h>
 +
 +#define REG_DOORBELL_BASE 0x44000
 +
@@ -3182,7 +3185,11 @@ index 000000000..bc9cd3bc6
 +{
 +    struct bce_queue_cq *cq;
 +    struct bce_queue_memcfg cfg;
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6,18,0)
 +    int qid = ida_simple_get(&dev->queue_ida, BCE_QUEUE_USER_MIN, BCE_QUEUE_USER_MAX, GFP_KERNEL);
++#else
++    int qid = ida_alloc_range(&dev->queue_ida, BCE_QUEUE_USER_MIN, BCE_QUEUE_USER_MAX - 1, GFP_KERNEL);
++#endif
 +    if (qid < 0)
 +        return NULL;
 +    cq = bce_alloc_cq(dev, qid, el_count);
@@ -3192,7 +3199,11 @@ index 000000000..bc9cd3bc6
 +    if (bce_cmd_register_queue(dev->cmd_cmdq, &cfg, NULL, false) != 0) {
 +        pr_err("apple-bce: CQ registration failed (%i)", qid);
 +        bce_free_cq(dev, cq);
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6,18,0)
 +        ida_simple_remove(&dev->queue_ida, (uint) qid);
++#else
++        ida_free(&dev->queue_ida, (uint) qid);
++#endif
 +        return NULL;
 +    }
 +    dev->queues[qid] = (struct bce_queue *) cq;
@@ -3211,7 +3222,11 @@ index 000000000..bc9cd3bc6
 +        return NULL; /* name can not be null */
 +    if (direction != DMA_TO_DEVICE && direction != DMA_FROM_DEVICE)
 +        return NULL; /* unsupported direction */
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6,18,0)
 +    qid = ida_simple_get(&dev->queue_ida, BCE_QUEUE_USER_MIN, BCE_QUEUE_USER_MAX, GFP_KERNEL);
++#else
++    qid = ida_alloc_range(&dev->queue_ida, BCE_QUEUE_USER_MIN, BCE_QUEUE_USER_MAX - 1, GFP_KERNEL);
++#endif
 +    if (qid < 0)
 +        return NULL;
 +    sq = bce_alloc_sq(dev, qid, sizeof(struct bce_qe_submission), el_count, compl, userdata);
@@ -3221,7 +3236,11 @@ index 000000000..bc9cd3bc6
 +    if (bce_cmd_register_queue(dev->cmd_cmdq, &cfg, name, direction != DMA_FROM_DEVICE) != 0) {
 +        pr_err("apple-bce: SQ registration failed (%i)", qid);
 +        bce_free_sq(dev, sq);
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6,18,0)
 +        ida_simple_remove(&dev->queue_ida, (uint) qid);
++#else
++        ida_free(&dev->queue_ida, (uint) qid);
++#endif
 +        return NULL;
 +    }
 +    spin_lock(&dev->queues_lock);
@@ -3237,7 +3256,11 @@ index 000000000..bc9cd3bc6
 +    spin_lock(&dev->queues_lock);
 +    dev->queues[cq->qid] = NULL;
 +    spin_unlock(&dev->queues_lock);
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6,18,0)
 +    ida_simple_remove(&dev->queue_ida, (uint) cq->qid);
++#else
++    ida_free(&dev->queue_ida, (uint) cq->qid);
++#endif
 +    bce_free_cq(dev, cq);
 +}
 +
@@ -3248,7 +3271,11 @@ index 000000000..bc9cd3bc6
 +    spin_lock(&dev->queues_lock);
 +    dev->queues[sq->qid] = NULL;
 +    spin_unlock(&dev->queues_lock);
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6,18,0)
 +    ida_simple_remove(&dev->queue_ida, (uint) sq->qid);
++#else
++    ida_free(&dev->queue_ida, (uint) sq->qid);
++#endif
 +    bce_free_sq(dev, sq);
 +}
 \ No newline at end of file
@@ -5858,5 +5885,5 @@ index 000000000..6c2e22622
 +
 +#endif //BCE_VHCI_H
 -- 
-2.49.0
+2.50.1
 
