@@ -34,7 +34,7 @@ index 61679fd58..8a17c50d7 100644
 +obj-$(CONFIG_APFS_FS)		+= apfs/
  obj-$(CONFIG_GFS2_FS)           += gfs2/
  obj-$(CONFIG_F2FS_FS)		+= f2fs/
- obj-$(CONFIG_BCACHEFS_FS)	+= bcachefs/
+ obj-$(CONFIG_CEPH_FS)		+= ceph/
 diff --git a/fs/apfs/Kconfig b/fs/apfs/Kconfig
 new file mode 100644
 index 000000000..99caf203a
