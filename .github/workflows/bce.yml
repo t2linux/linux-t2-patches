@@ -37,6 +37,37 @@ jobs:
           git commit -m "Add apple-bce driver"
           git format-patch -1 HEAD
           mv ./0001-Add-apple-bce-driver.patch ../1001-Add-apple-bce-driver.patch
+          cd ${{ github.workspace }}/linux-stable/drivers/staging
+          sed -i '$i source "drivers/staging/apple-bce/Kconfig"' Kconfig
+          sed -i '$i\\' Kconfig
+          echo 'obj-$(CONFIG_APPLE_BCE)		+= apple-bce/' >> Makefile
+          cd apple-bce
+          cat <<EOF >Kconfig
+          config APPLE_BCE
+                    tristate "Apple BCE driver (VHCI and Audio support)"
+                    default m
+                    depends on X86
+                    select SOUND
+                    select SND
+                    select SND_PCM
+                    select SND_JACK
+                    help
+                              VHCI and audio support on Apple MacBooks with the T2 Chip.
+                              This driver is divided in three components:
+                                        - BCE (Buffer Copy Engine): which establishes a basic communication
+                                          channel with the T2 chip. This component is required by the other two:
+                                        - VHCI (Virtual Host Controller Interface): Access to keyboard, mouse
+                                          and other system devices depend on this virtual USB host controller
+                                        - Audio: a driver for the T2 audio interface.
+
+                              If "M" is selected, the module will be called apple-bce.'
+          EOF
+          sed -i 's/obj-m += $(modname).o/obj-$(CONFIG_APPLE_BCE) += $(modname).o/g' Makefile
+          cd ${{ github.workspace }}/linux-stable/
+          git add .
+          git commit -m "Put apple-bce in drivers/staging"
+          git format-patch -1 HEAD
+          mv ./0001-Put-apple-bce-in-drivers-staging.patch ../1002-Put-apple-bce-in-drivers-staging.patch
  
       - name: Cleanup and update the repo
         run: |
@@ -86,6 +117,37 @@ jobs:
           git commit -m "Add apple-bce driver"
           git format-patch -1 HEAD
           mv ./0001-Add-apple-bce-driver.patch ../1001-Add-apple-bce-driver.patch
+          cd ${{ github.workspace }}/linux-stable/drivers/staging
+          sed -i '$i source "drivers/staging/apple-bce/Kconfig"' Kconfig
+          sed -i '$i\\' Kconfig
+          echo 'obj-$(CONFIG_APPLE_BCE)		+= apple-bce/' >> Makefile
+          cd apple-bce
+          cat <<EOF >Kconfig
+          config APPLE_BCE
+                    tristate "Apple BCE driver (VHCI and Audio support)"
+                    default m
+                    depends on X86
+                    select SOUND
+                    select SND
+                    select SND_PCM
+                    select SND_JACK
+                    help
+                              VHCI and audio support on Apple MacBooks with the T2 Chip.
+                              This driver is divided in three components:
+                                        - BCE (Buffer Copy Engine): which establishes a basic communication
+                                          channel with the T2 chip. This component is required by the other two:
+                                        - VHCI (Virtual Host Controller Interface): Access to keyboard, mouse
+                                          and other system devices depend on this virtual USB host controller
+                                        - Audio: a driver for the T2 audio interface.
+
+                              If "M" is selected, the module will be called apple-bce.'
+          EOF
+          sed -i 's/obj-m += $(modname).o/obj-$(CONFIG_APPLE_BCE) += $(modname).o/g' Makefile
+          cd ${{ github.workspace }}/linux-stable/
+          git add .
+          git commit -m "Put apple-bce in drivers/staging"
+          git format-patch -1 HEAD
+          mv ./0001-Put-apple-bce-in-drivers-staging.patch ../1002-Put-apple-bce-in-drivers-staging.patch
  
       - name: Cleanup and update the repo
         run: |
