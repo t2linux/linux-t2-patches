@@ -1,7 +1,7 @@
-From 329925025587936b61a675a3d1d7ec63b2a06c19 Mon Sep 17 00:00:00 2001
+From 3a9c4f31c4fbdb70b93fb83a03e01e2f9c7c5d74 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Thu, 26 Feb 2026 09:31:00 +0000
+Date: Thu, 26 Feb 2026 09:40:52 +0000
 Subject: [PATCH] Put apple-bce in drivers/staging
 
 ---
@@ -34,7 +34,7 @@ index f5b8876aa..cf24b596c 100644
 +obj-$(CONFIG_APPLE_BCE)		+= apple-bce/
 diff --git a/drivers/staging/apple-bce/Kconfig b/drivers/staging/apple-bce/Kconfig
 new file mode 100644
-index 000000000..c7962ae5d
+index 000000000..939f7b877
 --- /dev/null
 +++ b/drivers/staging/apple-bce/Kconfig
 @@ -0,0 +1,18 @@
@@ -47,15 +47,15 @@ index 000000000..c7962ae5d
 +          select SND_PCM
 +          select SND_JACK
 +          help
-+                    VHCI and audio support on Apple MacBooks with the T2 Chip.
-+                    This driver is divided in three components:
-+                              - BCE (Buffer Copy Engine): which establishes a basic communication
-+                                channel with the T2 chip. This component is required by the other two:
-+                              - VHCI (Virtual Host Controller Interface): Access to keyboard, mouse
-+                                and other system devices depend on this virtual USB host controller
-+                              - Audio: a driver for the T2 audio interface.
++            VHCI and audio support on Apple MacBooks with the T2 Chip.
++            This driver is divided in three components:
++              - BCE (Buffer Copy Engine): which establishes a basic communication
++                channel with the T2 chip. This component is required by the other two:
++              - VHCI (Virtual Host Controller Interface): Access to keyboard, mouse
++                and other system devices depend on this virtual USB host controller
++              - Audio: a driver for the T2 audio interface.
 +
-+                    If "M" is selected, the module will be called apple-bce.'
++            If "M" is selected, the module will be called apple-bce.
 diff --git a/drivers/staging/apple-bce/Makefile b/drivers/staging/apple-bce/Makefile
 index a6a656f06..8cfbd3f64 100644
 --- a/drivers/staging/apple-bce/Makefile
