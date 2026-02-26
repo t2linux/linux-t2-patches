@@ -1,0 +1,107 @@
+---
+name: apple-bce update
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_message:
+        description: 'Commit message'
+        required: false
+
+jobs:
+  Publish-Mainline:
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: 'Checkout Repo'
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Get the latest driver
+        id: publish
+        run: |
+          source ${{ github.workspace }}/version
+          echo "kver=${KVER}" >> $GITHUB_ENV
+
+          git clone --depth 1 --single-branch --branch "v${KVER}" https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git
+          git clone --depth 1 https://github.com/t2linux/apple-bce-drv.git ${{ github.workspace }}/linux-stable/drivers/staging/apple-bce
+          rm -rf ${{ github.workspace }}/linux-stable/drivers/staging/apple-bce/.git
+          rm ${{ github.workspace }}/linux-stable/drivers/staging/apple-bce/.gitignore
+          rm ${{ github.workspace }}/linux-stable/drivers/staging/apple-bce/README.md
+          cd ${{ github.workspace }}/linux-stable/
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add .
+          git commit -m "Add apple-bce driver"
+          git format-patch -1 HEAD
+          mv ./0001-Add-apple-bce-driver.patch ../1001-Add-apple-bce-driver.patch
+ 
+      - name: Cleanup and update the repo
+        run: |
+          cd ${{ github.workspace }}
+          rm -r linux-stable
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add .
+          MSG="${{ github.event.inputs.commit_message }}"
+          if [ -z "$MSG" ]; then
+          MSG="Update apple-bce for kernel v${{ env.kver }}"
+          fi
+          git commit -m "${MSG}"
+ 
+      - name: Push changes to the repo
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.ref }}
+ 
+  Publish-LTS:
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: 'Checkout Repo'
+        uses: actions/checkout@v6
+        with:
+          ref: 6.12
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Get the latest driver
+        id: publish
+        run: |
+          source ${{ github.workspace }}/version
+          echo "kver=${KVER}" >> $GITHUB_ENV
+
+          git clone --depth 1 --single-branch --branch "v${KVER}" https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git
+          git clone --depth 1 https://github.com/t2linux/apple-bce-drv.git ${{ github.workspace }}/linux-stable/drivers/staging/apple-bce
+          rm -rf ${{ github.workspace }}/linux-stable/drivers/staging/apple-bce/.git
+          rm ${{ github.workspace }}/linux-stable/drivers/staging/apple-bce/.gitignore
+          rm ${{ github.workspace }}/linux-stable/drivers/staging/apple-bce/README.md
+          cd ${{ github.workspace }}/linux-stable/
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add .
+          git commit -m "Add apple-bce driver"
+          git format-patch -1 HEAD
+          mv ./0001-Add-apple-bce-driver.patch ../1001-Add-apple-bce-driver.patch
+ 
+      - name: Cleanup and update the repo
+        run: |
+          cd ${{ github.workspace }}
+          rm -r linux-stable
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add .
+          MSG="${{ github.event.inputs.commit_message }}"
+          if [ -z "$MSG" ]; then
+          MSG="Update apple-bce for kernel v${{ env.kver }}"
+          fi
+          git commit -m "${MSG}"
+ 
+      - name: Push changes to the repo
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: 6.12
