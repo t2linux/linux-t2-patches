@@ -52,15 +52,15 @@ jobs:
                     select SND_PCM
                     select SND_JACK
                     help
-                              VHCI and audio support on Apple MacBooks with the T2 Chip.
-                              This driver is divided in three components:
-                                        - BCE (Buffer Copy Engine): which establishes a basic communication
-                                          channel with the T2 chip. This component is required by the other two:
-                                        - VHCI (Virtual Host Controller Interface): Access to keyboard, mouse
-                                          and other system devices depend on this virtual USB host controller
-                                        - Audio: a driver for the T2 audio interface.
+                      VHCI and audio support on Apple MacBooks with the T2 Chip.
+                      This driver is divided in three components:
+                        - BCE (Buffer Copy Engine): which establishes a basic communication
+                          channel with the T2 chip. This component is required by the other two:
+                        - VHCI (Virtual Host Controller Interface): Access to keyboard, mouse
+                          and other system devices depend on this virtual USB host controller
+                        - Audio: a driver for the T2 audio interface.
 
-                              If "M" is selected, the module will be called apple-bce.
+                      If "M" is selected, the module will be called apple-bce.
           EOF
           sed -i 's/obj-m += $(modname).o/obj-$(CONFIG_APPLE_BCE) += $(modname).o/g' Makefile
           cd ${{ github.workspace }}/linux-stable/
@@ -132,15 +132,15 @@ jobs:
                     select SND_PCM
                     select SND_JACK
                     help
-                              VHCI and audio support on Apple MacBooks with the T2 Chip.
-                              This driver is divided in three components:
-                                        - BCE (Buffer Copy Engine): which establishes a basic communication
-                                          channel with the T2 chip. This component is required by the other two:
-                                        - VHCI (Virtual Host Controller Interface): Access to keyboard, mouse
-                                          and other system devices depend on this virtual USB host controller
-                                        - Audio: a driver for the T2 audio interface.
+                      VHCI and audio support on Apple MacBooks with the T2 Chip.
+                      This driver is divided in three components:
+                        - BCE (Buffer Copy Engine): which establishes a basic communication
+                          channel with the T2 chip. This component is required by the other two:
+                        - VHCI (Virtual Host Controller Interface): Access to keyboard, mouse
+                          and other system devices depend on this virtual USB host controller
+                        - Audio: a driver for the T2 audio interface.
 
-                              If "M" is selected, the module will be called apple-bce.
+                      If "M" is selected, the module will be called apple-bce.
           EOF
           sed -i 's/obj-m += $(modname).o/obj-$(CONFIG_APPLE_BCE) += $(modname).o/g' Makefile
           cd ${{ github.workspace }}/linux-stable/
