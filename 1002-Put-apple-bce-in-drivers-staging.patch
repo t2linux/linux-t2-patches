@@ -1,7 +1,7 @@
-From fadb2ac8daab306e0899975b12473262bc819e7b Mon Sep 17 00:00:00 2001
+From 564d7c0b055a97ac68bbc933f48067fe5e372626 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Thu, 26 Feb 2026 09:30:55 +0000
+Date: Thu, 26 Feb 2026 09:34:39 +0000
 Subject: [PATCH] Put apple-bce in drivers/staging
 
 ---
@@ -34,7 +34,7 @@ index 2e18fe5b7..8cf5c43e0 100644
 +obj-$(CONFIG_APPLE_BCE)		+= apple-bce/
 diff --git a/drivers/staging/apple-bce/Kconfig b/drivers/staging/apple-bce/Kconfig
 new file mode 100644
-index 000000000..c7962ae5d
+index 000000000..3b13bbc63
 --- /dev/null
 +++ b/drivers/staging/apple-bce/Kconfig
 @@ -0,0 +1,18 @@
@@ -55,7 +55,7 @@ index 000000000..c7962ae5d
 +                                and other system devices depend on this virtual USB host controller
 +                              - Audio: a driver for the T2 audio interface.
 +
-+                    If "M" is selected, the module will be called apple-bce.'
++                    If "M" is selected, the module will be called apple-bce.
 diff --git a/drivers/staging/apple-bce/Makefile b/drivers/staging/apple-bce/Makefile
 index a6a656f06..8cfbd3f64 100644
 --- a/drivers/staging/apple-bce/Makefile
