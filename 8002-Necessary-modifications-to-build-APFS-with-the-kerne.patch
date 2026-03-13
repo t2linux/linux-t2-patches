@@ -77,9 +77,9 @@ index a2dbed980..bc7bc8cc5 100644
  	  spaceman.o super.o symlink.o transaction.o unicode.o xattr.o xfield.o
 -
 -# If you want mounts to be writable by default, run the build as:
--#   make CONFIG=-DCONFIG_APFS_RW_ALWAYS
+-#   make APFS_CONFIG=-DCONFIG_APFS_RW_ALWAYS
 -# This is risky and not generally recommended.
--ccflags-y += $(CONFIG)
+-ccflags-y += $(APFS_CONFIG)
 -
 -default:
 -	./genver.sh
