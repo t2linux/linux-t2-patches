@@ -1,12 +1,12 @@
-From af7ed620db5f5f3088cf407858821855bf018084 Mon Sep 17 00:00:00 2001
+From 982f7bdd97617ca7bed19e35712a81b6d88278e0 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Tue, 17 Mar 2026 16:24:16 +0000
+Date: Sat, 11 Apr 2026 19:12:17 +0000
 Subject: [PATCH] Add APFS driver
 
 ---
  fs/apfs/Makefile                  |   28 +
- fs/apfs/apfs.h                    | 1348 ++++++++++++
+ fs/apfs/apfs.h                    | 1346 ++++++++++++
  fs/apfs/apfs_raw.h                | 1570 ++++++++++++++
  fs/apfs/btree.c                   | 1174 +++++++++++
  fs/apfs/compress.c                |  478 +++++
@@ -31,7 +31,7 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/object.c                  |  315 +++
  fs/apfs/snapshot.c                |  687 +++++++
  fs/apfs/spaceman.c                | 1479 ++++++++++++++
- fs/apfs/super.c                   | 2282 +++++++++++++++++++++
+ fs/apfs/super.c                   | 2190 ++++++++++++++++++++
  fs/apfs/symlink.c                 |   80 +
  fs/apfs/transaction.c             | 1034 ++++++++++
  fs/apfs/unicode.c                 | 3156 +++++++++++++++++++++++++++++
@@ -39,7 +39,7 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/version.h                 |    1 +
  fs/apfs/xattr.c                   |  914 +++++++++
  fs/apfs/xfield.c                  |  171 ++
- 34 files changed, 27130 insertions(+)
+ 34 files changed, 27036 insertions(+)
  create mode 100644 fs/apfs/Makefile
  create mode 100644 fs/apfs/apfs.h
  create mode 100644 fs/apfs/apfs_raw.h
@@ -111,10 +111,10 @@ index 000000000..2bafc31f1
 +	make -C $(KERNEL_DIR) M=$(PWD) clean
 diff --git a/fs/apfs/apfs.h b/fs/apfs/apfs.h
 new file mode 100644
-index 000000000..27fb215ed
+index 000000000..0bbf98df3
 --- /dev/null
 +++ b/fs/apfs/apfs.h
-@@ -0,0 +1,1348 @@
+@@ -0,0 +1,1346 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -497,9 +497,7 @@ index 000000000..27fb215ed
 +	unsigned int s_vol_nr;		/* Index of the volume in the sb list */
 +	kuid_t s_uid;			/* uid to override on-disk uid */
 +	kgid_t s_gid;			/* gid to override on-disk gid */
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)
 +	unsigned int s_mount_opt;
-+#endif
 +
 +	struct apfs_crypto_state_val *s_dflt_pfk; /* default per-file key */
 +
@@ -19698,10 +19696,10 @@ index 000000000..31bf439e9
 +}
 diff --git a/fs/apfs/super.c b/fs/apfs/super.c
 new file mode 100644
-index 000000000..9cf63e85d
+index 000000000..0f8709ba7
 --- /dev/null
 +++ b/fs/apfs/super.c
-@@ -0,0 +1,2282 @@
+@@ -0,0 +1,2190 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -20959,37 +20957,33 @@ index 000000000..9cf63e85d
 +/*
 + * Many of the parse_options() functions in other file systems return 0
 + * on error. This one returns an error code, and 0 on success.
++ *
++ * Note that even on failure, the caller is responsible for freeing all
++ * superblock fields.
 + */
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)
-+static int parse_options(struct fs_context *fc, char *options)
++static int parse_options(struct apfs_sb_info *sbi, char *options)
 +{
-+    struct apfs_sb_info *sbi = fc->s_fs_info;
-+#else
-+static int parse_options(struct super_block *sb, char *options)
-+{
-+	struct apfs_sb_info *sbi = APFS_SB(sb);
-+#endif
 +	char *p;
 +	substring_t args[MAX_OPT_ARGS];
 +	int option;
 +	int err = 0;
-+	unsigned int nx_flags;
 +
 +	/* Set default values before parsing */
-+	nx_flags = 0;
++	sbi->s_vol_nr = 0;
++	sbi->s_snap_name = NULL;
++	sbi->s_tier2_path = NULL;
++	sbi->s_mount_opt = 0;
 +
 +#ifdef CONFIG_APFS_RW_ALWAYS
 +	/* Still risky, but some packagers want writable mounts by default */
-+	nx_flags |= APFS_READWRITE;
++	sbi->s_mount_opt |= APFS_READWRITE;
 +#endif
 +
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)
 +	sbi->s_uid = INVALID_UID;
 +	sbi->s_gid = INVALID_GID;
-+#endif
 +
 +	if (!options)
-+		goto out;
++		return 0;
 +
 +	while ((p = strsep(&options, ",")) != NULL) {
 +		int token;
@@ -21003,14 +20997,14 @@ index 000000000..9cf63e85d
 +			 * Write support is not safe yet, so keep it disabled
 +			 * unless the user requests it explicitly.
 +			 */
-+			nx_flags |= APFS_READWRITE;
++			sbi->s_mount_opt |= APFS_READWRITE;
 +			break;
 +		case Opt_cknodes:
 +			/*
 +			 * Right now, node checksums are too costly to enable
 +			 * by default.  TODO: try to improve this.
 +			 */
-+			nx_flags |= APFS_CHECK_NODES;
++			sbi->s_mount_opt |= APFS_CHECK_NODES;
 +			break;
 +		case Opt_uid:
 +			err = match_int(&args[0], &option);
@@ -21033,26 +21027,29 @@ index 000000000..9cf63e85d
 +			}
 +			break;
 +		case Opt_vol:
++			err = match_int(&args[0], &sbi->s_vol_nr);
++			if (err) {
++				apfs_err(NULL, "invalid volume number");
++				return -EINVAL;
++			}
++			break;
 +		case Opt_snap:
++			kfree(sbi->s_snap_name);
++			sbi->s_snap_name = match_strdup(&args[0]);
++			if (!sbi->s_snap_name)
++				return -ENOMEM;
++			break;
 +		case Opt_tier2:
-+			/* Already read early on mount */
++			kfree(sbi->s_tier2_path);
++			sbi->s_tier2_path = match_strdup(&args[0]);
++			if (!sbi->s_tier2_path)
++				return -ENOMEM;
 +			break;
 +		default:
-+			/*
-+			 * We should have already checked the mount options in
-+			 * apfs_preparse_options(), so this is a bug.
-+			 */
-+			apfs_alert(NULL, "invalid mount option %s", p);
++			apfs_warn(NULL, "invalid mount option %s", p);
 +			return -EINVAL;
 +		}
 +	}
-+
-+out:
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)
-+	sbi->s_mount_opt = nx_flags;
-+#else
-+	parse_options_set_flags(sb, sbi, nx_flags);
-+#endif
 +	return 0;
 +}
 +
@@ -21284,16 +21281,8 @@ index 000000000..9cf63e85d
 +	err = apfs_setup_bdi(sb);
 +	if (err)
 +		goto failed_volume;
-+
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)
 +	parse_options_set_flags(sb, sbi, sbi->s_mount_opt);
-+#else
-+	sbi->s_uid = INVALID_UID;
-+	sbi->s_gid = INVALID_GID;
-+	err = parse_options(sb, data);
-+	if (err)
-+		goto failed_volume;
-+#endif
++
 +	err = apfs_map_volume_super(sb, false /* write */);
 +	if (err)
 +		goto failed_volume;
@@ -21605,81 +21594,6 @@ index 000000000..9cf63e85d
 +	return ret;
 +}
 +
-+/**
-+ * apfs_preparse_options - Parse the options used to identify a superblock
-+ * @sbi:	superblock info
-+ * @options:	options string to parse
-+ *
-+ * Returns 0 on success, or a negative error code in case of failure. Even on
-+ * failure, the caller is responsible for freeing all superblock fields.
-+ */
-+static int apfs_preparse_options(struct apfs_sb_info *sbi, char *options)
-+{
-+	char *tofree = NULL;
-+	char *p;
-+	substring_t args[MAX_OPT_ARGS];
-+	int err = 0;
-+
-+	/* Set default values before parsing */
-+	sbi->s_vol_nr = 0;
-+	sbi->s_snap_name = NULL;
-+	sbi->s_tier2_path = NULL;
-+
-+	if (!options)
-+		return 0;
-+
-+	/* Later parse_options() will need the unmodified options string */
-+	options = kstrdup(options, GFP_KERNEL);
-+	if (!options)
-+		return -ENOMEM;
-+	tofree = options;
-+
-+	while ((p = strsep(&options, ",")) != NULL) {
-+		int token;
-+
-+		if (!*p)
-+			continue;
-+		token = match_token(p, tokens, args);
-+		switch (token) {
-+		case Opt_vol:
-+			err = match_int(&args[0], &sbi->s_vol_nr);
-+			if (err)
-+				goto out;
-+			break;
-+		case Opt_snap:
-+			kfree(sbi->s_snap_name);
-+			sbi->s_snap_name = match_strdup(&args[0]);
-+			if (!sbi->s_snap_name) {
-+				err = -ENOMEM;
-+				goto out;
-+			}
-+			break;
-+		case Opt_tier2:
-+			kfree(sbi->s_tier2_path);
-+			sbi->s_tier2_path = match_strdup(&args[0]);
-+			if (!sbi->s_tier2_path) {
-+				err = -ENOMEM;
-+				goto out;
-+			}
-+			break;
-+		case Opt_readwrite:
-+		case Opt_cknodes:
-+		case Opt_uid:
-+		case Opt_gid:
-+			/* Not needed for sget(), will be read later */
-+			break;
-+		default:
-+			apfs_warn(NULL, "invalid mount option %s", p);
-+			err = -EINVAL;
-+			goto out;
-+		}
-+	}
-+	err = 0;
-+out:
-+	kfree(tofree);
-+	return err;
-+}
-+
 +/*
 + * This function is a copy of mount_bdev() that allows multiple mounts.
 + */
@@ -21712,9 +21626,8 @@ index 000000000..9cf63e85d
 +	sbi = kzalloc(sizeof(*sbi), GFP_KERNEL);
 +	if (!sbi)
 +		return ERR_PTR(-ENOMEM);
-+
 +	/* Set up the fields that sget() will need to id the superblock */
-+	error = apfs_preparse_options(sbi, data);
++	error = parse_options(sbi, data);
 +	if (error)
 +		goto out_free_sbi;
 +#endif
@@ -21823,9 +21736,7 @@ index 000000000..9cf63e85d
 +	apfs_free_main_super(sbi);
 +#endif
 +out_free_sbi:
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)
-+	return error;
-+#else
++#if LINUX_VERSION_CODE < KERNEL_VERSION(7, 0, 0)
 +	kfree(sbi->s_snap_name);
 +	kfree(sbi->s_tier2_path);
 +	kfree(sbi);
@@ -21916,19 +21827,14 @@ index 000000000..9cf63e85d
 +
 +static int apfs_parse_monolithic(struct fs_context *fc, void *data)
 +{
-+	struct apfs_sb_info *sbi = fc->s_fs_info;
-+	int result = apfs_preparse_options(sbi, data);
-+
-+	if (result)
-+		return result;
-+	return parse_options(fc, data);
++	return parse_options(fc->s_fs_info, data);
 +}
 +
 +static const struct fs_context_operations apfs_context_ops = {
-+	.get_tree    = apfs_get_tree,
-+	.reconfigure = apfs_reconfigure,
-+	.free        = apfs_free_fc,
-+	.parse_monolithic = apfs_parse_monolithic,
++	.get_tree		= apfs_get_tree,
++	.reconfigure		= apfs_reconfigure,
++	.free			= apfs_free_fc,
++	.parse_monolithic	= apfs_parse_monolithic,
 +};
 +
 +static int apfs_init_fs_context(struct fs_context *fc)
@@ -26307,11 +26213,11 @@ index 000000000..e3b7edc51
 +#endif	/* _APFS_UNICODE_H */
 diff --git a/fs/apfs/version.h b/fs/apfs/version.h
 new file mode 100644
-index 000000000..e16b23c10
+index 000000000..8fe4f14f1
 --- /dev/null
 +++ b/fs/apfs/version.h
 @@ -0,0 +1 @@
-+#define GIT_COMMIT	""
++#define GIT_COMMIT	"v0.3.19"
 diff --git a/fs/apfs/xattr.c b/fs/apfs/xattr.c
 new file mode 100644
 index 000000000..c21b8e469
