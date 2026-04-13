@@ -1,7 +1,7 @@
-From 3a9c4f31c4fbdb70b93fb83a03e01e2f9c7c5d74 Mon Sep 17 00:00:00 2001
+From 9c232af961efa65eb6cd311fbb41932a8a8734d8 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Thu, 26 Feb 2026 09:40:52 +0000
+Date: Mon, 13 Apr 2026 18:57:37 +0000
 Subject: [PATCH] Put apple-bce in drivers/staging
 
 ---
