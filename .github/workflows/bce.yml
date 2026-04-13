@@ -10,6 +10,9 @@ on:
       fork:
         description: 'Link to any fork if needed'
         required: false
+      branch:
+        description: 'Any specific branch to be cloned'
+        required: false
 jobs:
   Publish-Mainline:
     runs-on: ubuntu-latest
@@ -31,8 +34,13 @@ jobs:
           if [ -z "$FORK" ]; then
           FORK='https://github.com/t2linux/apple-bce-drv.git'
           fi
+          BRANCH="${{ github.event.inputs.branch }}"
           git clone --depth 1 --single-branch --branch "v${KVER}" https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git
+          if [ -z "$BRANCH" ]; then
           git clone --depth 1 $FORK ${{ github.workspace }}/linux-stable/drivers/staging/apple-bce
+          else
+          git clone --depth 1 --branch $BRANCH $FORK ${{ github.workspace }}/linux-stable/drivers/staging/apple-bce
+          fi
           rm -rf ${{ github.workspace }}/linux-stable/drivers/staging/apple-bce/.git
           rm ${{ github.workspace }}/linux-stable/drivers/staging/apple-bce/.gitignore
           rm ${{ github.workspace }}/linux-stable/drivers/staging/apple-bce/README.md
@@ -115,8 +123,13 @@ jobs:
           if [ -z "$FORK" ]; then
           FORK='https://github.com/t2linux/apple-bce-drv.git'
           fi
+          BRANCH="${{ github.event.inputs.branch }}"
           git clone --depth 1 --single-branch --branch "v${KVER}" https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git
+          if [ -z "$BRANCH" ]; then
           git clone --depth 1 $FORK ${{ github.workspace }}/linux-stable/drivers/staging/apple-bce
+          else
+          git clone --depth 1 --branch $BRANCH $FORK ${{ github.workspace }}/linux-stable/drivers/staging/apple-bce
+          fi
           rm -rf ${{ github.workspace }}/linux-stable/drivers/staging/apple-bce/.git
           rm ${{ github.workspace }}/linux-stable/drivers/staging/apple-bce/.gitignore
           rm ${{ github.workspace }}/linux-stable/drivers/staging/apple-bce/README.md
