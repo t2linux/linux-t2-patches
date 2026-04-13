@@ -1,7 +1,7 @@
-From 21d299a9e8c7f14df76f72b45e0034f1f42c726b Mon Sep 17 00:00:00 2001
+From 5c2dc78ad603a940da8e8069c803aca1c7122310 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Mon, 13 Apr 2026 19:05:04 +0000
+Date: Mon, 13 Apr 2026 20:19:25 +0000
 Subject: [PATCH] Put apple-bce in drivers/staging
 
 ---
@@ -13,24 +13,24 @@ Subject: [PATCH] Put apple-bce in drivers/staging
  create mode 100644 drivers/staging/apple-bce/Kconfig
 
 diff --git a/drivers/staging/Kconfig b/drivers/staging/Kconfig
-index 2f92cd698..cefe34038 100644
+index 075e775d3..e1cc0d60e 100644
 --- a/drivers/staging/Kconfig
 +++ b/drivers/staging/Kconfig
-@@ -48,4 +48,6 @@ source "drivers/staging/axis-fifo/Kconfig"
+@@ -50,4 +50,6 @@ source "drivers/staging/vme_user/Kconfig"
  
- source "drivers/staging/vme_user/Kconfig"
+ source "drivers/staging/gpib/Kconfig"
  
 +source "drivers/staging/apple-bce/Kconfig"
 +
  endif # STAGING
 diff --git a/drivers/staging/Makefile b/drivers/staging/Makefile
-index f5b8876aa..cf24b596c 100644
+index e681e4035..4045c588b 100644
 --- a/drivers/staging/Makefile
 +++ b/drivers/staging/Makefile
-@@ -13,3 +13,4 @@ obj-$(CONFIG_MOST)		+= most/
- obj-$(CONFIG_GREYBUS)		+= greybus/
+@@ -14,3 +14,4 @@ obj-$(CONFIG_GREYBUS)		+= greybus/
  obj-$(CONFIG_BCM2835_VCHIQ)	+= vc04_services/
  obj-$(CONFIG_XIL_AXIS_FIFO)	+= axis-fifo/
+ obj-$(CONFIG_GPIB)	 	+= gpib/
 +obj-$(CONFIG_APPLE_BCE)		+= apple-bce/
 diff --git a/drivers/staging/apple-bce/Kconfig b/drivers/staging/apple-bce/Kconfig
 new file mode 100644
