@@ -1,7 +1,7 @@
-From 20e32bfd3b36778466e5ba51a799b2a19e966430 Mon Sep 17 00:00:00 2001
+From baf4325289f014249ce52c6abb82864309b8399f Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Thu, 26 Feb 2026 09:41:04 +0000
+Date: Mon, 13 Apr 2026 18:58:27 +0000
 Subject: [PATCH] Add apple-bce driver
 
 ---
