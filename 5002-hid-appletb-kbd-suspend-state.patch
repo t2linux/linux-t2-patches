@@ -1,10 +1,11 @@
 From: André Eikmeyer <andre.eikmeyer@gmail.com>
-Subject: [PATCH 2/2] HID: appletb: fix backlight behavior on suspend
+Subject: [PATCH 2/2] HID: appletb-kbd: preserve mode state across suspend
 
-Improve Touch Bar keyboard-mode/backlight behavior around suspend by
-preserving and restoring state during power transitions. This keeps
-keyboard backlight behavior consistent after resume and avoids
-unexpected off/dim states.
+Improve Touch Bar keyboard-mode behavior around suspend by preserving
+driver state across power transitions and avoiding redundant mode
+submissions. This keeps the keyboard-mode side of the appletb driver
+consistent after resume and avoids unexpected off/dim states caused by
+mode churn.
 
 ---
 diff --git a/drivers/hid/hid-appletb-kbd.c b/drivers/hid/hid-appletb-kbd.c
