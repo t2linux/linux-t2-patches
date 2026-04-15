@@ -4,59 +4,6 @@ From: "github-actions[bot]"
 Date: Mon, 13 Apr 2026 20:19:28 +0000
 Subject: [PATCH] Add apple-bce driver
 
----
- drivers/staging/apple-bce/Makefile            |  28 +
- drivers/staging/apple-bce/apple_bce.c         | 494 ++++++++++
- drivers/staging/apple-bce/apple_bce.h         |  41 +
- drivers/staging/apple-bce/audio/audio.c       | 711 +++++++++++++
- drivers/staging/apple-bce/audio/audio.h       | 125 +++
- drivers/staging/apple-bce/audio/description.h |  42 +
- drivers/staging/apple-bce/audio/pcm.c         | 308 ++++++
- drivers/staging/apple-bce/audio/pcm.h         |  16 +
- drivers/staging/apple-bce/audio/protocol.c    | 347 +++++++
- drivers/staging/apple-bce/audio/protocol.h    | 147 +++
- .../staging/apple-bce/audio/protocol_bce.c    | 226 +++++
- .../staging/apple-bce/audio/protocol_bce.h    |  72 ++
- drivers/staging/apple-bce/mailbox.c           | 183 ++++
- drivers/staging/apple-bce/mailbox.h           |  55 ++
- drivers/staging/apple-bce/queue.c             | 415 ++++++++
- drivers/staging/apple-bce/queue.h             | 177 ++++
- drivers/staging/apple-bce/queue_dma.c         | 220 +++++
- drivers/staging/apple-bce/queue_dma.h         |  50 +
- drivers/staging/apple-bce/vhci/command.h      | 205 ++++
- drivers/staging/apple-bce/vhci/queue.c        | 268 +++++
- drivers/staging/apple-bce/vhci/queue.h        |  76 ++
- drivers/staging/apple-bce/vhci/transfer.c     | 697 +++++++++++++
- drivers/staging/apple-bce/vhci/transfer.h     |  75 ++
- drivers/staging/apple-bce/vhci/vhci.c         | 931 ++++++++++++++++++
- drivers/staging/apple-bce/vhci/vhci.h         |  58 ++
- 25 files changed, 5967 insertions(+)
- create mode 100644 drivers/staging/apple-bce/Makefile
- create mode 100644 drivers/staging/apple-bce/apple_bce.c
- create mode 100644 drivers/staging/apple-bce/apple_bce.h
- create mode 100644 drivers/staging/apple-bce/audio/audio.c
- create mode 100644 drivers/staging/apple-bce/audio/audio.h
- create mode 100644 drivers/staging/apple-bce/audio/description.h
- create mode 100644 drivers/staging/apple-bce/audio/pcm.c
- create mode 100644 drivers/staging/apple-bce/audio/pcm.h
- create mode 100644 drivers/staging/apple-bce/audio/protocol.c
- create mode 100644 drivers/staging/apple-bce/audio/protocol.h
- create mode 100644 drivers/staging/apple-bce/audio/protocol_bce.c
- create mode 100644 drivers/staging/apple-bce/audio/protocol_bce.h
- create mode 100644 drivers/staging/apple-bce/mailbox.c
- create mode 100644 drivers/staging/apple-bce/mailbox.h
- create mode 100644 drivers/staging/apple-bce/queue.c
- create mode 100644 drivers/staging/apple-bce/queue.h
- create mode 100644 drivers/staging/apple-bce/queue_dma.c
- create mode 100644 drivers/staging/apple-bce/queue_dma.h
- create mode 100644 drivers/staging/apple-bce/vhci/command.h
- create mode 100644 drivers/staging/apple-bce/vhci/queue.c
- create mode 100644 drivers/staging/apple-bce/vhci/queue.h
- create mode 100644 drivers/staging/apple-bce/vhci/transfer.c
- create mode 100644 drivers/staging/apple-bce/vhci/transfer.h
- create mode 100644 drivers/staging/apple-bce/vhci/vhci.c
- create mode 100644 drivers/staging/apple-bce/vhci/vhci.h
-
 diff --git a/drivers/staging/apple-bce/Makefile b/drivers/staging/apple-bce/Makefile
 new file mode 100644
 index 000000000..a6a656f06
@@ -93,10 +40,10 @@ index 000000000..a6a656f06
 +	$(MAKE) -C $(KDIR) M=$(PWD) modules_install
 diff --git a/drivers/staging/apple-bce/apple_bce.c b/drivers/staging/apple-bce/apple_bce.c
 new file mode 100644
-index 000000000..28c1ff7e0
+index 000000000..039334746
 --- /dev/null
 +++ b/drivers/staging/apple-bce/apple_bce.c
-@@ -0,0 +1,494 @@
+@@ -0,0 +1,500 @@
 +#include "apple_bce.h"
 +#include <linux/module.h>
 +#include <linux/crc32.h>
@@ -292,12 +239,14 @@ index 000000000..28c1ff7e0
 +static irqreturn_t bce_handle_dma_irq(int irq, void *dev)
 +{
 +    int i;
++    size_t ce = 0;
 +    struct apple_bce_device *bce = pci_get_drvdata(dev);
 +    spin_lock(&bce->queues_lock);
 +    for (i = 0; i < BCE_MAX_QUEUE_COUNT; i++)
 +        if (bce->queues[i] && bce->queues[i]->type == BCE_QUEUE_CQ)
-+            bce_handle_cq_completions(bce, (struct bce_queue_cq *) bce->queues[i]);
++            bce_handle_cq_completions_locked(bce, (struct bce_queue_cq *) bce->queues[i], &ce);
 +    spin_unlock(&bce->queues_lock);
++    bce_dispatch_pending_sq_completions(bce, ce);
 +    return IRQ_HANDLED;
 +}
 +
@@ -501,18 +450,21 @@ index 000000000..28c1ff7e0
 +    if ((status = bce_resume_selected(bce)))
 +        return status;
 +
-+    if (bce->vhci.no_state_resume) {
-+        /* No-state wake rebuilds VHCI from a fresh HCD registration. */
-+        pr_info("apple-bce: resume: re-adding VHCI HCD after no-state wake\n");
-+        status = bce_vhci_add_hcd(&bce->vhci);
-+        if (status)
-+            return status;
-+        bce->vhci.no_state_resume = false;
-+    }
-+
 +    bce_timestamp_start(&bce->timestamp, false);
 +
 +    return 0;
++}
++
++static void apple_bce_complete(struct device *dev)
++{
++    struct apple_bce_device *bce = pci_get_drvdata(to_pci_dev(dev));
++
++    if (!bce->vhci.no_state_resume)
++        return;
++
++    /* Re-add the VHCI HCD after the PM core completed resume ordering. */
++    pr_info("apple-bce: complete: scheduling VHCI HCD re-add after no-state wake\n");
++    queue_work(bce->vhci.tq_state_wq, &bce->vhci.w_add_hcd);
 +}
 +
 +static struct pci_device_id apple_bce_ids[  ] = {
@@ -524,7 +476,8 @@ index 000000000..28c1ff7e0
 +
 +struct dev_pm_ops apple_bce_pci_driver_pm = {
 +        .suspend = apple_bce_suspend,
-+        .resume = apple_bce_resume
++        .resume = apple_bce_resume,
++        .complete = apple_bce_complete
 +};
 +struct pci_driver apple_bce_pci_driver = {
 +        .name = "apple-bce",
@@ -640,10 +593,10 @@ index 000000000..58dbeff79
 +#endif //APPLE_BCE_H
 diff --git a/drivers/staging/apple-bce/audio/audio.c b/drivers/staging/apple-bce/audio/audio.c
 new file mode 100644
-index 000000000..16bd50fd1
+index 000000000..492005447
 --- /dev/null
 +++ b/drivers/staging/apple-bce/audio/audio.c
-@@ -0,0 +1,711 @@
+@@ -0,0 +1,738 @@
 +#include <linux/pci.h>
 +#include <linux/spinlock.h>
 +#include <linux/module.h>
@@ -666,6 +619,8 @@ index 000000000..16bd50fd1
 +static int aaudio_init_bs(struct aaudio_device *a);
 +static void aaudio_init_dev(struct aaudio_device *a, aaudio_device_id_t dev_id);
 +static void aaudio_free_dev(struct aaudio_subdevice *sdev);
++static void aaudio_reset_stream(struct aaudio_stream *stream);
++static void aaudio_reset_streams(struct aaudio_device *a);
 +
 +static int aaudio_probe(struct pci_dev *dev, const struct pci_device_id *id)
 +{
@@ -706,7 +661,8 @@ index 000000000..16bd50fd1
 +        status = PTR_ERR(aaudio_class);
 +        goto fail;
 +    }
-+    device_link_add(aaudio->dev, aaudio->bce->dev, DL_FLAG_PM_RUNTIME | DL_FLAG_AUTOREMOVE_CONSUMER);
++    device_link_add(&dev->dev, &aaudio->bce->pci->dev,
++            DL_FLAG_PM_RUNTIME | DL_FLAG_AUTOREMOVE_CONSUMER);
 +
 +    init_completion(&aaudio->remote_alive);
 +    INIT_LIST_HEAD(&aaudio->subdevice_list);
@@ -844,7 +800,31 @@ index 000000000..16bd50fd1
 +        return status;
 +    }
 +
++    if (aaudio->bce->vhci.no_state_resume)
++        aaudio_reset_streams(aaudio);
++
 +    return 0;
++}
++
++static void aaudio_reset_stream(struct aaudio_stream *stream)
++{
++    stream->started = 0;
++    stream->waiting_for_first_ts = true;
++    stream->remote_timestamp = 0;
++    stream->frame_min = stream->latency;
++}
++
++static void aaudio_reset_streams(struct aaudio_device *a)
++{
++    struct aaudio_subdevice *sdev;
++    size_t i;
++
++    list_for_each_entry(sdev, &a->subdevice_list, list) {
++        for (i = 0; i < sdev->in_stream_cnt; i++)
++            aaudio_reset_stream(&sdev->in_streams[i]);
++        for (i = 0; i < sdev->out_stream_cnt; i++)
++            aaudio_reset_stream(&sdev->out_streams[i]);
++    }
 +}
 +
 +static int aaudio_init_cmd(struct aaudio_device *a)
@@ -1357,14 +1337,15 @@ index 000000000..16bd50fd1
 +MODULE_PARM_DESC(id, "ID string for Apple Internal Audio soundcard.");
 diff --git a/drivers/staging/apple-bce/audio/audio.h b/drivers/staging/apple-bce/audio/audio.h
 new file mode 100644
-index 000000000..ebbfaa116
+index 000000000..339177c25
 --- /dev/null
 +++ b/drivers/staging/apple-bce/audio/audio.h
-@@ -0,0 +1,125 @@
+@@ -0,0 +1,133 @@
 +#ifndef AAUDIO_H
 +#define AAUDIO_H
 +
 +#include <linux/types.h>
++#include <linux/workqueue.h>
 +#include <sound/pcm.h>
 +#include "../apple_bce.h"
 +#include "protocol_bce.h"
@@ -1411,6 +1392,13 @@ index 000000000..ebbfaa116
 +};
 +
 +struct aaudio_device;
++
++struct aaudio_deferred_msg {
++    struct work_struct ws;
++    struct aaudio_device *a;
++    struct aaudio_msg msg;
++};
++
 +struct aaudio_dma_buf {
 +    dma_addr_t dma_addr;
 +    void *ptr;
@@ -2379,10 +2367,10 @@ index 000000000..3427486f3
 +#endif //AAUDIO_PROTOCOL_H
 diff --git a/drivers/staging/apple-bce/audio/protocol_bce.c b/drivers/staging/apple-bce/audio/protocol_bce.c
 new file mode 100644
-index 000000000..28f2dfd44
+index 000000000..c884144fa
 --- /dev/null
 +++ b/drivers/staging/apple-bce/audio/protocol_bce.c
-@@ -0,0 +1,226 @@
+@@ -0,0 +1,258 @@
 +#include "protocol_bce.h"
 +
 +#include "audio.h"
@@ -2392,6 +2380,7 @@ index 000000000..28f2dfd44
 +static int aaudio_bce_queue_init(struct aaudio_device *dev, struct aaudio_bce_queue *q, const char *name, int direction,
 +                                 bce_sq_completion cfn);
 +void aaudio_bce_in_queue_submit_pending(struct aaudio_bce_queue *q, size_t count);
++static void aaudio_deferred_msg_work(struct work_struct *ws);
 +
 +int aaudio_bce_init(struct aaudio_device *dev)
 +{
@@ -2540,6 +2529,20 @@ index 000000000..28f2dfd44
 +
 +static void aaudio_bce_in_queue_handle_msg(struct aaudio_device *a, struct aaudio_msg *msg);
 +
++static void aaudio_deferred_msg_work(struct work_struct *ws)
++{
++    struct aaudio_deferred_msg *work = container_of(ws, struct aaudio_deferred_msg, ws);
++    struct aaudio_msg_header *header = work->msg.data;
++
++    if (header->type == AAUDIO_MSG_TYPE_COMMAND)
++        aaudio_handle_command(work->a, &work->msg);
++    else if (header->type == AAUDIO_MSG_TYPE_NOTIFICATION)
++        aaudio_handle_notification(work->a, &work->msg);
++
++    kfree(work->msg.data);
++    kfree(work);
++}
++
 +static void aaudio_bce_in_queue_completion(struct bce_queue_sq *sq)
 +{
 +    struct aaudio_msg msg;
@@ -2569,17 +2572,34 @@ index 000000000..28f2dfd44
 +static void aaudio_bce_in_queue_handle_msg(struct aaudio_device *a, struct aaudio_msg *msg)
 +{
 +    struct aaudio_msg_header *header = (struct aaudio_msg_header *) msg->data;
++    struct aaudio_deferred_msg *work;
++
 +    if (msg->size < sizeof(struct aaudio_msg_header)) {
 +        pr_err("aaudio: Msg size smaller than header (%lx)", msg->size);
 +        return;
 +    }
 +    if (header->type == AAUDIO_MSG_TYPE_RESPONSE) {
 +        aaudio_handle_reply(&a->bcem, msg);
-+    } else if (header->type == AAUDIO_MSG_TYPE_COMMAND) {
-+        aaudio_handle_command(a, msg);
-+    } else if (header->type == AAUDIO_MSG_TYPE_NOTIFICATION) {
-+        aaudio_handle_notification(a, msg);
++        return;
 +    }
++
++    work = kzalloc(sizeof(*work), GFP_ATOMIC);
++    if (!work) {
++        pr_err("aaudio: Failed to allocate deferred message work\n");
++        return;
++    }
++
++    work->msg.data = kmemdup(msg->data, msg->size, GFP_ATOMIC);
++    if (!work->msg.data) {
++        kfree(work);
++        pr_err("aaudio: Failed to copy deferred message\n");
++        return;
++    }
++
++    work->a = a;
++    work->msg.size = msg->size;
++    INIT_WORK(&work->ws, aaudio_deferred_msg_work);
++    schedule_work(&work->ws);
 +}
 +
 +void aaudio_bce_in_queue_submit_pending(struct aaudio_bce_queue *q, size_t count)
@@ -2939,10 +2959,10 @@ index 000000000..f9bc4d075
 +#endif //BCEDRIVER_MAILBOX_H
 diff --git a/drivers/staging/apple-bce/queue.c b/drivers/staging/apple-bce/queue.c
 new file mode 100644
-index 000000000..948286157
+index 000000000..339577300
 --- /dev/null
 +++ b/drivers/staging/apple-bce/queue.c
-@@ -0,0 +1,415 @@
+@@ -0,0 +1,419 @@
 +#include "queue.h"
 +#include "apple_bce.h"
 +#include <linux/version.h>
@@ -3013,11 +3033,10 @@ index 000000000..948286157
 +    target_sq->completion_tail = (target_sq->completion_tail + 1) % target_sq->el_count;
 +}
 +
-+void bce_handle_cq_completions(struct apple_bce_device *dev, struct bce_queue_cq *cq)
++void bce_handle_cq_completions_locked(struct apple_bce_device *dev, struct bce_queue_cq *cq, size_t *ce)
 +{
-+    size_t ce = 0;
 +    struct bce_qe_completion *e;
-+    struct bce_queue_sq *sq;
++
 +    e = bce_cq_element(cq, cq->index);
 +    if (!(e->flags & BCE_COMPLETION_FLAG_PENDING))
 +        return;
@@ -3027,12 +3046,18 @@ index 000000000..948286157
 +        if (!(e->flags & BCE_COMPLETION_FLAG_PENDING))
 +            break;
 +        // pr_info("apple-bce: compl: %i: %i %llx %llx", e->qid, e->status, e->data_size, e->result);
-+        bce_handle_cq_completion(dev, e, &ce);
++        bce_handle_cq_completion(dev, e, ce);
 +        e->flags = 0;
 +        cq->index = (cq->index + 1) % cq->el_count;
 +    }
 +    mb();
 +    iowrite32(cq->index, (u32 *) ((u8 *) dev->reg_mem_dma +  REG_DOORBELL_BASE) + cq->qid);
++}
++
++void bce_dispatch_pending_sq_completions(struct apple_bce_device *dev, size_t ce)
++{
++    struct bce_queue_sq *sq;
++
 +    while (ce) {
 +        --ce;
 +        sq = dev->int_sq_list[ce];
@@ -3040,7 +3065,6 @@ index 000000000..948286157
 +        sq->has_pending_completions = false;
 +    }
 +}
-+
 +
 +struct bce_queue_sq *bce_alloc_sq(struct apple_bce_device *dev, int qid, u32 el_size, u32 el_count,
 +        bce_sq_completion compl, void *userdata)
@@ -3358,13 +3382,12 @@ index 000000000..948286157
 +#endif
 +    bce_free_sq(dev, sq);
 +}
-\ No newline at end of file
 diff --git a/drivers/staging/apple-bce/queue.h b/drivers/staging/apple-bce/queue.h
 new file mode 100644
-index 000000000..8368ac5df
+index 000000000..e21962773
 --- /dev/null
 +++ b/drivers/staging/apple-bce/queue.h
-@@ -0,0 +1,177 @@
+@@ -0,0 +1,178 @@
 +#ifndef BCE_QUEUE_H
 +#define BCE_QUEUE_H
 +
@@ -3511,7 +3534,8 @@ index 000000000..8368ac5df
 +struct bce_queue_cq *bce_alloc_cq(struct apple_bce_device *dev, int qid, u32 el_count);
 +void bce_get_cq_memcfg(struct bce_queue_cq *cq, struct bce_queue_memcfg *cfg);
 +void bce_free_cq(struct apple_bce_device *dev, struct bce_queue_cq *cq);
-+void bce_handle_cq_completions(struct apple_bce_device *dev, struct bce_queue_cq *cq);
++void bce_handle_cq_completions_locked(struct apple_bce_device *dev, struct bce_queue_cq *cq, size_t *ce);
++void bce_dispatch_pending_sq_completions(struct apple_bce_device *dev, size_t ce);
 +
 +struct bce_queue_sq *bce_alloc_sq(struct apple_bce_device *dev, int qid, u32 el_size, u32 el_count,
 +        bce_sq_completion compl, void *userdata);
@@ -5178,10 +5202,10 @@ index 000000000..4bc73061d
 +#endif //BCEDRIVER_TRANSFER_H
 diff --git a/drivers/staging/apple-bce/vhci/vhci.c b/drivers/staging/apple-bce/vhci/vhci.c
 new file mode 100644
-index 000000000..6e3e502a0
+index 000000000..f36e34eee
 --- /dev/null
 +++ b/drivers/staging/apple-bce/vhci/vhci.c
-@@ -0,0 +1,931 @@
+@@ -0,0 +1,950 @@
 +#include "vhci.h"
 +#include "../apple_bce.h"
 +#include "command.h"
@@ -5202,6 +5226,7 @@ index 000000000..6e3e502a0
 +static int bce_vhci_create_message_queues(struct bce_vhci *vhci);
 +static void bce_vhci_destroy_message_queues(struct bce_vhci *vhci);
 +static void bce_vhci_handle_firmware_events_w(struct work_struct *ws);
++static void bce_vhci_add_hcd_w(struct work_struct *ws);
 +static void bce_vhci_firmware_event_completion(struct bce_queue_sq *sq);
 +static int bce_vhci_start_controller(struct bce_vhci *vhci);
 +static void bce_vhci_forget_devices(struct bce_vhci *vhci);
@@ -5229,6 +5254,7 @@ index 000000000..6e3e502a0
 +
 +    vhci->tq_state_wq = alloc_ordered_workqueue("bce-vhci-tq-state", 0);
 +    INIT_WORK(&vhci->w_fw_events, bce_vhci_handle_firmware_events_w);
++    INIT_WORK(&vhci->w_add_hcd, bce_vhci_add_hcd_w);
 +
 +    vhci->hcd = usb_create_hcd(&bce_vhci_driver, vhci->vdev, "bce-vhci");
 +    if (!vhci->hcd) {
@@ -5261,6 +5287,7 @@ index 000000000..6e3e502a0
 +
 +void bce_vhci_destroy(struct bce_vhci *vhci)
 +{
++    cancel_work_sync(&vhci->w_add_hcd);
 +    bce_vhci_remove_hcd(vhci);
 +    bce_vhci_destroy_event_queues(vhci);
 +    bce_vhci_destroy_message_queues(vhci);
@@ -5286,10 +5313,26 @@ index 000000000..6e3e502a0
 +
 +void bce_vhci_remove_hcd(struct bce_vhci *vhci)
 +{
++    cancel_work_sync(&vhci->w_add_hcd);
 +    if (!vhci->hcd_registered)
 +        return;
 +    usb_remove_hcd(vhci->hcd);
 +    vhci->hcd_registered = false;
++}
++
++static void bce_vhci_add_hcd_w(struct work_struct *ws)
++{
++    struct bce_vhci *vhci = container_of(ws, struct bce_vhci, w_add_hcd);
++    int status;
++
++    pr_info("bce-vhci: deferred HCD add after no-state wake\n");
++    status = bce_vhci_add_hcd(vhci);
++    if (status) {
++        pr_err("bce-vhci: deferred HCD add failed: %d\n", status);
++        return;
++    }
++
++    vhci->no_state_resume = false;
 +}
 +
 +struct bce_vhci *bce_vhci_from_hcd(struct usb_hcd *hcd)
@@ -6115,10 +6158,10 @@ index 000000000..6e3e502a0
 +MODULE_PARM_DESC(vhci_port_mask, "Specifies which VHCI ports are enabled");
 diff --git a/drivers/staging/apple-bce/vhci/vhci.h b/drivers/staging/apple-bce/vhci/vhci.h
 new file mode 100644
-index 000000000..71e5b39b8
+index 000000000..324999874
 --- /dev/null
 +++ b/drivers/staging/apple-bce/vhci/vhci.h
-@@ -0,0 +1,58 @@
+@@ -0,0 +1,59 @@
 +#ifndef BCE_VHCI_H
 +#define BCE_VHCI_H
 +
@@ -6158,6 +6201,7 @@ index 000000000..71e5b39b8
 +    struct bce_vhci_device *devices[16];
 +    struct workqueue_struct *tq_state_wq;
 +    struct work_struct w_fw_events;
++    struct work_struct w_add_hcd;
 +    unsigned long port_change_pending;
 +    bool no_state_resume;
 +    bool defer_rh_poll;
@@ -6177,6 +6221,6 @@ index 000000000..71e5b39b8
 +struct bce_vhci *bce_vhci_from_hcd(struct usb_hcd *hcd);
 +
 +#endif //BCE_VHCI_H
+
 -- 
 2.53.0
-

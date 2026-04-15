@@ -9,7 +9,7 @@ discrete controllers.
 
 ---
 diff --git a/drivers/thunderbolt/tb.c b/drivers/thunderbolt/tb.c
-index 4f5f1dfc0..1b4ff0d9e 100644
+index c69c323e6..6be80d8fa 100644
 --- a/drivers/thunderbolt/tb.c
 +++ b/drivers/thunderbolt/tb.c
 @@ -9,6 +9,7 @@

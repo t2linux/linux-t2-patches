@@ -8,7 +8,7 @@ unexpected off/dim states.
 
 ---
 diff --git a/drivers/hid/hid-appletb-kbd.c b/drivers/hid/hid-appletb-kbd.c
-index b00687e..3203949 100644
+index b00687e67..3203949f0 100644
 --- a/drivers/hid/hid-appletb-kbd.c
 +++ b/drivers/hid/hid-appletb-kbd.c
 @@ -65,10 +65,25 @@ struct appletb_kbd {
@@ -68,7 +68,7 @@ index b00687e..3203949 100644
  
  power_normal:
  	hid_hw_power(hdev, PM_HINT_NORMAL);
-@@ -114,6 +143,22 @@ power_normal:
+@@ -114,6 +143,22 @@ static int appletb_kbd_set_mode(struct appletb_kbd *kbd, u8 mode)
  	return ret;
  }
  
@@ -158,7 +158,7 @@ index b00687e..3203949 100644
  	} else {
  		backlight_device_set_brightness(kbd->backlight_dev, 2);
  		timer_setup(&kbd->inactivity_timer, appletb_inactivity_timer, 0);
-@@ -453,39 +519,34 @@ stop_hw:
+@@ -453,39 +519,34 @@ static int appletb_kbd_probe(struct hid_device *hdev, const struct hid_device_id
  static void appletb_kbd_remove(struct hid_device *hdev)
  {
  	struct appletb_kbd *kbd = hid_get_drvdata(hdev);
