@@ -1,0 +1,51 @@
+From ee5e171edf869fbf26728fa9b940ec2212778260 Mon Sep 17 00:00:00 2001
+From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
+Date: Sat, 25 Apr 2026 21:06:24 +0530
+Subject: [PATCH 12/12] acpi/sbs: add quirk to exit the driver if macsmc-power
+ is present in macbooks
+
+Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
+---
+ drivers/acpi/sbs.c | 19 +++++++++----------
+ 1 file changed, 9 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/acpi/sbs.c b/drivers/acpi/sbs.c
+index 440f1d69aca8..47a2e72e01bc 100644
+--- a/drivers/acpi/sbs.c
++++ b/drivers/acpi/sbs.c
+@@ -634,6 +634,9 @@ static int acpi_sbs_probe(struct platform_device *pdev)
+ 	int result = 0;
+ 	int id;
+ 
++	if (IS_ENABLED(CONFIG_MACSMC_POWER) && x86_apple_machine)
++		return -ENODEV;
++
+ 	sbs = kzalloc_obj(struct acpi_sbs);
+ 	if (!sbs) {
+ 		result = -ENOMEM;
+@@ -651,16 +654,12 @@ static int acpi_sbs_probe(struct platform_device *pdev)
+ 	if (result && result != -ENODEV)
+ 		goto end;
+ 
+-	result = 0;
+-
+-	if (!x86_apple_machine) {
+-		result = acpi_manager_get_info(sbs);
+-		if (!result) {
+-			sbs->manager_present = 1;
+-			for (id = 0; id < MAX_SBS_BAT; ++id)
+-				if ((sbs->batteries_supported & (1 << id)))
+-					acpi_battery_add(sbs, id);
+-		}
++	result = acpi_manager_get_info(sbs);
++	if (!result) {
++		sbs->manager_present = 1;
++		for (id = 0; id < MAX_SBS_BAT; ++id)
++			if ((sbs->batteries_supported & (1 << id)))
++				acpi_battery_add(sbs, id);
+ 	}
+ 
+ 	if (!sbs->manager_present)
+-- 
+2.43.0
+
