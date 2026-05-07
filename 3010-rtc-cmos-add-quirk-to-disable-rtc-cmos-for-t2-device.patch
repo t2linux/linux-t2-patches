@@ -1,19 +1,27 @@
-From 612b7ed4161affe1c5c68e64f44da6e7462d7938 Mon Sep 17 00:00:00 2001
+From 4cc75c4d09867de704ab897111ba2e0e784da986 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sat, 25 Apr 2026 19:45:40 +0530
 Subject: [PATCH 10/12] rtc/cmos: add quirk to disable rtc-cmos for t2 devices
 
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---
- drivers/acpi/acpi_tad.c | 102 +++++++++++++++++++++++++++++++++++++
+ drivers/acpi/acpi_tad.c | 103 ++++++++++++++++++++++++++++++++++++++
  drivers/rtc/rtc-cmos.c  | 108 ++++++++++++++++++++++++++++++++++++++++
- 2 files changed, 210 insertions(+)
+ 2 files changed, 211 insertions(+)
 
 diff --git a/drivers/acpi/acpi_tad.c b/drivers/acpi/acpi_tad.c
-index b406d7a98996..cd3979cf7e9f 100644
+index b406d7a98996..2bf9c47ce9bf 100644
 --- a/drivers/acpi/acpi_tad.c
 +++ b/drivers/acpi/acpi_tad.c
-@@ -817,6 +817,106 @@ static void acpi_tad_remove(struct platform_device *pdev)
+@@ -24,6 +24,7 @@
+  */
+ 
+ #include <linux/acpi.h>
++#include <linux/dmi.h>
+ #include <linux/kernel.h>
+ #include <linux/ktime.h>
+ #include <linux/module.h>
+@@ -817,6 +818,106 @@ static void acpi_tad_remove(struct platform_device *pdev)
  	pm_runtime_disable(dev);
  }
  
@@ -120,7 +128,7 @@ index b406d7a98996..cd3979cf7e9f 100644
  static int acpi_tad_probe(struct platform_device *pdev)
  {
  	struct device *dev = &pdev->dev;
-@@ -825,6 +925,8 @@ static int acpi_tad_probe(struct platform_device *pdev)
+@@ -825,6 +926,8 @@ static int acpi_tad_probe(struct platform_device *pdev)
  	acpi_status status;
  	unsigned long long caps;
  
