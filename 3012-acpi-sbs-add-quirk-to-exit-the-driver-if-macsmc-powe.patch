@@ -1,4 +1,4 @@
-From ee5e171edf869fbf26728fa9b940ec2212778260 Mon Sep 17 00:00:00 2001
+From 6b4cb5054c3b020f89c1ccfd55a0ca2e73ac5afc Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sat, 25 Apr 2026 21:06:24 +0530
 Subject: [PATCH 12/12] acpi/sbs: add quirk to exit the driver if macsmc-power
@@ -6,9 +6,32 @@ Subject: [PATCH 12/12] acpi/sbs: add quirk to exit the driver if macsmc-power
 
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---
- drivers/acpi/sbs.c | 19 +++++++++----------
- 1 file changed, 9 insertions(+), 10 deletions(-)
+ drivers/acpi/battery.c |  4 +++-
+ drivers/acpi/sbs.c     | 19 +++++++++----------
+ 2 files changed, 12 insertions(+), 11 deletions(-)
 
+diff --git a/drivers/acpi/battery.c b/drivers/acpi/battery.c
+index b4c25474f42f..c029ba860612 100644
+--- a/drivers/acpi/battery.c
++++ b/drivers/acpi/battery.c
+@@ -17,6 +17,7 @@
+ #include <linux/list.h>
+ #include <linux/module.h>
+ #include <linux/mutex.h>
++#include <linux/platform_data/x86/apple.h>
+ #include <linux/platform_device.h>
+ #include <linux/slab.h>
+ #include <linux/suspend.h>
+@@ -1310,7 +1311,8 @@ static struct platform_driver acpi_battery_driver = {
+ 
+ static int __init acpi_battery_init(void)
+ {
+-	if (acpi_disabled || acpi_quirk_skip_acpi_ac_and_battery())
++	if (acpi_disabled || acpi_quirk_skip_acpi_ac_and_battery() ||
++			(IS_ENABLED(CONFIG_MACSMC_POWER) && x86_apple_machine))
+ 		return -ENODEV;
+ 
+ 	dmi_check_system(bat_dmi_table);
 diff --git a/drivers/acpi/sbs.c b/drivers/acpi/sbs.c
 index 440f1d69aca8..47a2e72e01bc 100644
 --- a/drivers/acpi/sbs.c
