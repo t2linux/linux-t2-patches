@@ -1,15 +1,15 @@
-From 4f3045b5d27c071991c527b5b0f924f3b4b8735d Mon Sep 17 00:00:00 2001
+From 09e0fe6a5925d7e992cd0219871a8fd89d4d324e Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sat, 25 Apr 2026 19:46:29 +0530
 Subject: [PATCH 11/12] power/supply/macsmc: add support for intel macs
 
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---
- drivers/power/supply/macsmc-power.c | 591 ++++++++++++++++++++++------
- 1 file changed, 462 insertions(+), 129 deletions(-)
+ drivers/power/supply/macsmc-power.c | 592 ++++++++++++++++++++++------
+ 1 file changed, 463 insertions(+), 129 deletions(-)
 
 diff --git a/drivers/power/supply/macsmc-power.c b/drivers/power/supply/macsmc-power.c
-index 33ca07460f3a..f24c71ca35f2 100644
+index 33ca07460f3a..39efb710d19e 100644
 --- a/drivers/power/supply/macsmc-power.c
 +++ b/drivers/power/supply/macsmc-power.c
 @@ -4,9 +4,11 @@
@@ -719,7 +719,7 @@ index 33ca07460f3a..f24c71ca35f2 100644
  		psy_cfg.drv_data = power;
  		power->batt = devm_power_supply_register(dev, &power->batt_desc, &psy_cfg);
  		if (IS_ERR(power->batt)) {
-@@ -788,19 +1105,27 @@ static int macsmc_power_probe(struct platform_device *pdev)
+@@ -788,19 +1105,28 @@ static int macsmc_power_probe(struct platform_device *pdev)
  
  		nprops = 0;
  
@@ -737,6 +737,7 @@ index 33ca07460f3a..f24c71ca35f2 100644
 +		if (smc->is_acpi) {
 +			props[nprops++] = POWER_SUPPLY_PROP_ONLINE;
 +			props[nprops++] = POWER_SUPPLY_PROP_CURRENT_NOW;
++			props[nprops++] = POWER_SUPPLY_PROP_POWER_NOW;
 +			if (apple_smc_key_exists(power->smc, SMC_KEY(PD0R)))
 +				power->has_pd0r = true;
 +			if (apple_smc_key_exists(power->smc, SMC_KEY(VD0R)))
@@ -759,7 +760,7 @@ index 33ca07460f3a..f24c71ca35f2 100644
  		if (nprops > MACSMC_MAX_AC_PROPS)
  			return -ENOMEM;
  
-@@ -820,9 +1145,12 @@ static int macsmc_power_probe(struct platform_device *pdev)
+@@ -820,9 +1146,12 @@ static int macsmc_power_probe(struct platform_device *pdev)
  	if (!power->batt && !power->ac)
  		return -ENODEV;
  
@@ -774,7 +775,7 @@ index 33ca07460f3a..f24c71ca35f2 100644
  	return 0;
  }
  
-@@ -830,9 +1158,13 @@ static void macsmc_power_remove(struct platform_device *pdev)
+@@ -830,9 +1159,13 @@ static void macsmc_power_remove(struct platform_device *pdev)
  {
  	struct macsmc_power *power = dev_get_drvdata(&pdev->dev);
  
@@ -790,7 +791,7 @@ index 33ca07460f3a..f24c71ca35f2 100644
  static const struct platform_device_id macsmc_power_id[] = {
  	{ "macsmc-power" },
  	{ /* sentinel */ }
-@@ -853,3 +1185,4 @@ MODULE_LICENSE("Dual MIT/GPL");
+@@ -853,3 +1186,4 @@ MODULE_LICENSE("Dual MIT/GPL");
  MODULE_DESCRIPTION("Apple SMC battery and power management driver");
  MODULE_AUTHOR("Hector Martin <marcan@marcan.st>");
  MODULE_AUTHOR("Michael Reeves <michael.reeves077@gmail.com>");
