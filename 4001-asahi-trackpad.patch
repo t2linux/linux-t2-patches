@@ -219,20 +219,19 @@ later Magic Keyboards.
 
 Signed-off-by: Janne Grunau <j@jannau.net>
 ---
- drivers/hid/Kconfig     |  2 +-
+ drivers/hid/Kconfig     |  1 +
  drivers/hid/hid-apple.c | 15 +++++++++++++++
- 2 files changed, 16 insertions(+), 1 deletion(-)
+ 2 files changed, 16 insertions(+)
 
 diff --git a/drivers/hid/Kconfig b/drivers/hid/Kconfig
-index c1d9f7c6a..1bcb8a569 100644
+index ff2f580b660ba6..af03f6c31614df 100644
 --- a/drivers/hid/Kconfig
 +++ b/drivers/hid/Kconfig
-@@ -140,7 +140,7 @@ config HID_APPLE
+@@ -139,6 +139,7 @@ config HID_APPLE
  	tristate "Apple {i,Power,Mac}Books"
  	depends on LEDS_CLASS
  	depends on NEW_LEDS
--	default !EXPERT
-+	default !EXPERT || SPI_HID_APPLE
++	default SPI_HID_APPLE
  	help
  	Support for some Apple devices which less or more break
  	HID specification.
