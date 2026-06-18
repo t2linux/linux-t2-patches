@@ -6,8 +6,8 @@ Subject: [PATCH 08/12] hwmon/macsmc: add support for intel macs
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---
  drivers/hwmon/Kconfig        |   5 +-
- drivers/hwmon/macsmc-hwmon.c | 269 ++++++++++++++++++++++++++++++++++-
- 2 files changed, 264 insertions(+), 10 deletions(-)
+ drivers/hwmon/macsmc-hwmon.c | 281 +++++++++++++++++++++++++++++++++++++-
+ 2 files changed, 272 insertions(+), 14 deletions(-)
 
 diff --git a/drivers/hwmon/Kconfig b/drivers/hwmon/Kconfig
 index 29944e0555a4..cf86e6f0ecec 100644
@@ -85,6 +85,17 @@ index 6764da7ef21d..91726774bdcf 100644
  static int macsmc_hwmon_write_fan(struct device *dev, u32 attr, int channel,
  				  long val)
  {
+@@ -398,7 +418,9 @@ static int macsmc_hwmon_write_fan(struct device *dev, u32 attr, int channel,
+ 	long min, max;
+ 	int ret;
+ 
+-	if (!fan_control || hwmon->fan.fans[channel].mode.macsmc_key == 0)
++	if (!fan_control ||
++	    (hwmon->fan.fans[channel].mode.macsmc_key == 0 &&
++	     !hwmon->fan.has_old_manual))
+ 		return -EOPNOTSUPP;
+ 
+ 	/*
 @@ -417,7 +437,10 @@ static int macsmc_hwmon_write_fan(struct device *dev, u32 attr, int channel,
  	if (val >= min && val <= max) {
  		if (!hwmon->fan.fans[channel].manual) {
@@ -109,6 +120,30 @@ index 6764da7ef21d..91726774bdcf 100644
  						     &hwmon->fan.fans[channel].mode, 0);
  			if (ret < 0)
  				return ret;
+@@ -489,10 +515,11 @@ static int macsmc_hwmon_write(struct device *dev, enum hwmon_sensor_types type,
+ }
+ 
+ static umode_t macsmc_hwmon_fan_is_visible(const struct macsmc_hwmon_fan *fan,
+-					   u32 attr)
++					   u32 attr, bool has_old_manual)
+ {
+ 	if (fan->attrs & BIT(attr)) {
+-		if (attr == hwmon_fan_target && fan_control && fan->mode.macsmc_key)
++		if (attr == hwmon_fan_target && fan_control &&
++		    (fan->mode.macsmc_key || has_old_manual))
+ 			return 0644;
+ 
+ 		return 0444;
+@@ -522,7 +548,8 @@ static umode_t macsmc_hwmon_is_visible(const void *data,
+ 		sensor = &hwmon->temp.sensors[channel];
+ 		break;
+ 	case hwmon_fan:
+-		return macsmc_hwmon_fan_is_visible(&hwmon->fan.fans[channel], attr);
++		return macsmc_hwmon_fan_is_visible(&hwmon->fan.fans[channel], attr,
++						   hwmon->fan.has_old_manual);
+ 	default:
+ 		return 0;
+ 	}
 @@ -592,6 +618,20 @@ static int macsmc_hwmon_create_sensor(struct device *dev, struct apple_smc *smc,
  	return 0;
  }
