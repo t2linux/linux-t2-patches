@@ -1,36 +1,37 @@
-From e292e7671ce42dfc83e9462c75e9ce2fc7350e2e Mon Sep 17 00:00:00 2001
+From b647a922e2016f7f8e3bc3a839d7d1fc22c4f433 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Mon, 13 Apr 2026 20:19:25 +0000
+Date: Fri, 19 Jun 2026 02:13:38 +0000
 Subject: [PATCH] Add apple-bce driver
 
 ---
- drivers/staging/apple-bce/Makefile            |  28 +
- drivers/staging/apple-bce/apple_bce.c         | 494 ++++++++++
- drivers/staging/apple-bce/apple_bce.h         |  41 +
- drivers/staging/apple-bce/audio/audio.c       | 711 +++++++++++++
- drivers/staging/apple-bce/audio/audio.h       | 125 +++
- drivers/staging/apple-bce/audio/description.h |  42 +
- drivers/staging/apple-bce/audio/pcm.c         | 308 ++++++
- drivers/staging/apple-bce/audio/pcm.h         |  16 +
- drivers/staging/apple-bce/audio/protocol.c    | 347 +++++++
- drivers/staging/apple-bce/audio/protocol.h    | 147 +++
- .../staging/apple-bce/audio/protocol_bce.c    | 226 +++++
- .../staging/apple-bce/audio/protocol_bce.h    |  72 ++
- drivers/staging/apple-bce/mailbox.c           | 183 ++++
- drivers/staging/apple-bce/mailbox.h           |  55 ++
- drivers/staging/apple-bce/queue.c             | 415 ++++++++
- drivers/staging/apple-bce/queue.h             | 177 ++++
- drivers/staging/apple-bce/queue_dma.c         | 220 +++++
- drivers/staging/apple-bce/queue_dma.h         |  50 +
- drivers/staging/apple-bce/vhci/command.h      | 205 ++++
- drivers/staging/apple-bce/vhci/queue.c        | 268 +++++
- drivers/staging/apple-bce/vhci/queue.h        |  76 ++
- drivers/staging/apple-bce/vhci/transfer.c     | 697 +++++++++++++
- drivers/staging/apple-bce/vhci/transfer.h     |  75 ++
- drivers/staging/apple-bce/vhci/vhci.c         | 931 ++++++++++++++++++
- drivers/staging/apple-bce/vhci/vhci.h         |  58 ++
- 25 files changed, 5967 insertions(+)
+ drivers/staging/apple-bce/Makefile            |   28 +
+ drivers/staging/apple-bce/apple_bce.c         |  649 +++++++++
+ drivers/staging/apple-bce/apple_bce.h         |   48 +
+ drivers/staging/apple-bce/audio/audio.c       |  812 +++++++++++
+ drivers/staging/apple-bce/audio/audio.h       |  136 ++
+ drivers/staging/apple-bce/audio/description.h |   42 +
+ drivers/staging/apple-bce/audio/pcm.c         |  308 +++++
+ drivers/staging/apple-bce/audio/pcm.h         |   16 +
+ drivers/staging/apple-bce/audio/protocol.c    |  347 +++++
+ drivers/staging/apple-bce/audio/protocol.h    |  147 ++
+ .../staging/apple-bce/audio/protocol_bce.c    |  258 ++++
+ .../staging/apple-bce/audio/protocol_bce.h    |   72 +
+ drivers/staging/apple-bce/dkms.conf           |   10 +
+ drivers/staging/apple-bce/mailbox.c           |  237 ++++
+ drivers/staging/apple-bce/mailbox.h           |   64 +
+ drivers/staging/apple-bce/queue.c             |  457 +++++++
+ drivers/staging/apple-bce/queue.h             |  183 +++
+ drivers/staging/apple-bce/queue_dma.c         |  220 +++
+ drivers/staging/apple-bce/queue_dma.h         |   50 +
+ drivers/staging/apple-bce/vhci/command.h      |  205 +++
+ drivers/staging/apple-bce/vhci/queue.c        |  268 ++++
+ drivers/staging/apple-bce/vhci/queue.h        |   76 ++
+ drivers/staging/apple-bce/vhci/transfer.c     |  767 +++++++++++
+ drivers/staging/apple-bce/vhci/transfer.h     |   76 ++
+ drivers/staging/apple-bce/vhci/vhci.c         | 1194 +++++++++++++++++
+ drivers/staging/apple-bce/vhci/vhci.h         |   67 +
+ 26 files changed, 6737 insertions(+)
  create mode 100644 drivers/staging/apple-bce/Makefile
  create mode 100644 drivers/staging/apple-bce/apple_bce.c
  create mode 100644 drivers/staging/apple-bce/apple_bce.h
@@ -43,6 +44,7 @@ Subject: [PATCH] Add apple-bce driver
  create mode 100644 drivers/staging/apple-bce/audio/protocol.h
  create mode 100644 drivers/staging/apple-bce/audio/protocol_bce.c
  create mode 100644 drivers/staging/apple-bce/audio/protocol_bce.h
+ create mode 100644 drivers/staging/apple-bce/dkms.conf
  create mode 100644 drivers/staging/apple-bce/mailbox.c
  create mode 100644 drivers/staging/apple-bce/mailbox.h
  create mode 100644 drivers/staging/apple-bce/queue.c
@@ -93,19 +95,20 @@ index 000000000..a6a656f06
 +	$(MAKE) -C $(KDIR) M=$(PWD) modules_install
 diff --git a/drivers/staging/apple-bce/apple_bce.c b/drivers/staging/apple-bce/apple_bce.c
 new file mode 100644
-index 000000000..28c1ff7e0
+index 000000000..824ed5d6a
 --- /dev/null
 +++ b/drivers/staging/apple-bce/apple_bce.c
-@@ -0,0 +1,494 @@
+@@ -0,0 +1,649 @@
 +#include "apple_bce.h"
 +#include <linux/module.h>
 +#include <linux/crc32.h>
++#include <linux/delay.h>
 +#include "audio/audio.h"
 +#include <linux/version.h>
 +
 +static dev_t bce_chrdev;
 +static struct class *bce_class;
-+static const bool bce_use_stateful_sleep = false;
++static const bool bce_use_stateful_sleep = true;
 +
 +struct apple_bce_device *global_bce;
 +
@@ -115,6 +118,38 @@ index 000000000..28c1ff7e0
 +static irqreturn_t bce_handle_dma_irq(int irq, void *dev);
 +static int bce_fw_version_handshake(struct apple_bce_device *bce);
 +static int bce_register_command_queue(struct apple_bce_device *bce, struct bce_queue_memcfg *cfg, int is_sq);
++static int bce_alloc_state_buffer(struct apple_bce_device *bce);
++static void bce_free_state_buffer(struct apple_bce_device *bce);
++static int bce_pm_suspend_prepare(struct apple_bce_device *bce);
++static void bce_pm_suspend_abort(struct apple_bce_device *bce);
++static void bce_pm_resume_finish(struct apple_bce_device *bce);
++
++static int bce_alloc_state_buffer(struct apple_bce_device *bce)
++{
++    /* Windows mba9,1/mbp16,1 keeps a persistent 0x2000 state buffer for device lifetime. */
++    bce->saved_data_dma_size = 0x2000;
++    bce->saved_data_dma_ptr = dma_alloc_coherent(&bce->pci->dev, bce->saved_data_dma_size,
++            &bce->saved_data_dma_addr, GFP_KERNEL);
++    if (!bce->saved_data_dma_ptr) {
++        bce->saved_data_dma_size = 0;
++        bce->saved_data_dma_addr = 0;
++        return -ENOMEM;
++    }
++
++    return 0;
++}
++
++static void bce_free_state_buffer(struct apple_bce_device *bce)
++{
++    if (!bce->saved_data_dma_ptr)
++        return;
++
++    dma_free_coherent(&bce->pci->dev, bce->saved_data_dma_size,
++            bce->saved_data_dma_ptr, bce->saved_data_dma_addr);
++    bce->saved_data_dma_ptr = NULL;
++    bce->saved_data_dma_addr = 0;
++    bce->saved_data_dma_size = 0;
++}
 +
 +static int apple_bce_probe(struct pci_dev *dev, const struct pci_device_id *id)
 +{
@@ -162,10 +197,12 @@ index 000000000..28c1ff7e0
 +    }
 +
 +    bce_mailbox_init(&bce->mbox, bce->reg_mem_mb);
-+    bce_timestamp_init(&bce->timestamp, bce->reg_mem_mb);
++    bce_xhci_pm_init(&bce->xhci_pm, bce->reg_mem_mb);
 +
 +    spin_lock_init(&bce->queues_lock);
 +    ida_init(&bce->queue_ida);
++    mutex_init(&bce->pm_lock);
++    bce->mailbox_channel_active = true;
 +
 +    if ((status = pci_request_irq(dev, 0, bce_handle_mb_irq, NULL, dev, "bce_mbox")))
 +        goto fail;
@@ -176,6 +213,9 @@ index 000000000..28c1ff7e0
 +        dev_warn(&dev->dev, "dma: Setting mask failed\n");
 +        goto fail_interrupt;
 +    }
++
++    if ((status = bce_alloc_state_buffer(bce)))
++        goto fail_interrupt;
 +
 +    /* Gets the function 0's interface. This is needed because Apple only accepts DMA on our function if function 0
 +       is a bus master, so we need to work around this. */
@@ -188,7 +228,8 @@ index 000000000..28c1ff7e0
 +#endif
 +    pci_set_master(bce->pci0);
 +
-+    bce_timestamp_start(&bce->timestamp, true);
++    /* Windows device start writes the opaque -4 XHCI sentinel before the controller is considered active. */
++    bce_xhci_pm_start(&bce->xhci_pm, true);
 +
 +    if ((status = bce_fw_version_handshake(bce)))
 +        goto fail_ts;
@@ -206,7 +247,8 @@ index 000000000..28c1ff7e0
 +    return 0;
 +
 +fail_ts:
-+    bce_timestamp_stop(&bce->timestamp);
++    bce_free_state_buffer(bce);
++    bce_xhci_pm_stop(&bce->xhci_pm);
 +#ifndef WITHOUT_NVME_PATCH
 +    pci_disable_device(bce->pci0);
 +fail_dev0:
@@ -292,29 +334,109 @@ index 000000000..28c1ff7e0
 +static irqreturn_t bce_handle_dma_irq(int irq, void *dev)
 +{
 +    int i;
++    size_t ce = 0;
 +    struct apple_bce_device *bce = pci_get_drvdata(dev);
 +    spin_lock(&bce->queues_lock);
 +    for (i = 0; i < BCE_MAX_QUEUE_COUNT; i++)
 +        if (bce->queues[i] && bce->queues[i]->type == BCE_QUEUE_CQ)
-+            bce_handle_cq_completions(bce, (struct bce_queue_cq *) bce->queues[i]);
++            bce_handle_cq_completions_locked(bce, (struct bce_queue_cq *) bce->queues[i], &ce);
 +    spin_unlock(&bce->queues_lock);
++    bce_dispatch_pending_sq_completions(bce, ce);
 +    return IRQ_HANDLED;
 +}
 +
 +static int bce_fw_version_handshake(struct apple_bce_device *bce)
 +{
 +    u64 result;
++    u32 fw_version;
 +    int status;
 +
 +    if ((status = bce_mailbox_send(&bce->mbox, BCE_MB_MSG(BCE_MB_SET_FW_PROTOCOL_VERSION, BC_PROTOCOL_VERSION),
 +            &result)))
 +        return status;
++    fw_version = (u32) BCE_MB_VALUE(result);
 +    if (BCE_MB_TYPE(result) != BCE_MB_SET_FW_PROTOCOL_VERSION ||
-+        BCE_MB_VALUE(result) != BC_PROTOCOL_VERSION) {
++        fw_version > BC_PROTOCOL_VERSION) {
 +        pr_err("apple-bce: FW version handshake failed %x:%llx\n", BCE_MB_TYPE(result), BCE_MB_VALUE(result));
 +        return -EINVAL;
 +    }
++    bce->fw_version = fw_version;
 +    return 0;
++}
++
++static bool bce_stateful_supported(struct apple_bce_device *bce)
++{
++    /* Windows mba9,1/mbp16,1 gates stateful sleep and wake on negotiated protocol version >= 0x20001. */
++    return bce_use_stateful_sleep && bce->fw_version >= BC_PROTOCOL_VERSION;
++}
++
++static int bce_pm_wait_mailbox_idle(struct apple_bce_device *bce)
++{
++    int retries = 100;
++
++    while (atomic_read(&bce->mbox.mb_status) != 0) {
++        if (!--retries) {
++            pr_err("apple-bce: timeout waiting for BCE mailbox channel to quiesce\n");
++            return -ETIMEDOUT;
++        }
++        usleep_range(5000, 10000);
++    }
++
++    return 0;
++}
++
++static int bce_pm_channel_pause(struct apple_bce_device *bce)
++{
++    int status;
++
++    status = bce_mailbox_channel_pause(&bce->mbox);
++    if (status)
++        return status;
++
++    status = bce_pm_wait_mailbox_idle(bce);
++
++    if (status)
++        bce_mailbox_channel_resume(&bce->mbox);
++    if (status)
++        return status;
++
++    /* Windows vtable +0x100 drains the BCE channel before the suspend callback. */
++    bce->mailbox_channel_active = false;
++    return 0;
++}
++
++static void bce_pm_channel_resume(struct apple_bce_device *bce)
++{
++    /* Windows vtable +0x108 marks the BCE channel active again after wake completes. */
++    bce->mailbox_channel_active = true;
++    bce_mailbox_channel_resume(&bce->mbox);
++}
++
++static int bce_pm_suspend_prepare(struct apple_bce_device *bce)
++{
++    int status;
++
++    status = bce_pm_channel_pause(bce);
++    if (status)
++        return status;
++
++    /* Windows suspend unconditionally writes the opaque -2 XHCI sentinel before 0x17/0x14. */
++    bce_xhci_pm_stop(&bce->xhci_pm);
++    return 0;
++}
++
++static void bce_pm_suspend_abort(struct apple_bce_device *bce)
++{
++    /* Failed suspend must unwind the wrapper order back to the running state. */
++    bce_xhci_pm_start(&bce->xhci_pm, false);
++    bce_pm_channel_resume(bce);
++}
++
++static void bce_pm_resume_finish(struct apple_bce_device *bce)
++{
++    /* Windows resume unconditionally writes the opaque -3 XHCI sentinel after 0x18/0x15. */
++    bce_xhci_pm_start(&bce->xhci_pm, false);
++    bce_pm_channel_resume(bce);
 +}
 +
 +static int bce_register_command_queue(struct apple_bce_device *bce, struct bce_queue_memcfg *cfg, int is_sq)
@@ -343,7 +465,8 @@ index 000000000..28c1ff7e0
 +
 +    bce_vhci_destroy(&bce->vhci);
 +
-+    bce_timestamp_stop(&bce->timestamp);
++    bce_free_state_buffer(bce);
++    bce_xhci_pm_stop(&bce->xhci_pm);
 +#ifndef WITHOUT_NVME_PATCH
 +    pci_disable_device(bce->pci0);
 +#endif
@@ -360,80 +483,58 @@ index 000000000..28c1ff7e0
 +    kfree(bce);
 +}
 +
-+static int bce_suspend_no_state(struct apple_bce_device *bce)
++static int bce_pm_suspend_fallback_no_state(struct apple_bce_device *bce)
 +{
-+    /* Active suspend path is no-state only. */
-+    bce->saved_data_dma_addr = 0;
-+    bce->saved_data_dma_ptr = NULL;
-+    bce->saved_data_dma_size = 0;
-+
 +    pr_info("apple-bce: suspend: forcing SLEEP_NO_STATE (no reply expected)\n");
-+    if (bce_mailbox_send_no_reply(&bce->mbox, BCE_MB_MSG(BCE_MB_SLEEP_NO_STATE, 0))) {
++    if (bce_mailbox_send_no_reply_locked(&bce->mbox, BCE_MB_MSG(BCE_MB_SLEEP_NO_STATE, 0))) {
 +        pr_err("apple-bce: suspend: SLEEP_NO_STATE send failed\n");
 +        return -EIO;
 +    }
-+
-+    bce->vhci.no_state_resume = true;
 +    return 0;
 +}
 +
-+/* Preserved stateful suspend path. */
-+static int bce_suspend_stateful(struct apple_bce_device *bce)
-+{
-+    int attempt, status = 0;
-+    u64 resp;
-+    dma_addr_t dma_addr;
-+    void *dma_ptr = NULL;
-+    size_t size = max(PAGE_SIZE, 4096UL);
-+
-+    for (attempt = 0; attempt < 5; ++attempt) {
-+        pr_debug("apple-bce: suspend: attempt %i, buffer size %li\n", attempt, size);
-+        dma_ptr = dma_alloc_coherent(&bce->pci->dev, size, &dma_addr, GFP_KERNEL);
-+        if (!dma_ptr) {
-+            pr_err("apple-bce: suspend failed (data alloc failed)\n");
-+            break;
-+        }
-+        BUG_ON((dma_addr % 4096) != 0);
-+        status = bce_mailbox_send(&bce->mbox,
-+                BCE_MB_MSG(BCE_MB_SAVE_STATE_AND_SLEEP, (dma_addr & ~(4096LLU - 1)) | (size / 4096)), &resp);
-+        if (status) {
-+            pr_err("apple-bce: suspend failed (mailbox send)\n");
-+            break;
-+        }
-+        if (BCE_MB_TYPE(resp) == BCE_MB_SAVE_RESTORE_STATE_COMPLETE) {
-+            bce->saved_data_dma_addr = dma_addr;
-+            bce->saved_data_dma_ptr = dma_ptr;
-+            bce->saved_data_dma_size = size;
-+            return 0;
-+        } else if (BCE_MB_TYPE(resp) == BCE_MB_SAVE_STATE_AND_SLEEP_FAILURE) {
-+            dma_free_coherent(&bce->pci->dev, size, dma_ptr, dma_addr);
-+            size = (BCE_MB_VALUE(resp) + 0x10ff) & ~(4096LLU - 1);
-+            pr_debug("apple-bce: suspend: device requested a larger buffer (%li)\n", size);
-+            continue;
-+        } else {
-+            pr_err("apple-bce: suspend failed (invalid device response)\n");
-+            status = -EINVAL;
-+            break;
-+        }
-+    }
-+    if (dma_ptr)
-+        dma_free_coherent(&bce->pci->dev, size, dma_ptr, dma_addr);
-+    return status;
-+}
-+
-+static int bce_suspend_selected(struct apple_bce_device *bce)
-+{
-+    if (bce_use_stateful_sleep)
-+        return bce_suspend_stateful(bce);
-+    return bce_suspend_no_state(bce);
-+}
-+
-+static int bce_resume_no_state(struct apple_bce_device *bce)
++static int bce_pm_suspend_try_state(struct apple_bce_device *bce)
 +{
 +    int status;
 +    u64 resp;
 +
-+    if ((status = bce_mailbox_send(&bce->mbox, BCE_MB_MSG(BCE_MB_RESTORE_NO_STATE, 0), &resp))) {
++    /* Windows mba9,1/mbp16,1 tries stateful first and decides fallback from the 0x17 reply. */
++    bce->stateful_suspend_valid = false;
++
++    if (!bce->saved_data_dma_ptr || !bce->saved_data_dma_addr || !bce->saved_data_dma_size) {
++        pr_err("apple-bce: suspend failed (persistent state buffer missing)\n");
++        return -ENOMEM;
++    }
++
++    BUG_ON((bce->saved_data_dma_addr % 4096) != 0);
++    status = bce_mailbox_send_locked(&bce->mbox,
++            BCE_MB_MSG(BCE_MB_SAVE_STATE_AND_SLEEP,
++                    (bce->saved_data_dma_addr & ~(4096LLU - 1)) | (bce->saved_data_dma_size / 4096)),
++            &resp);
++    if (status) {
++        pr_err("apple-bce: suspend failed (mailbox send)\n");
++        return status;
++    }
++
++    if (BCE_MB_TYPE(resp) == BCE_MB_SAVE_RESTORE_STATE_COMPLETE) {
++        pr_info("apple-bce: suspend: remote response: restore state saved  \n");
++        bce->stateful_suspend_valid = true;
++        return 0;
++    }
++
++    if (BCE_MB_TYPE(resp) == BCE_MB_SAVE_STATE_AND_SLEEP_REJECTED) {
++        pr_err("apple-bce: remote rejected stateful suspend payload\n");
++        return -EAGAIN;
++    }
++    return -EINVAL;
++}
++
++static int bce_pm_resume_no_state(struct apple_bce_device *bce)
++{
++    int status;
++    u64 resp;
++
++    if ((status = bce_mailbox_send_locked(&bce->mbox, BCE_MB_MSG(BCE_MB_RESTORE_NO_STATE, 0), &resp))) {
 +        pr_err("apple-bce: resume with no state failed (mailbox send)\n");
 +        return status;
 +    }
@@ -444,34 +545,22 @@ index 000000000..28c1ff7e0
 +    return 0;
 +}
 +
-+/* Preserved stateful resume path. */
-+static int bce_resume_stateful(struct apple_bce_device *bce)
++static int bce_pm_resume_stateful(struct apple_bce_device *bce)
 +{
 +    int status;
 +    u64 resp;
 +
-+    if ((status = bce_mailbox_send(&bce->mbox, BCE_MB_MSG(BCE_MB_RESTORE_STATE_AND_WAKE,
++    if ((status = bce_mailbox_send_locked(&bce->mbox, BCE_MB_MSG(BCE_MB_RESTORE_STATE_AND_WAKE,
 +            (bce->saved_data_dma_addr & ~(4096LLU - 1)) | (bce->saved_data_dma_size / 4096)), &resp))) {
 +        pr_err("apple-bce: resume with state failed (mailbox send)\n");
-+        goto finish_with_state;
++        return status;
 +    }
 +    if (BCE_MB_TYPE(resp) != BCE_MB_SAVE_RESTORE_STATE_COMPLETE) {
 +        pr_err("apple-bce: resume with state failed (invalid device response)\n");
-+        status = -EINVAL;
-+        goto finish_with_state;
++        return -EINVAL;
 +    }
 +
-+finish_with_state:
-+    dma_free_coherent(&bce->pci->dev, bce->saved_data_dma_size, bce->saved_data_dma_ptr, bce->saved_data_dma_addr);
-+    bce->saved_data_dma_ptr = NULL;
-+    return status;
-+}
-+
-+static int bce_resume_selected(struct apple_bce_device *bce)
-+{
-+    if (bce_use_stateful_sleep)
-+        return bce_resume_stateful(bce);
-+    return bce_resume_no_state(bce);
++    return 0;
 +}
 +
 +static int apple_bce_suspend(struct device *dev)
@@ -479,40 +568,107 @@ index 000000000..28c1ff7e0
 +    struct apple_bce_device *bce = pci_get_drvdata(to_pci_dev(dev));
 +    int status;
 +
-+    bce_timestamp_stop(&bce->timestamp);
++    pr_info("apple-bce: suspend: entry\n");
++    mutex_lock(&bce->pm_lock);
 +
-+    pr_info("apple-bce: suspend: removing VHCI HCD for no-state sleep\n");
++    bce->stateful_suspend_valid = false;
++    bce->no_state_fallback = false;
++    bce->vhci.no_state_resume = false;
++
++    status = bce_pm_suspend_prepare(bce);
++    if (status)
++        goto out_unlock;
++
++    if (!bce_stateful_supported(bce)) {
++        /* No-state keeps the current Linux HCD teardown path until the Windows no-state path is rebuilt separately. */
++        bce_vhci_remove_hcd(&bce->vhci);
++        status = bce_pm_suspend_fallback_no_state(bce);
++        if (!status) {
++            bce->no_state_fallback = true;
++            bce->vhci.no_state_resume = true;
++        } else {
++            bce_pm_suspend_abort(bce);
++        }
++        goto out_unlock;
++    }
++
++    status = bce_pm_suspend_try_state(bce);
++    if (!status)
++        goto out_unlock;
++
++    if (status != -EAGAIN) {
++        bce_pm_suspend_abort(bce);
++        goto out_unlock;
++    }
++
++    /* Current Linux path treats the traced 0x19 not-ready reply as stateful reject. */
++    pr_info("apple-bce: suspend: stateful path not ready, falling back to no-state\n");
 +    bce_vhci_remove_hcd(&bce->vhci);
++    status = bce_pm_suspend_fallback_no_state(bce);
++    if (!status) {
++        bce->no_state_fallback = true;
++        bce->vhci.no_state_resume = true;
++    } else {
++        bce_pm_suspend_abort(bce);
++    }
 +
-+    if ((status = bce_suspend_selected(bce)))
-+        return status;
-+
-+    return 0;
++out_unlock:
++    mutex_unlock(&bce->pm_lock);
++    pr_info("apple-bce: suspend: exit status=%d stateful_valid=%d no_state_resume=%d no_state_fallback=%d\n",
++            status, bce->stateful_suspend_valid, bce->vhci.no_state_resume, bce->no_state_fallback);
++    return status;
 +}
 +
 +static int apple_bce_resume(struct device *dev)
 +{
 +    struct apple_bce_device *bce = pci_get_drvdata(to_pci_dev(dev));
 +    int status;
++    bool used_stateful;
++
++    pr_info("apple-bce: resume: entry\n");
++    mutex_lock(&bce->pm_lock);
 +
 +    pci_set_master(bce->pci);
 +    pci_set_master(bce->pci0);
 +
-+    if ((status = bce_resume_selected(bce)))
-+        return status;
++    /* Windows resumes from the suspend result, not a preselected mode. */
++    used_stateful = bce_stateful_supported(bce) && bce->stateful_suspend_valid;
++    pr_info("apple-bce: resume path: %s\n", used_stateful ? "stateful" : "no-state");
++    if (used_stateful)
++        status = bce_pm_resume_stateful(bce);
++    else
++        status = bce_pm_resume_no_state(bce);
++    if (status)
++        goto out_unlock;
 +
-+    if (bce->vhci.no_state_resume) {
-+        /* No-state wake rebuilds VHCI from a fresh HCD registration. */
-+        pr_info("apple-bce: resume: re-adding VHCI HCD after no-state wake\n");
-+        status = bce_vhci_add_hcd(&bce->vhci);
-+        if (status)
-+            return status;
-+        bce->vhci.no_state_resume = false;
++    if (used_stateful)
++        bce->stateful_suspend_valid = false;
++
++    bce_pm_resume_finish(bce);
++
++out_unlock:
++    mutex_unlock(&bce->pm_lock);
++    pr_info("apple-bce: resume: exit status=%d path=%s stateful_valid=%d no_state_resume=%d no_state_fallback=%d\n",
++            status, used_stateful ? "stateful" : "no-state",
++            bce->stateful_suspend_valid, bce->vhci.no_state_resume, bce->no_state_fallback);
++    return status;
++}
++
++static void apple_bce_complete(struct device *dev)
++{
++    struct apple_bce_device *bce = pci_get_drvdata(to_pci_dev(dev));
++
++    pr_info("apple-bce: complete: entry no_state_fallback=%d no_state_resume=%d\n",
++            bce->no_state_fallback, bce->vhci.no_state_resume);
++    if (bce->no_state_fallback && bce->vhci.no_state_resume) {
++        /* Re-add the VHCI HCD after the PM core completed resume ordering. */
++        pr_info("apple-bce: complete: scheduling VHCI HCD re-add after no-state wake\n");
++        queue_work(bce->vhci.tq_state_wq, &bce->vhci.w_add_hcd);
++        bce->no_state_fallback = false;
 +    }
 +
-+    bce_timestamp_start(&bce->timestamp, false);
-+
-+    return 0;
++    aaudio_resume_post_vhci(bce->aaudio);
++    pr_info("apple-bce: complete: exit\n");
 +}
 +
 +static struct pci_device_id apple_bce_ids[  ] = {
@@ -524,7 +680,8 @@ index 000000000..28c1ff7e0
 +
 +struct dev_pm_ops apple_bce_pci_driver_pm = {
 +        .suspend = apple_bce_suspend,
-+        .resume = apple_bce_resume
++        .resume = apple_bce_resume,
++        .complete = apple_bce_complete
 +};
 +struct pci_driver apple_bce_pci_driver = {
 +        .name = "apple-bce",
@@ -586,22 +743,23 @@ index 000000000..28c1ff7e0
 +}
 +
 +MODULE_LICENSE("GPL");
-+MODULE_AUTHOR("MrARM");
++MODULE_AUTHOR("MrARM/modified by André Eikmeyer");
 +MODULE_DESCRIPTION("Apple BCE Driver");
-+MODULE_VERSION("0.02");
++MODULE_VERSION("0.041");
 +module_init(apple_bce_module_init);
 +module_exit(apple_bce_module_exit);
 diff --git a/drivers/staging/apple-bce/apple_bce.h b/drivers/staging/apple-bce/apple_bce.h
 new file mode 100644
-index 000000000..58dbeff79
+index 000000000..f94331fd7
 --- /dev/null
 +++ b/drivers/staging/apple-bce/apple_bce.h
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,48 @@
 +#ifndef APPLE_BCE_H
 +#define APPLE_BCE_H
 +
 +#include <linux/pci.h>
 +#include <linux/spinlock.h>
++#include <linux/mutex.h>
 +#include "mailbox.h"
 +#include "queue.h"
 +#include "vhci/vhci.h"
@@ -619,7 +777,7 @@ index 000000000..58dbeff79
 +    void __iomem *reg_mem_mb;
 +    void __iomem *reg_mem_dma;
 +    struct bce_mailbox mbox;
-+    struct bce_timestamp timestamp;
++    struct bce_xhci_pm xhci_pm;
 +    struct bce_queue *queues[BCE_MAX_QUEUE_COUNT];
 +    struct spinlock queues_lock;
 +    struct ida queue_ida;
@@ -631,8 +789,14 @@ index 000000000..58dbeff79
 +    dma_addr_t saved_data_dma_addr;
 +    void *saved_data_dma_ptr;
 +    size_t saved_data_dma_size;
++    u32 fw_version;
++    bool stateful_suspend_valid;
++    bool no_state_fallback;
++    bool mailbox_channel_active;
++    struct mutex pm_lock;
 +
 +    struct bce_vhci vhci;
++    struct aaudio_device *aaudio;
 +};
 +
 +extern struct apple_bce_device *global_bce;
@@ -640,10 +804,10 @@ index 000000000..58dbeff79
 +#endif //APPLE_BCE_H
 diff --git a/drivers/staging/apple-bce/audio/audio.c b/drivers/staging/apple-bce/audio/audio.c
 new file mode 100644
-index 000000000..16bd50fd1
+index 000000000..d93bbf547
 --- /dev/null
 +++ b/drivers/staging/apple-bce/audio/audio.c
-@@ -0,0 +1,711 @@
+@@ -0,0 +1,812 @@
 +#include <linux/pci.h>
 +#include <linux/spinlock.h>
 +#include <linux/module.h>
@@ -666,6 +830,9 @@ index 000000000..16bd50fd1
 +static int aaudio_init_bs(struct aaudio_device *a);
 +static void aaudio_init_dev(struct aaudio_device *a, aaudio_device_id_t dev_id);
 +static void aaudio_free_dev(struct aaudio_subdevice *sdev);
++static void aaudio_reset_stream(struct aaudio_stream *stream);
++static void aaudio_reset_streams(struct aaudio_device *a);
++static void aaudio_resume_work(struct work_struct *ws);
 +
 +static int aaudio_probe(struct pci_dev *dev, const struct pci_device_id *id)
 +{
@@ -699,6 +866,7 @@ index 000000000..16bd50fd1
 +
 +    aaudio->pci = dev;
 +    pci_set_drvdata(dev, aaudio);
++    aaudio->bce->aaudio = aaudio;
 +
 +    aaudio->devt = aaudio_chrdev;
 +    aaudio->dev = device_create(aaudio_class, &dev->dev, aaudio->devt, NULL, "aaudio");
@@ -706,9 +874,11 @@ index 000000000..16bd50fd1
 +        status = PTR_ERR(aaudio_class);
 +        goto fail;
 +    }
-+    device_link_add(aaudio->dev, aaudio->bce->dev, DL_FLAG_PM_RUNTIME | DL_FLAG_AUTOREMOVE_CONSUMER);
++    device_link_add(&dev->dev, &aaudio->bce->pci->dev,
++            DL_FLAG_PM_RUNTIME | DL_FLAG_AUTOREMOVE_CONSUMER);
 +
 +    init_completion(&aaudio->remote_alive);
++    INIT_WORK(&aaudio->resume_work, aaudio_resume_work);
 +    INIT_LIST_HEAD(&aaudio->subdevice_list);
 +
 +    /* Init: set an unknown flag in the bitset */
@@ -804,6 +974,9 @@ index 000000000..16bd50fd1
 +    struct aaudio_subdevice *sdev;
 +    struct aaudio_device *aaudio = pci_get_drvdata(dev);
 +
++    cancel_work_sync(&aaudio->resume_work);
++    if (aaudio->bce && aaudio->bce->aaudio == aaudio)
++        aaudio->bce->aaudio = NULL;
 +    snd_card_free(aaudio->card);
 +    while (!list_empty(&aaudio->subdevice_list)) {
 +        sdev = list_first_entry(&aaudio->subdevice_list, struct aaudio_subdevice, list);
@@ -822,11 +995,46 @@ index 000000000..16bd50fd1
 +static int aaudio_suspend(struct device *dev)
 +{
 +    struct aaudio_device *aaudio = pci_get_drvdata(to_pci_dev(dev));
++    struct aaudio_subdevice *sdev;
++    size_t i;
++    int status;
 +
-+    if (aaudio_cmd_set_remote_access(aaudio, AAUDIO_REMOTE_ACCESS_OFF))
++    cancel_work_sync(&aaudio->resume_work);
++    aaudio->resume_deferred = false;
++
++    /* Suspend PCM streams */
++    list_for_each_entry(sdev, &aaudio->subdevice_list, list) {
++        bool stopped_io = false;
++
++        for (i = 0; i < sdev->out_stream_cnt; i++) {
++            if (!sdev->out_streams[i].started)
++                continue;
++            stopped_io = true;
++            sdev->out_streams[i].started = 0;
++        }
++
++        for (i = 0; i < sdev->in_stream_cnt; i++) {
++            if (!sdev->in_streams[i].started)
++                continue;
++            stopped_io = true;
++            sdev->in_streams[i].started = 0;
++        }
++
++        if (stopped_io)
++            aaudio_cmd_stop_io(sdev->a, sdev->dev_id);
++
++        if (sdev->pcm)
++            snd_pcm_suspend_all(sdev->pcm);
++    }
++
++    dev_info(aaudio->dev, "suspend entry\n");
++
++    status = aaudio_cmd_set_remote_access(aaudio, AAUDIO_REMOTE_ACCESS_OFF);
++    if (status)
 +        dev_warn(aaudio->dev, "Failed to reset remote access\n");
 +
 +    pci_disable_device(aaudio->pci);
++    dev_info(aaudio->dev, "suspend exit status=%d\n", status);
 +    return 0;
 +}
 +
@@ -834,17 +1042,74 @@ index 000000000..16bd50fd1
 +{
 +    int status;
 +    struct aaudio_device *aaudio = pci_get_drvdata(to_pci_dev(dev));
++    const char *path = aaudio->bce->vhci.no_state_resume ? "no-state" : "stateful";
 +
 +    if ((status = pci_enable_device(aaudio->pci)))
 +        return status;
 +    pci_set_master(aaudio->pci);
++    
++    /* we are deferring aaudio resume here until vhci is finished*/
++    if (!aaudio->bce->vhci.no_state_resume) {
++        aaudio->resume_deferred = true;
++        return 0;
++    }
 +
 +    if ((status = aaudio_cmd_set_remote_access(aaudio, AAUDIO_REMOTE_ACCESS_ON))) {
 +        dev_err(aaudio->dev, "Failed to set remote access\n");
 +        return status;
 +    }
 +
++    aaudio->resume_deferred = false;
++    aaudio_reset_streams(aaudio);
++
++    dev_info(aaudio->dev, "resume exit status=0 path=%s\n", path);
 +    return 0;
++}
++
++static void aaudio_resume_work(struct work_struct *ws)
++{
++    struct aaudio_device *aaudio = container_of(ws, struct aaudio_device, resume_work);
++
++    if (!aaudio->resume_deferred)
++        return;
++
++    if (aaudio_cmd_set_remote_access(aaudio, AAUDIO_REMOTE_ACCESS_ON)) {
++        aaudio->resume_deferred = false;
++        dev_err(aaudio->dev, "Deferred remote access enable failed\n");
++        return;
++    }
++
++    aaudio->resume_deferred = false;
++    dev_info(aaudio->dev, "resume deferred path complete\n");
++}
++
++void aaudio_resume_post_vhci(struct aaudio_device *aaudio)
++{
++    if (!aaudio || !aaudio->resume_deferred)
++        return;
++
++    schedule_work(&aaudio->resume_work);
++}
++
++static void aaudio_reset_stream(struct aaudio_stream *stream)
++{
++    stream->started = 0;
++    stream->waiting_for_first_ts = true;
++    stream->remote_timestamp = 0;
++    stream->frame_min = stream->latency;
++}
++
++static void aaudio_reset_streams(struct aaudio_device *a)
++{
++    struct aaudio_subdevice *sdev;
++    size_t i;
++
++    list_for_each_entry(sdev, &a->subdevice_list, list) {
++        for (i = 0; i < sdev->in_stream_cnt; i++)
++            aaudio_reset_stream(&sdev->in_streams[i]);
++        for (i = 0; i < sdev->out_stream_cnt; i++)
++            aaudio_reset_stream(&sdev->out_streams[i]);
++    }
 +}
 +
 +static int aaudio_init_cmd(struct aaudio_device *a)
@@ -1357,14 +1622,15 @@ index 000000000..16bd50fd1
 +MODULE_PARM_DESC(id, "ID string for Apple Internal Audio soundcard.");
 diff --git a/drivers/staging/apple-bce/audio/audio.h b/drivers/staging/apple-bce/audio/audio.h
 new file mode 100644
-index 000000000..ebbfaa116
+index 000000000..6f7bd99c5
 --- /dev/null
 +++ b/drivers/staging/apple-bce/audio/audio.h
-@@ -0,0 +1,125 @@
+@@ -0,0 +1,136 @@
 +#ifndef AAUDIO_H
 +#define AAUDIO_H
 +
 +#include <linux/types.h>
++#include <linux/workqueue.h>
 +#include <sound/pcm.h>
 +#include "../apple_bce.h"
 +#include "protocol_bce.h"
@@ -1411,6 +1677,13 @@ index 000000000..ebbfaa116
 +};
 +
 +struct aaudio_device;
++
++struct aaudio_deferred_msg {
++    struct work_struct ws;
++    struct aaudio_device *a;
++    struct aaudio_msg msg;
++};
++
 +struct aaudio_dma_buf {
 +    dma_addr_t dma_addr;
 +    void *ptr;
@@ -1473,6 +1746,8 @@ index 000000000..ebbfaa116
 +    int next_alsa_id;
 +
 +    struct completion remote_alive;
++    struct work_struct resume_work;
++    bool resume_deferred;
 +};
 +
 +void aaudio_handle_notification(struct aaudio_device *a, struct aaudio_msg *msg);
@@ -1482,6 +1757,7 @@ index 000000000..ebbfaa116
 +
 +int aaudio_module_init(void);
 +void aaudio_module_exit(void);
++void aaudio_resume_post_vhci(struct aaudio_device *a);
 +
 +extern struct aaudio_alsa_pcm_id_mapping aaudio_alsa_id_mappings[];
 +
@@ -1536,7 +1812,7 @@ index 000000000..dfef3ab68
 +#endif //AAUDIO_DESCRIPTION_H
 diff --git a/drivers/staging/apple-bce/audio/pcm.c b/drivers/staging/apple-bce/audio/pcm.c
 new file mode 100644
-index 000000000..1026e10a9
+index 000000000..db1c1710a
 --- /dev/null
 +++ b/drivers/staging/apple-bce/audio/pcm.c
 @@ -0,0 +1,308 @@
@@ -1752,7 +2028,7 @@ index 000000000..1026e10a9
 +    snd_pcm_sframes_t buffer_time_length;
 +
 +    if (!stream->started || stream->waiting_for_first_ts) {
-+        pr_warn("aaudio_pcm_pointer while not started\n");
++        /* the pr_info about pcm pointer was removed because it's a normal state transition*/
 +        return 0;
 +    }
 +
@@ -1843,7 +2119,7 @@ index 000000000..1026e10a9
 +
 +    substream = sdev->pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream;
 +    if (substream)
-+        aaudio_handle_stream_timestamp(substream, dev_timestamp);
++        aaudio_handle_stream_timestamp(substream, os_timestamp);
 +    substream = sdev->pcm->streams[SNDRV_PCM_STREAM_CAPTURE].substream;
 +    if (substream)
 +        aaudio_handle_stream_timestamp(substream, os_timestamp);
@@ -2379,10 +2655,10 @@ index 000000000..3427486f3
 +#endif //AAUDIO_PROTOCOL_H
 diff --git a/drivers/staging/apple-bce/audio/protocol_bce.c b/drivers/staging/apple-bce/audio/protocol_bce.c
 new file mode 100644
-index 000000000..28f2dfd44
+index 000000000..c884144fa
 --- /dev/null
 +++ b/drivers/staging/apple-bce/audio/protocol_bce.c
-@@ -0,0 +1,226 @@
+@@ -0,0 +1,258 @@
 +#include "protocol_bce.h"
 +
 +#include "audio.h"
@@ -2392,6 +2668,7 @@ index 000000000..28f2dfd44
 +static int aaudio_bce_queue_init(struct aaudio_device *dev, struct aaudio_bce_queue *q, const char *name, int direction,
 +                                 bce_sq_completion cfn);
 +void aaudio_bce_in_queue_submit_pending(struct aaudio_bce_queue *q, size_t count);
++static void aaudio_deferred_msg_work(struct work_struct *ws);
 +
 +int aaudio_bce_init(struct aaudio_device *dev)
 +{
@@ -2540,6 +2817,20 @@ index 000000000..28f2dfd44
 +
 +static void aaudio_bce_in_queue_handle_msg(struct aaudio_device *a, struct aaudio_msg *msg);
 +
++static void aaudio_deferred_msg_work(struct work_struct *ws)
++{
++    struct aaudio_deferred_msg *work = container_of(ws, struct aaudio_deferred_msg, ws);
++    struct aaudio_msg_header *header = work->msg.data;
++
++    if (header->type == AAUDIO_MSG_TYPE_COMMAND)
++        aaudio_handle_command(work->a, &work->msg);
++    else if (header->type == AAUDIO_MSG_TYPE_NOTIFICATION)
++        aaudio_handle_notification(work->a, &work->msg);
++
++    kfree(work->msg.data);
++    kfree(work);
++}
++
 +static void aaudio_bce_in_queue_completion(struct bce_queue_sq *sq)
 +{
 +    struct aaudio_msg msg;
@@ -2569,17 +2860,34 @@ index 000000000..28f2dfd44
 +static void aaudio_bce_in_queue_handle_msg(struct aaudio_device *a, struct aaudio_msg *msg)
 +{
 +    struct aaudio_msg_header *header = (struct aaudio_msg_header *) msg->data;
++    struct aaudio_deferred_msg *work;
++
 +    if (msg->size < sizeof(struct aaudio_msg_header)) {
 +        pr_err("aaudio: Msg size smaller than header (%lx)", msg->size);
 +        return;
 +    }
 +    if (header->type == AAUDIO_MSG_TYPE_RESPONSE) {
 +        aaudio_handle_reply(&a->bcem, msg);
-+    } else if (header->type == AAUDIO_MSG_TYPE_COMMAND) {
-+        aaudio_handle_command(a, msg);
-+    } else if (header->type == AAUDIO_MSG_TYPE_NOTIFICATION) {
-+        aaudio_handle_notification(a, msg);
++        return;
 +    }
++
++    work = kzalloc(sizeof(*work), GFP_ATOMIC);
++    if (!work) {
++        pr_err("aaudio: Failed to allocate deferred message work\n");
++        return;
++    }
++
++    work->msg.data = kmemdup(msg->data, msg->size, GFP_ATOMIC);
++    if (!work->msg.data) {
++        kfree(work);
++        pr_err("aaudio: Failed to copy deferred message\n");
++        return;
++    }
++
++    work->a = a;
++    work->msg.size = msg->size;
++    INIT_WORK(&work->ws, aaudio_deferred_msg_work);
++    schedule_work(&work->ws);
 +}
 +
 +void aaudio_bce_in_queue_submit_pending(struct aaudio_bce_queue *q, size_t count)
@@ -2687,12 +2995,28 @@ index 000000000..14d26c05d
 +void aaudio_reply_free(struct aaudio_msg *reply);
 +
 +#endif //AAUDIO_PROTOCOL_BCE_H
+diff --git a/drivers/staging/apple-bce/dkms.conf b/drivers/staging/apple-bce/dkms.conf
+new file mode 100644
+index 000000000..ac477b788
+--- /dev/null
++++ b/drivers/staging/apple-bce/dkms.conf
+@@ -0,0 +1,10 @@
++PACKAGE_NAME="apple-bce"
++PACKAGE_VERSION="0.04"
++
++MAKE[0]="make KVERSION=${kernelver}"
++CLEAN="make KVERSION=${kernelver} clean"
++
++BUILT_MODULE_NAME[0]="apple-bce"
++DEST_MODULE_LOCATION[0]="/updates/dkms"
++
++AUTOINSTALL="yes"
 diff --git a/drivers/staging/apple-bce/mailbox.c b/drivers/staging/apple-bce/mailbox.c
 new file mode 100644
-index 000000000..6a7e224d0
+index 000000000..b24f2422d
 --- /dev/null
 +++ b/drivers/staging/apple-bce/mailbox.c
-@@ -0,0 +1,183 @@
+@@ -0,0 +1,237 @@
 +#include "mailbox.h"
 +#include <linux/atomic.h>
 +#include "apple_bce.h"
@@ -2708,15 +3032,33 @@ index 000000000..6a7e224d0
 +void bce_mailbox_init(struct bce_mailbox *mb, void __iomem *reg_mb)
 +{
 +    mb->reg_mb = reg_mb;
++    mutex_init(&mb->channel_lock);
 +    init_completion(&mb->mb_completion);
 +}
 +
-+int bce_mailbox_send_timeout(struct bce_mailbox *mb, u64 msg, u64* recv, unsigned int timeout_ms)
++int bce_mailbox_channel_pause(struct bce_mailbox *mb)
++{
++    /*
++     * Windows vtable +0x100 pauses the BCE mailbox channel before the power
++     * callback. Keep the channel mutex held across that phase.
++     */
++    mutex_lock(&mb->channel_lock);
++    return 0;
++}
++
++void bce_mailbox_channel_resume(struct bce_mailbox *mb)
++{
++    mutex_unlock(&mb->channel_lock);
++}
++
++int bce_mailbox_send_locked_timeout(struct bce_mailbox *mb, u64 msg, u64* recv, unsigned int timeout_ms)
 +{
 +    u32 __iomem *regb;
++    int status = 0;
 +
 +    if (atomic_cmpxchg(&mb->mb_status, 0, 1) != 0) {
-+        return -EEXIST; // We don't support two messages at once
++        status = -EEXIST; // We don't support two messages at once
++        goto out;
 +    }
 +    reinit_completion(&mb->mb_completion);
 +
@@ -2730,14 +3072,30 @@ index 000000000..6a7e224d0
 +    wait_for_completion_timeout(&mb->mb_completion, msecs_to_jiffies(timeout_ms));
 +    if (atomic_read(&mb->mb_status) != 2) { // Didn't get the reply
 +        atomic_set(&mb->mb_status, 0);
-+        return -ETIMEDOUT;
++        status = -ETIMEDOUT;
++        goto out;
 +    }
 +
 +    *recv = mb->mb_result;
 +    pr_debug("bce_mailbox_send: reply %llx\n", *recv);
 +
 +    atomic_set(&mb->mb_status, 0);
-+    return 0;
++out:
++    return status;
++}
++
++int bce_mailbox_send_timeout(struct bce_mailbox *mb, u64 msg, u64* recv, unsigned int timeout_ms)
++{
++    int status;
++
++    /*
++     * Windows brackets every mailbox transaction with BCE channel lock/unlock
++     * (+0x9c8/+0x9d0), including isolated sends.
++     */
++    mutex_lock(&mb->channel_lock);
++    status = bce_mailbox_send_locked_timeout(mb, msg, recv, timeout_ms);
++    mutex_unlock(&mb->channel_lock);
++    return status;
 +}
 +
 +int bce_mailbox_send(struct bce_mailbox *mb, u64 msg, u64* recv)
@@ -2745,12 +3103,20 @@ index 000000000..6a7e224d0
 +    return bce_mailbox_send_timeout(mb, msg, recv, BCE_MBOX_TIMEOUT_MS);
 +}
 +
-+int bce_mailbox_send_no_reply(struct bce_mailbox *mb, u64 msg)
++int bce_mailbox_send_locked(struct bce_mailbox *mb, u64 msg, u64 *recv)
++{
++    return bce_mailbox_send_locked_timeout(mb, msg, recv, BCE_MBOX_TIMEOUT_MS);
++}
++
++int bce_mailbox_send_no_reply_locked(struct bce_mailbox *mb, u64 msg)
 +{
 +    u32 __iomem *regb;
++    int status = 0;
 +
-+    if (atomic_cmpxchg(&mb->mb_status, 0, 1) != 0)
-+        return -EEXIST;
++    if (atomic_cmpxchg(&mb->mb_status, 0, 1) != 0) {
++        status = -EEXIST;
++        goto out;
++    }
 +
 +    pr_debug("bce_mailbox_send_no_reply: %llx\n", msg);
 +    regb = (u32*) ((u8*) mb->reg_mb + REG_MBOX_OUT_BASE);
@@ -2760,7 +3126,19 @@ index 000000000..6a7e224d0
 +    iowrite32(0, regb + 3);
 +
 +    atomic_set(&mb->mb_status, 0);
-+    return 0;
++out:
++    return status;
++}
++
++int bce_mailbox_send_no_reply(struct bce_mailbox *mb, u64 msg)
++{
++    int status;
++
++    /* Fire-and-forget mailbox sends still use the same BCE channel lock in Windows. */
++    mutex_lock(&mb->channel_lock);
++    status = bce_mailbox_send_no_reply_locked(mb, msg);
++    mutex_unlock(&mb->channel_lock);
++    return status;
 +}
 +
 +static int bce_mailbox_retrive_response(struct bce_mailbox *mb)
@@ -2799,29 +3177,29 @@ index 000000000..6a7e224d0
 +    return status;
 +}
 +
-+static void bc_send_timestamp(struct timer_list *tl);
++static void bce_xhci_pm_tick(struct timer_list *tl);
 +
-+void bce_timestamp_init(struct bce_timestamp *ts, void __iomem *reg)
++void bce_xhci_pm_init(struct bce_xhci_pm *pm, void __iomem *reg)
 +{
 +    u32 __iomem *regb;
 +
-+    spin_lock_init(&ts->stop_sl);
-+    ts->stopped = false;
++    spin_lock_init(&pm->stop_sl);
++    pm->stopped = false;
 +
-+    ts->reg = reg;
++    pm->reg = reg;
 +
-+    regb = (u32*) ((u8*) ts->reg + REG_TIMESTAMP_BASE);
++    regb = (u32*) ((u8*) pm->reg + REG_TIMESTAMP_BASE);
 +
 +    ioread32(regb);
 +    mb();
 +
-+    timer_setup(&ts->timer, bc_send_timestamp, 0);
++    timer_setup(&pm->timer, bce_xhci_pm_tick, 0);
 +}
 +
-+void bce_timestamp_start(struct bce_timestamp *ts, bool is_initial)
++void bce_xhci_pm_start(struct bce_xhci_pm *pm, bool is_initial)
 +{
 +    unsigned long flags;
-+    u32 __iomem *regb = (u32*) ((u8*) ts->reg + REG_TIMESTAMP_BASE);
++    u32 __iomem *regb = (u32*) ((u8*) pm->reg + REG_TIMESTAMP_BASE);
 +
 +    if (is_initial) {
 +        iowrite32((u32) -4, regb + 2);
@@ -2831,38 +3209,38 @@ index 000000000..6a7e224d0
 +        iowrite32((u32) -1, regb);
 +    }
 +
-+    spin_lock_irqsave(&ts->stop_sl, flags);
-+    ts->stopped = false;
-+    spin_unlock_irqrestore(&ts->stop_sl, flags);
-+    mod_timer(&ts->timer, jiffies + msecs_to_jiffies(150));
++    spin_lock_irqsave(&pm->stop_sl, flags);
++    pm->stopped = false;
++    spin_unlock_irqrestore(&pm->stop_sl, flags);
++    mod_timer(&pm->timer, jiffies + msecs_to_jiffies(150));
 +}
 +
-+void bce_timestamp_stop(struct bce_timestamp *ts)
++void bce_xhci_pm_stop(struct bce_xhci_pm *pm)
 +{
 +    unsigned long flags;
-+    u32 __iomem *regb = (u32*) ((u8*) ts->reg + REG_TIMESTAMP_BASE);
++    u32 __iomem *regb = (u32*) ((u8*) pm->reg + REG_TIMESTAMP_BASE);
 +
-+    spin_lock_irqsave(&ts->stop_sl, flags);
-+    ts->stopped = true;
-+    spin_unlock_irqrestore(&ts->stop_sl, flags);
++    spin_lock_irqsave(&pm->stop_sl, flags);
++    pm->stopped = true;
++    spin_unlock_irqrestore(&pm->stop_sl, flags);
 +#if LINUX_VERSION_CODE < KERNEL_VERSION(6,15,0)
-+    del_timer_sync(&ts->timer);
++    del_timer_sync(&pm->timer);
 +#else
-+    timer_delete_sync(&ts->timer);
++    timer_delete_sync(&pm->timer);
 +#endif
 +    iowrite32((u32) -2, regb + 2);
 +    iowrite32((u32) -1, regb);
 +}
 +
-+static void bc_send_timestamp(struct timer_list *tl)
++static void bce_xhci_pm_tick(struct timer_list *tl)
 +{
-+    struct bce_timestamp *ts;
++    struct bce_xhci_pm *pm;
 +    unsigned long flags;
 +    u32 __iomem *regb;
 +    ktime_t bt;
 +
-+    ts = container_of(tl, struct bce_timestamp, timer);
-+    regb = (u32*) ((u8*) ts->reg + REG_TIMESTAMP_BASE);
++    pm = container_of(tl, struct bce_xhci_pm, timer);
++    regb = (u32*) ((u8*) pm->reg + REG_TIMESTAMP_BASE);
 +    local_irq_save(flags);
 +    ioread32(regb + 2);
 +    mb();
@@ -2870,27 +3248,29 @@ index 000000000..6a7e224d0
 +    iowrite32((u32) bt, regb + 2);
 +    iowrite32((u32) (bt >> 32), regb);
 +
-+    spin_lock(&ts->stop_sl);
-+    if (!ts->stopped)
-+        mod_timer(&ts->timer, jiffies + msecs_to_jiffies(150));
-+    spin_unlock(&ts->stop_sl);
++    spin_lock(&pm->stop_sl);
++    if (!pm->stopped)
++        mod_timer(&pm->timer, jiffies + msecs_to_jiffies(150));
++    spin_unlock(&pm->stop_sl);
 +    local_irq_restore(flags);
 +}
 diff --git a/drivers/staging/apple-bce/mailbox.h b/drivers/staging/apple-bce/mailbox.h
 new file mode 100644
-index 000000000..f9bc4d075
+index 000000000..0e0cc8409
 --- /dev/null
 +++ b/drivers/staging/apple-bce/mailbox.h
-@@ -0,0 +1,55 @@
+@@ -0,0 +1,64 @@
 +#ifndef BCE_MAILBOX_H
 +#define BCE_MAILBOX_H
 +
 +#include <linux/completion.h>
++#include <linux/mutex.h>
 +#include <linux/pci.h>
 +#include <linux/timer.h>
 +
 +struct bce_mailbox {
 +    void __iomem *reg_mb;
++    struct mutex channel_lock;
 +
 +    atomic_t mb_status; // possible statuses: 0 (no msg), 1 (has active msg), 2 (got reply)
 +    struct completion mb_completion;
@@ -2904,9 +3284,10 @@ index 000000000..f9bc4d075
 +    BCE_MB_SET_FW_PROTOCOL_VERSION = 0xC,        // both
 +    BCE_MB_SLEEP_NO_STATE = 0x14,                // to-device
 +    BCE_MB_RESTORE_NO_STATE = 0x15,              // to-device
++    BCE_MB_SLEEP_LIGHT = 0x16,                   // to-device, documented for future runtime-PM work; do not use for S3/S4
 +    BCE_MB_SAVE_STATE_AND_SLEEP = 0x17,          // to-device
 +    BCE_MB_RESTORE_STATE_AND_WAKE = 0x18,        // to-device
-+    BCE_MB_SAVE_STATE_AND_SLEEP_FAILURE = 0x19,  // from-device
++    BCE_MB_SAVE_STATE_AND_SLEEP_REJECTED = 0x19, // from-device, stateful suspend payload rejected
 +    BCE_MB_SAVE_RESTORE_STATE_COMPLETE = 0x1A,   // from-device
 +};
 +
@@ -2916,33 +3297,39 @@ index 000000000..f9bc4d075
 +
 +void bce_mailbox_init(struct bce_mailbox *mb, void __iomem *reg_mb);
 +
++int bce_mailbox_channel_pause(struct bce_mailbox *mb);
++void bce_mailbox_channel_resume(struct bce_mailbox *mb);
++
 +int bce_mailbox_send(struct bce_mailbox *mb, u64 msg, u64* recv);
 +int bce_mailbox_send_timeout(struct bce_mailbox *mb, u64 msg, u64 *recv, unsigned int timeout_ms);
 +int bce_mailbox_send_no_reply(struct bce_mailbox *mb, u64 msg);
++int bce_mailbox_send_locked(struct bce_mailbox *mb, u64 msg, u64 *recv);
++int bce_mailbox_send_locked_timeout(struct bce_mailbox *mb, u64 msg, u64 *recv, unsigned int timeout_ms);
++int bce_mailbox_send_no_reply_locked(struct bce_mailbox *mb, u64 msg);
 +
 +int bce_mailbox_handle_interrupt(struct bce_mailbox *mb);
 +
 +
-+struct bce_timestamp {
++struct bce_xhci_pm {
 +    void __iomem *reg;
 +    struct timer_list timer;
 +    struct spinlock stop_sl;
 +    bool stopped;
 +};
 +
-+void bce_timestamp_init(struct bce_timestamp *ts, void __iomem *reg);
++void bce_xhci_pm_init(struct bce_xhci_pm *pm, void __iomem *reg);
 +
-+void bce_timestamp_start(struct bce_timestamp *ts, bool is_initial);
++void bce_xhci_pm_start(struct bce_xhci_pm *pm, bool is_initial);
 +
-+void bce_timestamp_stop(struct bce_timestamp *ts);
++void bce_xhci_pm_stop(struct bce_xhci_pm *pm);
 +
 +#endif //BCEDRIVER_MAILBOX_H
 diff --git a/drivers/staging/apple-bce/queue.c b/drivers/staging/apple-bce/queue.c
 new file mode 100644
-index 000000000..948286157
+index 000000000..02ea313ce
 --- /dev/null
 +++ b/drivers/staging/apple-bce/queue.c
-@@ -0,0 +1,415 @@
+@@ -0,0 +1,457 @@
 +#include "queue.h"
 +#include "apple_bce.h"
 +#include <linux/version.h>
@@ -2953,6 +3340,8 @@ index 000000000..948286157
 +{
 +    struct bce_queue_cq *q;
 +    q = kzalloc(sizeof(struct bce_queue_cq), GFP_KERNEL);
++    if (!q)
++        return NULL;
 +    q->qid = qid;
 +    q->type = BCE_QUEUE_CQ;
 +    q->el_count = el_count;
@@ -3013,11 +3402,9 @@ index 000000000..948286157
 +    target_sq->completion_tail = (target_sq->completion_tail + 1) % target_sq->el_count;
 +}
 +
-+void bce_handle_cq_completions(struct apple_bce_device *dev, struct bce_queue_cq *cq)
++void bce_handle_cq_completions_locked(struct apple_bce_device *dev, struct bce_queue_cq *cq, size_t *ce)
 +{
-+    size_t ce = 0;
 +    struct bce_qe_completion *e;
-+    struct bce_queue_sq *sq;
 +    e = bce_cq_element(cq, cq->index);
 +    if (!(e->flags & BCE_COMPLETION_FLAG_PENDING))
 +        return;
@@ -3027,12 +3414,18 @@ index 000000000..948286157
 +        if (!(e->flags & BCE_COMPLETION_FLAG_PENDING))
 +            break;
 +        // pr_info("apple-bce: compl: %i: %i %llx %llx", e->qid, e->status, e->data_size, e->result);
-+        bce_handle_cq_completion(dev, e, &ce);
++        bce_handle_cq_completion(dev, e, ce);
 +        e->flags = 0;
 +        cq->index = (cq->index + 1) % cq->el_count;
 +    }
 +    mb();
 +    iowrite32(cq->index, (u32 *) ((u8 *) dev->reg_mem_dma +  REG_DOORBELL_BASE) + cq->qid);
++}
++
++void bce_dispatch_pending_sq_completions(struct apple_bce_device *dev, size_t ce)
++{
++    struct bce_queue_sq *sq;
++
 +    while (ce) {
 +        --ce;
 +        sq = dev->int_sq_list[ce];
@@ -3047,6 +3440,8 @@ index 000000000..948286157
 +{
 +    struct bce_queue_sq *q;
 +    q = kzalloc(sizeof(struct bce_queue_sq), GFP_KERNEL);
++    if (!q)
++        return NULL;
 +    q->qid = qid;
 +    q->type = BCE_QUEUE_SQ;
 +    q->el_size = el_size;
@@ -3060,8 +3455,11 @@ index 000000000..948286157
 +    atomic_set(&q->available_commands, el_count - 1);
 +    init_completion(&q->available_command_completion);
 +    atomic_set(&q->available_command_completion_waiting_count, 0);
-+    if (!q->data) {
++    if (!q->data || !q->completion_data) {
 +        pr_err("DMA queue memory alloc failed\n");
++        if (q->data)
++            dma_free_coherent(&dev->pci->dev, el_count * el_size, q->data, q->dma_handle);
++        kfree(q->completion_data);
 +        kfree(q);
 +        return NULL;
 +    }
@@ -3081,6 +3479,7 @@ index 000000000..948286157
 +void bce_free_sq(struct apple_bce_device *dev, struct bce_queue_sq *sq)
 +{
 +    dma_free_coherent(&dev->pci->dev, sq->el_count * sq->el_size, sq->data, sq->dma_handle);
++    kfree(sq->completion_data);
 +    kfree(sq);
 +}
 +
@@ -3139,6 +3538,8 @@ index 000000000..948286157
 +{
 +    struct bce_queue_cmdq *q;
 +    q = kzalloc(sizeof(struct bce_queue_cmdq), GFP_KERNEL);
++    if (!q)
++        return NULL;
 +    q->sq = bce_alloc_sq(dev, qid, BCE_CMD_SIZE, el_count, bce_cmdq_completion, q);
 +    if (!q->sq) {
 +        kfree(q);
@@ -3147,6 +3548,14 @@ index 000000000..948286157
 +    spin_lock_init(&q->lck);
 +    q->tres = kzalloc(sizeof(struct bce_queue_cmdq_result_el*) * el_count, GFP_KERNEL);
 +    if (!q->tres) {
++        bce_free_sq(dev, q->sq);
++        kfree(q);
++        return NULL;
++    }
++    q->slot_gen = kzalloc(sizeof(u32) * el_count, GFP_KERNEL);
++    if (!q->slot_gen) {
++        kfree(q->tres);
++        bce_free_sq(dev, q->sq);
 +        kfree(q);
 +        return NULL;
 +    }
@@ -3156,6 +3565,7 @@ index 000000000..948286157
 +void bce_free_cmdq(struct apple_bce_device *dev, struct bce_queue_cmdq *cmdq)
 +{
 +    bce_free_sq(dev, cmdq->sq);
++    kfree(cmdq->slot_gen);
 +    kfree(cmdq->tres);
 +    kfree(cmdq);
 +}
@@ -3169,13 +3579,11 @@ index 000000000..948286157
 +    spin_lock(&cmdq->lck);
 +    while ((result = bce_next_completion(q))) {
 +        el = cmdq->tres[cmdq->sq->head];
-+        if (el) {
++        if (el && el->generation == cmdq->slot_gen[cmdq->sq->head]) {
 +            el->result = result->result;
 +            el->status = result->status;
 +            mb();
 +            complete(&el->cmpl);
-+        } else {
-+            pr_err("apple-bce: Unexpected command queue completion\n");
 +        }
 +        cmdq->tres[cmdq->sq->head] = NULL;
 +        bce_notify_submission_complete(q);
@@ -3195,18 +3603,29 @@ index 000000000..948286157
 +        return NULL;
 +
 +    spin_lock(&cmdq->lck);
++    res->slot = cmdq->sq->tail;
++    res->generation = cmdq->slot_gen[cmdq->sq->tail];
 +    cmdq->tres[cmdq->sq->tail] = res;
 +    ret = bce_next_submission(cmdq->sq);
 +    return ret;
 +}
 +
-+static __always_inline void bce_cmd_finish(struct bce_queue_cmdq *cmdq, struct bce_queue_cmdq_result_el *res)
++static __always_inline int bce_cmd_finish(struct bce_queue_cmdq *cmdq, struct bce_queue_cmdq_result_el *res)
 +{
 +    bce_submit_to_device(cmdq->sq);
 +    spin_unlock(&cmdq->lck);
 +
-+    wait_for_completion(&res->cmpl);
++    if (!wait_for_completion_timeout(&res->cmpl, msecs_to_jiffies(5000))) {
++        pr_err("apple-bce: command queue timeout (slot %u)\n", res->slot);
++        spin_lock(&cmdq->lck);
++        cmdq->tres[res->slot] = NULL;
++        cmdq->slot_gen[res->slot]++;
++        spin_unlock(&cmdq->lck);
++        bce_notify_submission_complete(cmdq->sq);
++        return -ETIMEDOUT;
++    }
 +    mb();
++    return 0;
 +}
 +
 +u32 bce_cmd_register_queue(struct bce_queue_cmdq *cmdq, struct bce_queue_memcfg *cfg, const char *name, bool isdirout)
@@ -3230,7 +3649,8 @@ index 000000000..948286157
 +    cmd->addr = cfg->addr;
 +    cmd->length = cfg->length;
 +
-+    bce_cmd_finish(cmdq, &res);
++    if (bce_cmd_finish(cmdq, &res))
++        return (u32)-1;
 +    return res.status;
 +}
 +
@@ -3243,7 +3663,8 @@ index 000000000..948286157
 +    cmd->cmd = BCE_CMD_UNREGISTER_MEMORY_QUEUE;
 +    cmd->flags = 0;
 +    cmd->qid = qid;
-+    bce_cmd_finish(cmdq, &res);
++    if (bce_cmd_finish(cmdq, &res))
++        return (u32)-1;
 +    return res.status;
 +}
 +
@@ -3256,7 +3677,8 @@ index 000000000..948286157
 +    cmd->cmd = BCE_CMD_FLUSH_MEMORY_QUEUE;
 +    cmd->flags = 0;
 +    cmd->qid = qid;
-+    bce_cmd_finish(cmdq, &res);
++    if (bce_cmd_finish(cmdq, &res))
++        return (u32)-1;
 +    return res.status;
 +}
 +
@@ -3329,6 +3751,13 @@ index 000000000..948286157
 +    return sq;
 +}
 +
++struct bce_queue_sq *bce_create_sq_with_flags(struct apple_bce_device *dev, struct bce_queue_cq *cq, const char *name,
++        u32 el_count, u16 flags, bce_sq_completion compl, void *userdata)
++{
++    int direction = (flags & 1) ? DMA_TO_DEVICE : DMA_FROM_DEVICE;
++    return bce_create_sq(dev, cq, name, el_count, direction, compl, userdata);
++}
++
 +void bce_destroy_cq(struct apple_bce_device *dev, struct bce_queue_cq *cq)
 +{
 +    if (!dev->is_being_removed && bce_cmd_unregister_memory_queue(dev->cmd_cmdq, (u16) cq->qid))
@@ -3358,13 +3787,12 @@ index 000000000..948286157
 +#endif
 +    bce_free_sq(dev, sq);
 +}
-\ No newline at end of file
 diff --git a/drivers/staging/apple-bce/queue.h b/drivers/staging/apple-bce/queue.h
 new file mode 100644
-index 000000000..8368ac5df
+index 000000000..89adbb917
 --- /dev/null
 +++ b/drivers/staging/apple-bce/queue.h
-@@ -0,0 +1,177 @@
+@@ -0,0 +1,183 @@
 +#ifndef BCE_QUEUE_H
 +#define BCE_QUEUE_H
 +
@@ -3423,11 +3851,14 @@ index 000000000..8368ac5df
 +    struct completion cmpl;
 +    u32 status;
 +    u64 result;
++    u32 slot;
++    u32 generation;
 +};
 +struct bce_queue_cmdq {
 +    struct bce_queue_sq *sq;
 +    struct spinlock lck;
 +    struct bce_queue_cmdq_result_el **tres;
++    u32 *slot_gen;
 +};
 +
 +struct bce_queue_memcfg {
@@ -3511,7 +3942,8 @@ index 000000000..8368ac5df
 +struct bce_queue_cq *bce_alloc_cq(struct apple_bce_device *dev, int qid, u32 el_count);
 +void bce_get_cq_memcfg(struct bce_queue_cq *cq, struct bce_queue_memcfg *cfg);
 +void bce_free_cq(struct apple_bce_device *dev, struct bce_queue_cq *cq);
-+void bce_handle_cq_completions(struct apple_bce_device *dev, struct bce_queue_cq *cq);
++void bce_handle_cq_completions_locked(struct apple_bce_device *dev, struct bce_queue_cq *cq, size_t *ce);
++void bce_dispatch_pending_sq_completions(struct apple_bce_device *dev, size_t ce);
 +
 +struct bce_queue_sq *bce_alloc_sq(struct apple_bce_device *dev, int qid, u32 el_size, u32 el_count,
 +        bce_sq_completion compl, void *userdata);
@@ -3538,6 +3970,8 @@ index 000000000..8368ac5df
 +struct bce_queue_cq *bce_create_cq(struct apple_bce_device *dev, u32 el_count);
 +struct bce_queue_sq *bce_create_sq(struct apple_bce_device *dev, struct bce_queue_cq *cq, const char *name, u32 el_count,
 +        int direction, bce_sq_completion compl, void *userdata);
++struct bce_queue_sq *bce_create_sq_with_flags(struct apple_bce_device *dev, struct bce_queue_cq *cq, const char *name,
++        u32 el_count, u16 flags, bce_sq_completion compl, void *userdata);
 +void bce_destroy_cq(struct apple_bce_device *dev, struct bce_queue_cq *cq);
 +void bce_destroy_sq(struct apple_bce_device *dev, struct bce_queue_sq *sq);
 +
@@ -3827,7 +4261,7 @@ index 000000000..f8a57e50e
 +#endif //BCE_QUEUE_DMA_H
 diff --git a/drivers/staging/apple-bce/vhci/command.h b/drivers/staging/apple-bce/vhci/command.h
 new file mode 100644
-index 000000000..5cba51561
+index 000000000..d8c343d43
 --- /dev/null
 +++ b/drivers/staging/apple-bce/vhci/command.h
 @@ -0,0 +1,205 @@
@@ -3860,7 +4294,7 @@ index 000000000..5cba51561
 +    BCE_VHCI_CMD_PORT_RESET = 0x14,
 +    BCE_VHCI_CMD_PORT_DISABLE = 0x15,
 +    BCE_VHCI_CMD_PORT_STATUS = 0x16,
-+    BCE_VHCI_CMD_PORT_STATUS_CHANGE = 0x18,
++    BCE_VHCI_EV_PORT_STATUS_CHANGE = 0x18,
 +
 +    BCE_VHCI_CMD_DEVICE_CREATE = 0x30,
 +    BCE_VHCI_CMD_DEVICE_DESTROY = 0x31,
@@ -4394,10 +4828,10 @@ index 000000000..adb705b6b
 +#endif //BCE_VHCI_QUEUE_H
 diff --git a/drivers/staging/apple-bce/vhci/transfer.c b/drivers/staging/apple-bce/vhci/transfer.c
 new file mode 100644
-index 000000000..3e3e7f17e
+index 000000000..b788afd24
 --- /dev/null
 +++ b/drivers/staging/apple-bce/vhci/transfer.c
-@@ -0,0 +1,697 @@
+@@ -0,0 +1,767 @@
 +#include "transfer.h"
 +#include "../queue.h"
 +#include "vhci.h"
@@ -4677,12 +5111,64 @@ index 000000000..3e3e7f17e
 +{
 +    int ret = 0;
 +    mutex_lock(&q->pause_lock);
++    if (src == BCE_VHCI_PAUSE_SUSPEND &&
++        q->endp_addr == 0x00 &&
++        q->paused_by == (BCE_VHCI_PAUSE_SHUTDOWN | BCE_VHCI_PAUSE_SUSPEND))
++        q->paused_by &= ~BCE_VHCI_PAUSE_SHUTDOWN;
 +    if (q->paused_by & src) {
 +        if (!(q->paused_by & ~src))
 +            ret = bce_vhci_transfer_queue_do_resume(q);
 +        if (!ret)
 +            q->paused_by &= ~src;
 +    }
++    mutex_unlock(&q->pause_lock);
++    return ret;
++}
++
++int bce_vhci_transfer_queue_suspend_pause(struct bce_vhci_transfer_queue *q)
++{
++    unsigned long flags;
++    int status;
++    u8 endp_addr = (u8) (q->endp->desc.bEndpointAddress & 0x8F);
++    int pending;
++    long timeout;
++    int ret = 0;
++
++    mutex_lock(&q->pause_lock);
++    if ((q->paused_by & BCE_VHCI_PAUSE_SUSPEND) == BCE_VHCI_PAUSE_SUSPEND)
++        goto out;
++    if (q->paused_by) {
++        q->paused_by |= BCE_VHCI_PAUSE_SUSPEND;
++        goto out;
++    }
++
++    spin_lock_irqsave(&q->urb_lock, flags);
++    q->active = false;
++    spin_unlock_irqrestore(&q->urb_lock, flags);
++    if (q->sq_out) {
++        pending = atomic_read(&q->sq_out_pending);
++        if (pending > 0) {
++            timeout = wait_event_timeout(q->sq_out_wait_queue,
++                    atomic_read(&q->sq_out_pending) == 0,
++                    msecs_to_jiffies(2000));
++            if (!timeout && atomic_read(&q->sq_out_pending) > 0)
++                pr_warn("bce-vhci: [%02x] pause timeout waiting for %d outputs\n",
++                        q->endp_addr, atomic_read(&q->sq_out_pending));
++        }
++    }
++    bce_vhci_transfer_queue_remove_pending(q);
++    if ((status = bce_vhci_cmd_endpoint_set_state(
++            &q->vhci->cq, q->dev_addr, endp_addr, BCE_VHCI_ENDPOINT_PAUSED, &q->state))) {
++        ret = status;
++        goto out;
++    }
++    if (q->state != BCE_VHCI_ENDPOINT_PAUSED) {
++        ret = -EINVAL;
++        goto out;
++    }
++    q->paused_by |= BCE_VHCI_PAUSE_SUSPEND;
++
++out:
 +    mutex_unlock(&q->pause_lock);
 +    return ret;
 +}
@@ -4986,6 +5472,7 @@ index 000000000..3e3e7f17e
 +static int bce_vhci_urb_control_check_status(struct bce_vhci_urb *urb)
 +{
 +    struct bce_vhci_transfer_queue *q = urb->q;
++    int port;
 +    if (urb->received_status == 0)
 +        return 0;
 +    if (urb->state == BCE_VHCI_URB_DATA_TRANSFER_COMPLETE ||
@@ -4993,7 +5480,24 @@ index 000000000..3e3e7f17e
 +        urb->state != BCE_VHCI_URB_CONTROL_WAITING_FOR_SETUP_COMPLETION)) {
 +        urb->state = BCE_VHCI_URB_CONTROL_COMPLETE;
 +        if (urb->received_status != BCE_VHCI_SUCCESS) {
-+            pr_err("bce-vhci: [%02x] URB failed: %x\n", urb->q->endp_addr, urb->received_status);
++            if (urb->received_status == 3 && q->endp_addr == 0x00) {
++                for (port = 1; port <= q->vhci->port_count; port++) {
++                    if (q->vhci->port_to_device[port] != q->dev_addr)
++                        continue;
++                    set_bit(port - 1, &q->vhci->port_resume_requested);
++                    set_bit(port - 1, &q->vhci->port_change_waiting);
++                    q->vhci->stateful_resume_gating = true;
++                    queue_delayed_work(q->vhci->tq_state_wq,
++                                       &q->vhci->w_port_status_change, 0);
++                    break;
++                }
++            }
++            if (urb->received_status == 3)
++                pr_info("bce-vhci: [%02x] URB failed - expected behaviour when 3 but TODO: %x\n",
++                        urb->q->endp_addr, urb->received_status);
++            else
++                pr_err("bce-vhci: [%02x] URB failed: %x\n",
++                       urb->q->endp_addr, urb->received_status);
 +            urb->q->active = false;
 +            urb->q->stalled = true;
 +            bce_vhci_urb_complete(urb, -EPIPE);
@@ -5097,10 +5601,10 @@ index 000000000..3e3e7f17e
 +}
 diff --git a/drivers/staging/apple-bce/vhci/transfer.h b/drivers/staging/apple-bce/vhci/transfer.h
 new file mode 100644
-index 000000000..4bc73061d
+index 000000000..772d6d2cd
 --- /dev/null
 +++ b/drivers/staging/apple-bce/vhci/transfer.h
-@@ -0,0 +1,75 @@
+@@ -0,0 +1,76 @@
 +#ifndef BCEDRIVER_TRANSFER_H
 +#define BCEDRIVER_TRANSFER_H
 +
@@ -5170,6 +5674,7 @@ index 000000000..4bc73061d
 +int bce_vhci_transfer_queue_do_resume(struct bce_vhci_transfer_queue *q);
 +int bce_vhci_transfer_queue_pause(struct bce_vhci_transfer_queue *q, enum bce_vhci_pause_source src);
 +int bce_vhci_transfer_queue_resume(struct bce_vhci_transfer_queue *q, enum bce_vhci_pause_source src);
++int bce_vhci_transfer_queue_suspend_pause(struct bce_vhci_transfer_queue *q);
 +void bce_vhci_transfer_queue_request_reset(struct bce_vhci_transfer_queue *q);
 +
 +int bce_vhci_urb_create(struct bce_vhci_transfer_queue *q, struct urb *urb);
@@ -5178,10 +5683,10 @@ index 000000000..4bc73061d
 +#endif //BCEDRIVER_TRANSFER_H
 diff --git a/drivers/staging/apple-bce/vhci/vhci.c b/drivers/staging/apple-bce/vhci/vhci.c
 new file mode 100644
-index 000000000..6e3e502a0
+index 000000000..5feae6bea
 --- /dev/null
 +++ b/drivers/staging/apple-bce/vhci/vhci.c
-@@ -0,0 +1,931 @@
+@@ -0,0 +1,1194 @@
 +#include "vhci.h"
 +#include "../apple_bce.h"
 +#include "command.h"
@@ -5191,17 +5696,31 @@ index 000000000..6e3e502a0
 +#include <linux/module.h>
 +#include <linux/version.h>
 +
++#define BCE_VHCI_RESUME_GATE_TIMEOUT_MS 5000
++
 +static dev_t bce_vhci_chrdev;
 +static struct class *bce_vhci_class;
 +static const struct hc_driver bce_vhci_driver;
 +static u16 bce_vhci_port_mask = U16_MAX;
-+static const bool bce_vhci_use_stateful_sleep = false;
++
++enum bce_vhci_port_status_bits {
++    BCE_VHCI_PORT_STATUS_OVERCURRENT   = 0x2,
++    BCE_VHCI_PORT_STATUS_CONNECTED     = 0x4,
++    BCE_VHCI_PORT_STATUS_RESET         = 0x8,
++    BCE_VHCI_PORT_STATUS_ENABLED       = 0x10,
++    BCE_VHCI_PORT_STATUS_SUSPENDED_LEGACY = 0x60,
++    BCE_VHCI_PORT_STATUS_SUSPENDED     = 0x80,
++    BCE_VHCI_PORT_STATUS_HIGH_SPEED    = 0x200,
++    BCE_VHCI_PORT_STATUS_C_CONNECTION  = 0x40000,
++};
 +
 +static int bce_vhci_create_event_queues(struct bce_vhci *vhci);
 +static void bce_vhci_destroy_event_queues(struct bce_vhci *vhci);
 +static int bce_vhci_create_message_queues(struct bce_vhci *vhci);
 +static void bce_vhci_destroy_message_queues(struct bce_vhci *vhci);
 +static void bce_vhci_handle_firmware_events_w(struct work_struct *ws);
++static void bce_vhci_add_hcd_w(struct work_struct *ws);
++static void bce_vhci_port_status_change_w(struct work_struct *ws);
 +static void bce_vhci_firmware_event_completion(struct bce_queue_sq *sq);
 +static int bce_vhci_start_controller(struct bce_vhci *vhci);
 +static void bce_vhci_forget_devices(struct bce_vhci *vhci);
@@ -5229,6 +5748,14 @@ index 000000000..6e3e502a0
 +
 +    vhci->tq_state_wq = alloc_ordered_workqueue("bce-vhci-tq-state", 0);
 +    INIT_WORK(&vhci->w_fw_events, bce_vhci_handle_firmware_events_w);
++    INIT_WORK(&vhci->w_add_hcd, bce_vhci_add_hcd_w);
++    INIT_DELAYED_WORK(&vhci->w_port_status_change, bce_vhci_port_status_change_w);
++    vhci->port_change_pending = 0;
++    vhci->port_change_waiting = 0;
++    vhci->port_resume_requested = 0;
++    vhci->port_resume_pass1_done = 0;
++    memset(vhci->port_resume_tries, 0, sizeof(vhci->port_resume_tries));
++    vhci->stateful_resume_gating = false;
 +
 +    vhci->hcd = usb_create_hcd(&bce_vhci_driver, vhci->vdev, "bce-vhci");
 +    if (!vhci->hcd) {
@@ -5261,6 +5788,8 @@ index 000000000..6e3e502a0
 +
 +void bce_vhci_destroy(struct bce_vhci *vhci)
 +{
++    cancel_work_sync(&vhci->w_add_hcd);
++    cancel_delayed_work_sync(&vhci->w_port_status_change);
 +    bce_vhci_remove_hcd(vhci);
 +    bce_vhci_destroy_event_queues(vhci);
 +    bce_vhci_destroy_message_queues(vhci);
@@ -5286,10 +5815,26 @@ index 000000000..6e3e502a0
 +
 +void bce_vhci_remove_hcd(struct bce_vhci *vhci)
 +{
++    cancel_work_sync(&vhci->w_add_hcd);
 +    if (!vhci->hcd_registered)
 +        return;
 +    usb_remove_hcd(vhci->hcd);
 +    vhci->hcd_registered = false;
++}
++
++static void bce_vhci_add_hcd_w(struct work_struct *ws)
++{
++    struct bce_vhci *vhci = container_of(ws, struct bce_vhci, w_add_hcd);
++    int status;
++
++    pr_info("bce-vhci: deferred HCD add after no-state wake\n");
++    status = bce_vhci_add_hcd(vhci);
++    if (status) {
++        pr_err("bce-vhci: deferred HCD add failed: %d\n", status);
++        return;
++    }
++
++    vhci->no_state_resume = false;
 +}
 +
 +struct bce_vhci *bce_vhci_from_hcd(struct usb_hcd *hcd)
@@ -5364,23 +5909,17 @@ index 000000000..6e3e502a0
 +static int bce_vhci_hub_status_data(struct usb_hcd *hcd, char *buf)
 +{
 +    struct bce_vhci *vhci = bce_vhci_from_hcd(hcd);
-+    unsigned long changed;
-+    int i, bytes;
++    unsigned long pending;
 +
-+    changed = xchg(&vhci->port_change_pending, 0);
-+    if (!changed)
++    /* Only ports reported by firmware as changed should wake the hub state machine. */
++    pending = READ_ONCE(vhci->port_change_pending);
++    if (!pending)
 +        return 0;
 +
-+    /* USB hub status bitmap: bit 0 = hub, bits 1..N = ports 1..N.
-+     * Since we set_bit(port_number, &pending), port N is already
-+     * in bit N — matching the USB spec layout directly. */
-+
-+    bytes = DIV_ROUND_UP(vhci->port_count + 1, 8);
-+
-+    for (i = 0; i < bytes; i++)
-+        buf[i] = (changed >> (i * 8)) & 0xff;
-+
-+    return bytes;
++    memset(buf, 0, 2);
++    buf[0] = (char)((pending << 1) & 0xff);
++    buf[1] = (char)((pending >> 7) & 0xff);
++    return buf[0] || buf[1];
 +}
 +
 +static int bce_vhci_reset_device(struct bce_vhci *vhci, int index, u16 timeout);
@@ -5389,6 +5928,7 @@ index 000000000..6e3e502a0
 +{
 +    struct bce_vhci *vhci = bce_vhci_from_hcd(hcd);
 +    int status;
++    int retries;
 +    struct usb_hub_descriptor *hd;
 +    struct usb_hub_status *hs;
 +    struct usb_port_status *ps;
@@ -5415,6 +5955,26 @@ index 000000000..6e3e502a0
 +        ps->wPortStatus = 0;
 +        ps->wPortChange = 0;
 +
++        if (vhci->stateful_resume_gating && READ_ONCE(vhci->port_change_waiting))
++            pr_info("bce-vhci: hub GetPortStatus gate enter port=%u waiting=%lx\n",
++                    wIndex, READ_ONCE(vhci->port_change_waiting));
++
++        for (retries = 0; vhci->stateful_resume_gating &&
++                         READ_ONCE(vhci->port_change_waiting) &&
++                         retries < BCE_VHCI_RESUME_GATE_TIMEOUT_MS / 20;
++             retries++)
++            msleep(20);
++
++        if (vhci->stateful_resume_gating && READ_ONCE(vhci->port_change_waiting)) {
++            pr_warn("bce-vhci: hub GetPortStatus gate timeout port=%u waiting=%lx\n",
++                    wIndex, READ_ONCE(vhci->port_change_waiting));
++            vhci->stateful_resume_gating = false;
++        }
++
++        if (retries)
++            pr_info("bce-vhci: hub GetPortStatus gate exit port=%u retries=%d waiting=%lx\n",
++                    wIndex, retries, READ_ONCE(vhci->port_change_waiting));
++
 +        if (vhci->port_power_mask & BIT(wIndex))
 +            ps->wPortStatus |= USB_PORT_STAT_POWER;
 +
@@ -5424,37 +5984,45 @@ index 000000000..6e3e502a0
 +        if ((status = bce_vhci_cmd_port_status(&vhci->cq, (u8) wIndex, 0, &port_status)))
 +            return status;
 +
-+        if (port_status & 16)
-+            ps->wPortStatus |= USB_PORT_STAT_ENABLE | USB_PORT_STAT_HIGH_SPEED;
-+        if (port_status & 4)
++        if (port_status & BCE_VHCI_PORT_STATUS_ENABLED)
++            ps->wPortStatus |= USB_PORT_STAT_ENABLE;
++        if (port_status & BCE_VHCI_PORT_STATUS_CONNECTED)
 +            ps->wPortStatus |= USB_PORT_STAT_CONNECTION;
-+        if (port_status & 2)
++        if (port_status & BCE_VHCI_PORT_STATUS_OVERCURRENT)
 +            ps->wPortStatus |= USB_PORT_STAT_OVERCURRENT;
-+        if (port_status & 8)
++        if (port_status & BCE_VHCI_PORT_STATUS_RESET)
 +            ps->wPortStatus |= USB_PORT_STAT_RESET;
-+        if (port_status & 0x60)
-+            ps->wPortStatus |= USB_PORT_STAT_SUSPEND;
++        if (port_status & BCE_VHCI_PORT_STATUS_HIGH_SPEED)
++            ps->wPortStatus |= USB_PORT_STAT_HIGH_SPEED;
 +
-+        if (port_status & 0x40000)
++        if (port_status & BCE_VHCI_PORT_STATUS_C_CONNECTION)
 +            ps->wPortChange |= USB_PORT_STAT_C_CONNECTION;
-+
-+        pr_debug("bce-vhci: Translated status %x to %x:%x\n", port_status, ps->wPortStatus, ps->wPortChange);
++        pr_info("bce-vhci: hub GetPortStatus port=%u raw=%x status=%x change=%x\n",
++                wIndex, port_status, ps->wPortStatus, ps->wPortChange);
 +        return 0;
 +    } else if (typeReq == SetPortFeature) {
 +        if (wValue == USB_PORT_FEAT_POWER) {
 +            status = bce_vhci_cmd_port_power_on(&vhci->cq, (u8) wIndex);
-+            /* As far as I am aware, power status is not part of the port status so store it separately */
++            /* Port status is stored separately */
 +            if (!status)
 +                vhci->port_power_mask |= BIT(wIndex);
 +            return status;
 +        }
 +        if (wValue == USB_PORT_FEAT_RESET) {
++            pr_info("bce-vhci: hub SetPortFeature RESET port=%u\n", wIndex);
 +            return bce_vhci_reset_device(vhci, wIndex, wValue);
 +        }
 +        if (wValue == USB_PORT_FEAT_SUSPEND) {
-+            /* TODO: Am I supposed to also suspend the endpoints? */
-+            pr_debug("bce-vhci: Suspending port %i\n", wIndex);
-+            return bce_vhci_cmd_port_suspend(&vhci->cq, (u8) wIndex);
++            /* Trace the usbcore hub state machine against the firmware port commands. */
++            pr_info("bce-vhci: hub SetPortFeature SUSPEND port=%u\n", wIndex);
++            if (vhci->system_suspending) {
++                pr_info("bce-vhci: hub SetPortFeature SUSPEND port=%u skipped during system suspend\n",
++                        wIndex);
++                return 0;
++            }
++            status = bce_vhci_cmd_port_suspend(&vhci->cq, (u8) wIndex);
++            pr_info("bce-vhci: hub SetPortFeature SUSPEND port=%u -> %d\n", wIndex, status);
++            return status;
 +        }
 +    } else if (typeReq == ClearPortFeature) {
 +        if (wValue == USB_PORT_FEAT_ENABLE)
@@ -5465,14 +6033,20 @@ index 000000000..6e3e502a0
 +                vhci->port_power_mask &= ~BIT(wIndex);
 +            return status;
 +        }
-+        if (wValue == USB_PORT_FEAT_C_CONNECTION)
++        if (wValue == USB_PORT_FEAT_C_CONNECTION) {
++            pr_info("bce-vhci: hub ClearPortFeature C_CONNECTION port=%u\n", wIndex);
++            clear_bit(wIndex - 1, &vhci->port_change_pending);
 +            return bce_vhci_cmd_port_status(&vhci->cq, (u8) wIndex, 0x40000, &port_status);
-+        if (wValue == USB_PORT_FEAT_C_RESET) { /* I don't think I can transfer it in any way */
++        }
++        if (wValue == USB_PORT_FEAT_C_RESET) {
++            pr_info("bce-vhci: hub ClearPortFeature C_RESET port=%u\n", wIndex);
 +            return 0;
 +        }
 +        if (wValue == USB_PORT_FEAT_SUSPEND) {
-+            pr_debug("bce-vhci: Resuming port %i\n", wIndex);
-+            return bce_vhci_cmd_port_resume(&vhci->cq, (u8) wIndex);
++            pr_info("bce-vhci: hub ClearPortFeature SUSPEND port=%u\n", wIndex);
++            status = bce_vhci_cmd_port_resume(&vhci->cq, (u8) wIndex);
++            pr_info("bce-vhci: hub ClearPortFeature SUSPEND port=%u -> %d\n", wIndex, status);
++            return status;
 +        }
 +    }
 +    pr_err("bce-vhci: bce_vhci_hub_control unhandled request: %x %i %i [bufl=%i]\n", typeReq, wValue, wIndex, wLength);
@@ -5603,23 +6177,14 @@ index 000000000..6e3e502a0
 +    return 0;
 +}
 +
-+static int bce_vhci_bus_suspend_no_state(struct usb_hcd *hcd)
-+{
-+    struct bce_vhci *vhci = bce_vhci_from_hcd(hcd);
-+    pr_info("bce_vhci: suspend started\n");
-+
-+    /* Active suspend path tears down the HCD before sleep. */
-+    vhci->defer_rh_poll = false;
-+    pr_info("bce_vhci: suspend done (no-state hcd reinit path)\n");
-+    return 0;
-+}
-+
-+/* Preserved stateful VHCI suspend path. */
-+static int bce_vhci_bus_suspend_stateful(struct usb_hcd *hcd)
++static int bce_vhci_suspend_quiesce(struct usb_hcd *hcd)
 +{
 +    int i, j;
-+    int status;
 +    struct bce_vhci *vhci = bce_vhci_from_hcd(hcd);
++    struct bce_vhci_transfer_queue *tq;
++    struct urb *urb;
++    struct bce_vhci_urb *vurb;
++    unsigned long flags;
 +
 +    pr_info("bce_vhci: suspend started\n");
 +
@@ -5630,21 +6195,46 @@ index 000000000..6e3e502a0
 +        for (j = 0; j < 32; j++) {
 +            if (!(vhci->devices[vhci->port_to_device[i]]->tq_mask & BIT(j)))
 +                continue;
-+            bce_vhci_transfer_queue_pause(&vhci->devices[vhci->port_to_device[i]]->tq[j],
-+                    BCE_VHCI_PAUSE_SUSPEND);
++            tq = &vhci->devices[vhci->port_to_device[i]]->tq[j];
++            if (tq->endp_addr == 0x00 || (usb_endpoint_xfer_int(&tq->endp->desc) &&
++                                          usb_endpoint_dir_in(&tq->endp->desc))) {
++                spin_lock_irqsave(&tq->urb_lock, flags);
++                if (!list_empty(&tq->endp->urb_list)) {
++                    urb = list_first_entry(&tq->endp->urb_list, struct urb, urb_list);
++                    vurb = urb->hcpriv;
++                    pr_info("bce-vhci: suspend tq pre: dev=%u ep=%02x active=%u paused_by=%x stalled=%u has_urb=1 first_state=%x\n",
++                            tq->dev_addr, tq->endp_addr, tq->active, tq->paused_by, tq->stalled,
++                            vurb ? vurb->state : 0xffffffff);
++                } else {
++                    pr_info("bce-vhci: suspend tq pre: dev=%u ep=%02x active=%u paused_by=%x stalled=%u has_urb=0\n",
++                            tq->dev_addr, tq->endp_addr, tq->active, tq->paused_by, tq->stalled);
++                }
++                spin_unlock_irqrestore(&tq->urb_lock, flags);
++            }
++
++            bce_vhci_transfer_queue_suspend_pause(tq);
++
++            if (tq->endp_addr == 0x00 || (usb_endpoint_xfer_int(&tq->endp->desc) &&
++                                          usb_endpoint_dir_in(&tq->endp->desc))) {
++                spin_lock_irqsave(&tq->urb_lock, flags);
++                if (!list_empty(&tq->endp->urb_list)) {
++                    urb = list_first_entry(&tq->endp->urb_list, struct urb, urb_list);
++                    vurb = urb->hcpriv;
++                    pr_info("bce-vhci: suspend tq post: dev=%u ep=%02x active=%u paused_by=%x stalled=%u has_urb=1 first_state=%x\n",
++                            tq->dev_addr, tq->endp_addr, tq->active, tq->paused_by, tq->stalled,
++                            vurb ? vurb->state : 0xffffffff);
++                } else {
++                    pr_info("bce-vhci: suspend tq post: dev=%u ep=%02x active=%u paused_by=%x stalled=%u has_urb=0\n",
++                            tq->dev_addr, tq->endp_addr, tq->active, tq->paused_by, tq->stalled);
++                }
++                spin_unlock_irqrestore(&tq->urb_lock, flags);
++            }
 +        }
 +    }
 +
-+    pr_info("bce_vhci: suspend ports\n");
-+    for (i = 0; i < 16; i++) {
-+        if (!vhci->port_to_device[i])
-+            continue;
-+        bce_vhci_cmd_port_suspend(&vhci->cq, i);
-+    }
-+    pr_info("bce_vhci: suspend controller\n");
-+    if ((status = bce_vhci_cmd_controller_pause(&vhci->cq)))
-+        return status;
-+
++    /* Keep Linux-side queues quiet, but do not push explicit controller/port
++     * suspend commands before 0x17. The Windows host path shows no
++     * such commands around the state-save transition. */
 +    bce_vhci_event_queue_pause(&vhci->ev_commands);
 +    bce_vhci_event_queue_pause(&vhci->ev_system);
 +    bce_vhci_event_queue_pause(&vhci->ev_isochronous);
@@ -5654,19 +6244,41 @@ index 000000000..6e3e502a0
 +    return 0;
 +}
 +
-+static int bce_vhci_bus_suspend(struct usb_hcd *hcd)
++static int bce_vhci_suspend_prepare(struct usb_hcd *hcd)
 +{
-+    if (bce_vhci_use_stateful_sleep)
-+        return bce_vhci_bus_suspend_stateful(hcd);
-+    return bce_vhci_bus_suspend_no_state(hcd);
++    /* Linux still needs a local VHCI quiesce step before the BCE
++     * save-state decision. This is separate from the Windows-visible BCE
++     * mailbox drain / -2 sentinel / 0x17 sequence in apple_bce.c. */
++    return bce_vhci_suspend_quiesce(hcd);
 +}
 +
-+static int bce_vhci_bus_resume(struct usb_hcd *hcd)
++static int bce_vhci_bus_suspend(struct usb_hcd *hcd)
 +{
-+    int i, j;
 +    int status;
 +    struct bce_vhci *vhci = bce_vhci_from_hcd(hcd);
-+    pr_info("bce_vhci: resume started\n");
++
++    pr_info("bce_vhci: bus_suspend entry\n");
++    /* Reset any stale port-worker state before a new suspend cycle. */
++    cancel_delayed_work_sync(&vhci->w_port_status_change);
++    vhci->port_change_waiting = 0;
++    vhci->port_change_pending = 0;
++    vhci->port_resume_requested = 0;
++    vhci->port_resume_pass1_done = 0;
++    memset(vhci->port_resume_tries, 0, sizeof(vhci->port_resume_tries));
++    vhci->system_suspending = true;
++    vhci->stateful_resume_gating = false;
++    status = bce_vhci_suspend_prepare(hcd);
++    if (status)
++        vhci->system_suspending = false;
++    pr_info("bce_vhci: bus_suspend exit status=%d\n", status);
++    return status;
++}
++
++static int bce_vhci_resume_no_state(struct usb_hcd *hcd)
++{
++    int i;
++    int status;
++    struct bce_vhci *vhci = bce_vhci_from_hcd(hcd);
 +
 +    bce_vhci_event_queue_resume(&vhci->ev_system);
 +    bce_vhci_event_queue_resume(&vhci->ev_isochronous);
@@ -5674,63 +6286,79 @@ index 000000000..6e3e502a0
 +    bce_vhci_event_queue_resume(&vhci->ev_asynchronous);
 +    bce_vhci_event_queue_resume(&vhci->ev_commands);
 +
-+    if (vhci->no_state_resume) {
-+        /* Active path: rebuild controller state after no-state wake. */
-+        pr_info("bce_vhci: no-state resume, rebuilding controller state\n");
-+        vhci->defer_rh_poll = true;
-+        bce_vhci_forget_devices(vhci);
-+        status = bce_vhci_start_controller(vhci);
-+        if (status)
-+            return status;
-+
-+        pr_info("bce_vhci: no-state resume, powering off all ports\n");
-+        for (i = 1; i <= vhci->port_count; i++) {
-+            status = bce_vhci_cmd_port_power_off(&vhci->cq, (u8) i);
-+            pr_info("bce_vhci: no-state resume, port %d power_off -> %d\n", i, status);
-+        }
-+
-+        msleep(100);
-+
-+        pr_info("bce_vhci: no-state resume, powering on all ports\n");
-+        for (i = 1; i <= vhci->port_count; i++) {
-+            status = bce_vhci_cmd_port_power_on(&vhci->cq, (u8) i);
-+            pr_info("bce_vhci: no-state resume, port %d power_on -> %d\n", i, status);
-+        }
-+
-+        pr_info("bce_vhci: no-state resume, notifying usbcore about lost power\n");
-+        usb_root_hub_lost_power(hcd->self.root_hub);
-+        vhci->defer_rh_poll = false;
-+        if (vhci->port_change_pending)
-+            usb_hcd_poll_rh_status(hcd);
-+        vhci->no_state_resume = false;
-+        return status;
-+    }
-+
-+    /* Preserved stateful resume path; inactive while no-state suspend is used. */
-+    pr_info("bce_vhci: resume controller\n");
-+    if ((status = bce_vhci_cmd_controller_start(&vhci->cq)))
++    pr_info("bce_vhci: no-state resume, rebuilding controller state\n");
++    bce_vhci_forget_devices(vhci);
++    status = bce_vhci_start_controller(vhci);
++    if (status)
 +        return status;
 +
-+    pr_info("bce_vhci: resume ports\n");
-+    for (i = 0; i < 16; i++) {
-+        if (!vhci->port_to_device[i])
-+            continue;
-+        bce_vhci_cmd_port_resume(&vhci->cq, i);
-+    }
-+    pr_info("bce_vhci: resume endpoints\n");
-+    for (i = 0; i < 16; i++) {
-+        if (!vhci->port_to_device[i])
-+            continue;
-+        for (j = 0; j < 32; j++) {
-+            if (!(vhci->devices[vhci->port_to_device[i]]->tq_mask & BIT(j)))
-+                continue;
-+            bce_vhci_transfer_queue_resume(&vhci->devices[vhci->port_to_device[i]]->tq[j],
-+                    BCE_VHCI_PAUSE_SUSPEND);
-+        }
++    pr_info("bce_vhci: no-state resume, powering off all ports\n");
++    for (i = 1; i <= vhci->port_count; i++) {
++        status = bce_vhci_cmd_port_power_off(&vhci->cq, (u8) i);
++        pr_info("bce_vhci: no-state resume, port %d power_off -> %d\n", i, status);
 +    }
 +
-+    pr_info("bce_vhci: resume done\n");
++    msleep(100);
++
++    pr_info("bce_vhci: no-state resume, powering on all ports\n");
++    for (i = 1; i <= vhci->port_count; i++) {
++        status = bce_vhci_cmd_port_power_on(&vhci->cq, (u8) i);
++        pr_info("bce_vhci: no-state resume, port %d power_on -> %d\n", i, status);
++    }
++
++    pr_info("bce_vhci: no-state resume, notifying usbcore about lost power\n");
++    usb_root_hub_lost_power(hcd->self.root_hub);
++    vhci->no_state_resume = false;
++    pr_info("bce_vhci: no-state resume exit status=%d\n", status);
++    return status;
++}
++
++static int bce_vhci_resume_stateful(struct usb_hcd *hcd)
++{
++    struct bce_vhci *vhci = bce_vhci_from_hcd(hcd);
++
++    /* Linux preserved-state resume path. This is kept separate from the
++     * no-state rebuild path below. */
++    vhci->port_change_pending = 0;
++    vhci->port_change_waiting = 0;
++    vhci->port_resume_requested = 0;
++    vhci->port_resume_pass1_done = 0;
++    memset(vhci->port_resume_tries, 0, sizeof(vhci->port_resume_tries));
++    vhci->stateful_resume_gating = true;
++
++    bce_vhci_event_queue_resume(&vhci->ev_system);
++    bce_vhci_event_queue_resume(&vhci->ev_isochronous);
++    bce_vhci_event_queue_resume(&vhci->ev_interrupt);
++    bce_vhci_event_queue_resume(&vhci->ev_asynchronous);
++    bce_vhci_event_queue_resume(&vhci->ev_commands);
++    pr_info("bce_vhci: deferring endpoint resume until ports are ready\n");
++    pr_info("bce_vhci: stateful resume exit status=0\n");
 +    return 0;
++}
++
++static int bce_vhci_bus_resume(struct usb_hcd *hcd)
++{
++    struct bce_vhci *vhci = bce_vhci_from_hcd(hcd);
++    int status;
++
++    pr_info("bce_vhci: bus_resume entry no_state_resume=%d\n", vhci->no_state_resume);
++    /* Ensure no delayed worker from a previous cycle races this resume. */
++    cancel_delayed_work_sync(&vhci->w_port_status_change);
++    vhci->port_change_waiting = 0;
++    vhci->port_change_pending = 0;
++    vhci->port_resume_requested = 0;
++    vhci->port_resume_pass1_done = 0;
++    memset(vhci->port_resume_tries, 0, sizeof(vhci->port_resume_tries));
++    vhci->system_suspending = false;
++    pr_info("bce_vhci: resume started\n");
++
++    if (vhci->no_state_resume)
++        status = bce_vhci_resume_no_state(hcd);
++    else
++        status = bce_vhci_resume_stateful(hcd);
++
++    pr_info("bce_vhci: bus_resume exit status=%d no_state_resume=%d\n", status, vhci->no_state_resume);
++    return status;
 +}
 +
 +static int bce_vhci_urb_enqueue(struct usb_hcd *hcd, struct urb *urb, gfp_t mem_flags)
@@ -5999,28 +6627,168 @@ index 000000000..6e3e502a0
 +    queue_work(q->vhci->tq_state_wq, &q->vhci->w_fw_events);
 +}
 +
++static const char *bce_vhci_port_state_change_label(u64 p2)
++{
++    return (p2 & 0x4) ? "connected" : "disconnected";
++}
++
++static bool bce_vhci_port_ready_for_hub(u32 port_status)
++{
++    u8 status_byte = (u8) port_status;
++
++    /*
++     * For Linux-side gating we only need the port to be usable enough that
++     * usbcore can talk to the device behind it. Some ports come back with
++     * extra legacy bits set alongside ENABLED (for example 0x75), and
++     * treating those as "not ready" deadlocks the global gate forever.
++     */
++    return (status_byte & BCE_VHCI_PORT_STATUS_CONNECTED) &&
++           (status_byte & BCE_VHCI_PORT_STATUS_ENABLED);
++}
++
++static bool bce_vhci_port_needs_resume(u32 port_status)
++{
++    u8 status_byte = (u8) port_status;
++
++    return (status_byte & BCE_VHCI_PORT_STATUS_CONNECTED) &&
++           !(status_byte & BCE_VHCI_PORT_STATUS_ENABLED);
++}
++
++static int bce_vhci_resume_port_queues(struct bce_vhci *vhci, int portnum)
++{
++    int devid;
++    int endp;
++    int status;
++
++    devid = vhci->port_to_device[portnum];
++    if (!devid || !vhci->devices[devid])
++        return 0;
++
++    for (endp = 0; endp < 32; endp++) {
++        if (!(vhci->devices[devid]->tq_mask & BIT(endp)))
++            continue;
++
++        status = bce_vhci_transfer_queue_resume(&vhci->devices[devid]->tq[endp],
++                                                BCE_VHCI_PAUSE_SUSPEND);
++        if (status) {
++            pr_err("bce-vhci: resume queue failed: port=%d ep=%02x status=%d\n",
++                   portnum, vhci->devices[devid]->tq[endp].endp_addr, status);
++            return status;
++        }
++    }
++
++    return 0;
++}
++
++static void bce_vhci_port_status_change_w(struct work_struct *ws)
++{
++    struct bce_vhci *vhci = container_of(to_delayed_work(ws), struct bce_vhci,
++                                         w_port_status_change);
++    unsigned long waiting;
++    bool retry = false;
++    unsigned long retry_delay = msecs_to_jiffies(20);
++    int port;
++    u32 port_status;
++
++    if (!vhci->hcd_registered || !vhci->hcd)
++        return;
++
++    if (vhci->system_suspending)
++        return;
++
++    waiting = READ_ONCE(vhci->port_change_waiting);
++    for_each_set_bit(port, &waiting, vhci->port_count) {
++        if (bce_vhci_cmd_port_status(&vhci->cq, (u8) (port + 1), 0, &port_status)) {
++            retry = true;
++            continue;
++        }
++
++        /*
++         * If the restored port is present but not enabled yet, drive the T2
++         * port-resume step here before any endpoint queues are resumed.
++         */
++        if (bce_vhci_port_needs_resume(port_status)) {
++            if (vhci->port_resume_tries[port + 1] < 3) {
++                vhci->port_resume_tries[port + 1]++;
++                if (bce_vhci_cmd_port_resume(&vhci->cq, (u8) (port + 1))) {
++                    retry = true;
++                    continue;
++                }
++                retry = true;
++                continue;
++            }
++
++            /* Stop local retrying; only real firmware change bits should wake usbcore. */
++            clear_bit(port, &vhci->port_change_waiting);
++            continue;
++        }
++
++        if (bce_vhci_port_ready_for_hub(port_status)) {
++            /*
++             * Only send a port-level resume when a prior EP0 status=3 armed it
++             * for this port. Keep pass 1 and pass 2 separate so the worker
++             * does not forget that a resume was already sent before queues are
++             * brought back.
++             */
++            if (test_bit(port, &vhci->port_resume_requested)) {
++                if (!test_bit(port, &vhci->port_resume_pass1_done)) {
++                    if (bce_vhci_cmd_port_resume(&vhci->cq, (u8) (port + 1))) {
++                        retry = true;
++                        continue;
++                    }
++                    set_bit(port, &vhci->port_resume_pass1_done);
++                    retry = true;
++                    retry_delay = msecs_to_jiffies(25);
++                    continue;
++                }
++
++                clear_bit(port, &vhci->port_resume_requested);
++                clear_bit(port, &vhci->port_resume_pass1_done);
++            }
++            if (bce_vhci_resume_port_queues(vhci, port + 1)) {
++                retry = true;
++                continue;
++            }
++            msleep(20);
++            clear_bit(port, &vhci->port_change_waiting);
++            clear_bit(port, &vhci->port_change_pending);
++            clear_bit(port, &vhci->port_resume_requested);
++            clear_bit(port, &vhci->port_resume_pass1_done);
++            pr_info("bce-vhci: port worker ready port=%d waiting=%lx\n",
++                    port + 1, READ_ONCE(vhci->port_change_waiting));
++        } else {
++            retry = true;
++        }
++    }
++
++    if (!READ_ONCE(vhci->port_change_waiting))
++        vhci->stateful_resume_gating = false;
++
++    if (retry)
++        queue_delayed_work(vhci->tq_state_wq, &vhci->w_port_status_change,
++                           retry_delay);
++}
++
 +static void bce_vhci_handle_system_event(struct bce_vhci_event_queue *q, struct bce_vhci_message *msg)
 +{
-+    struct usb_hcd *hcd = q->vhci->hcd;
 +    if (msg->cmd & 0x8000) {
 +        bce_vhci_command_queue_deliver_completion(&q->vhci->cq, msg);
-+    } else if (msg->cmd == BCE_VHCI_CMD_PORT_STATUS_CHANGE &&
++    } else if (msg->cmd == BCE_VHCI_EV_PORT_STATUS_CHANGE &&
 +               msg->param1 > 0 &&
-+               msg->param1 <= q->vhci->port_count) {
-+        /* Port status change notification from T2 — flag the port and
-+         * tell the USB framework to re-scan so late-initializing devices
-+         * (camera, Touch Bar, iBridge) are discovered. */
-+        if (hcd) {
-+            set_bit(msg->param1, &q->vhci->port_change_pending);
-+            if (!q->vhci->defer_rh_poll) {
-+                pr_warn("bce-vhci: Port %u status change event, requesting hub rescan\n",
-+                                        msg->param1);
-+                usb_hcd_poll_rh_status(hcd);
-+            }
-+        } else {
-+            pr_warn("bce-vhci: port %u change received but HCD is NULL\n",
-+                                msg->param1);
-+        }
++               msg->param1 < ARRAY_SIZE(q->vhci->port_to_device)) {
++        /*
++         * Firmware signals a per-port state transition; wait until the port
++         * is actually connected+enabled before handing the change to usbcore.
++         * Probe-time controller bring-up can deliver 0x18 before port_count is
++         * populated, so gate this against the fixed port array rather than the
++         * later hub size.
++         */
++        set_bit(msg->param1 - 1, &q->vhci->port_change_pending);
++        set_bit(msg->param1 - 1, &q->vhci->port_change_waiting);
++        queue_delayed_work(q->vhci->tq_state_wq, &q->vhci->w_port_status_change, 0);
++        pr_info("bce-vhci: port state change event: port=%u state=%s status=%x p2=%llx\n",
++                msg->param1, bce_vhci_port_state_change_label(msg->param2),
++                msg->status, msg->param2);
 +    } else {
 +        pr_warn("bce-vhci: Unhandled system event: %x s=%x p1=%x p2=%llx\n",
 +                msg->cmd, msg->status, msg->param1, msg->param2);
@@ -6115,10 +6883,10 @@ index 000000000..6e3e502a0
 +MODULE_PARM_DESC(vhci_port_mask, "Specifies which VHCI ports are enabled");
 diff --git a/drivers/staging/apple-bce/vhci/vhci.h b/drivers/staging/apple-bce/vhci/vhci.h
 new file mode 100644
-index 000000000..71e5b39b8
+index 000000000..e68d80ced
 --- /dev/null
 +++ b/drivers/staging/apple-bce/vhci/vhci.h
-@@ -0,0 +1,58 @@
+@@ -0,0 +1,67 @@
 +#ifndef BCE_VHCI_H
 +#define BCE_VHCI_H
 +
@@ -6154,14 +6922,23 @@ index 000000000..71e5b39b8
 +    u16 port_mask;
 +    u8 port_count;
 +    u16 port_power_mask;
-+    bce_vhci_device_t port_to_device[16];
-+    struct bce_vhci_device *devices[16];
++    bce_vhci_device_t port_to_device[17];
++    struct bce_vhci_device *devices[17];
 +    struct workqueue_struct *tq_state_wq;
 +    struct work_struct w_fw_events;
++    struct work_struct w_add_hcd;
++    struct delayed_work w_port_status_change;
 +    unsigned long port_change_pending;
++    unsigned long port_change_waiting;
++    /* Port-local resume request armed by a failed first EP0 transfer. */
++    unsigned long port_resume_requested;
++    /* Pass-1 port resume was sent; pass 2 may resume queues after settle time. */
++    unsigned long port_resume_pass1_done;
++    u8 port_resume_tries[17];
 +    bool no_state_resume;
-+    bool defer_rh_poll;
 +    bool hcd_registered;
++    bool system_suspending;
++    bool stateful_resume_gating;
 +};
 +
 +int __init bce_vhci_module_init(void);
@@ -6178,5 +6955,5 @@ index 000000000..71e5b39b8
 +
 +#endif //BCE_VHCI_H
 -- 
-2.53.0
+2.54.0
 

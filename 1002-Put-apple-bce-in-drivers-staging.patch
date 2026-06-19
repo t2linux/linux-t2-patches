@@ -1,7 +1,7 @@
-From 5c2dc78ad603a940da8e8069c803aca1c7122310 Mon Sep 17 00:00:00 2001
+From 7461eba3aefa07e0e8822b1bebe97f2e731e7b74 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Mon, 13 Apr 2026 20:19:25 +0000
+Date: Fri, 19 Jun 2026 02:13:38 +0000
 Subject: [PATCH] Put apple-bce in drivers/staging
 
 ---
@@ -68,5 +68,5 @@ index a6a656f06..8cfbd3f64 100644
  apple-bce-objs := apple_bce.o mailbox.o queue.o queue_dma.o vhci/vhci.o vhci/queue.o vhci/transfer.o audio/audio.o audio/protocol.o audio/protocol_bce.o audio/pcm.o
  
 -- 
-2.53.0
+2.54.0
 
