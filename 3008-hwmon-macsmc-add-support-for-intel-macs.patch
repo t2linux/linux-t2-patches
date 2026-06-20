@@ -340,9 +340,10 @@ index 6764da7ef21d..91726774bdcf 100644
  		return -ENODEV;
  
  	hwmon = devm_kzalloc(&pdev->dev, sizeof(*hwmon),
-@@ -895,7 +1119,10 @@ static int macsmc_hwmon_probe(struct platform_device *pdev)
+@@ -895,7 +1119,11 @@ static int macsmc_hwmon_probe(struct platform_device *pdev)
  	hwmon->dev = &pdev->dev;
  	hwmon->smc = smc;
++	platform_set_drvdata(pdev, hwmon);
  
 -	ret = macsmc_hwmon_populate_sensors(hwmon, hwmon->dev->of_node);
 +	if (hwmon->smc->is_acpi)
@@ -352,7 +353,7 @@ index 6764da7ef21d..91726774bdcf 100644
  	if (ret) {
  		dev_err(hwmon->dev, "Could not parse sensors\n");
  		return ret;
-@@ -934,6 +1161,32 @@ static int macsmc_hwmon_probe(struct platform_device *pdev)
+@@ -934,6 +1162,32 @@ static int macsmc_hwmon_probe(struct platform_device *pdev)
  	return 0;
  }
  
@@ -385,7 +386,7 @@ index 6764da7ef21d..91726774bdcf 100644
  static const struct of_device_id macsmc_hwmon_of_table[] = {
  	{ .compatible = "apple,smc-hwmon" },
  	{}
-@@ -942,6 +1195,7 @@ MODULE_DEVICE_TABLE(of, macsmc_hwmon_of_table);
+@@ -942,6 +1196,7 @@ MODULE_DEVICE_TABLE(of, macsmc_hwmon_of_table);
  
  static struct platform_driver macsmc_hwmon_driver = {
  	.probe = macsmc_hwmon_probe,
@@ -393,7 +394,7 @@ index 6764da7ef21d..91726774bdcf 100644
  	.driver = {
  		.name = "macsmc-hwmon",
  		.of_match_table = macsmc_hwmon_of_table,
-@@ -952,3 +1206,4 @@ module_platform_driver(macsmc_hwmon_driver);
+@@ -952,3 +1207,4 @@ module_platform_driver(macsmc_hwmon_driver);
  MODULE_DESCRIPTION("Apple Silicon SMC hwmon driver");
  MODULE_AUTHOR("James Calligeros <jcalligeros99@gmail.com>");
  MODULE_LICENSE("Dual MIT/GPL");
