@@ -3,31 +3,103 @@ From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Fri, 24 Apr 2026 23:58:47 +0530
 Subject: [PATCH 09/12] rtc/macsmc: add x86 support
 
+The ACPI SMC backend returns CLKM and CLKO as raw 6-byte
+little-endian buffers. The existing code copies them directly into
+the low bytes of a u64 via memcpy, which produces correct results
+on little-endian hosts but is not portable and cannot work when
+the ACPI path reads the offset from the SMC key (CLKO) instead of
+NVMEM.
+
+Add explicit LE48 serialization helpers for the ACPI path. The
+Apple Silicon / NVMEM code path is left completely unchanged.
+
+Also guard the probe so the driver loads on x86 machines with an
+ACPI SMC that exposes the CLKM key, and skip the NVMEM rtc_offset
+cell which does not exist on Intel Macs.
+
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---
- drivers/rtc/rtc-macsmc.c | 45 ++++++++++++++++++++++++++--------------
- 1 file changed, 30 insertions(+), 15 deletions(-)
+ drivers/rtc/rtc-macsmc.c | 111 +++++++++++++++++++++++++++++++++++-----------
+ 1 file changed, 84 insertions(+), 27 deletions(-)
 
 diff --git a/drivers/rtc/rtc-macsmc.c b/drivers/rtc/rtc-macsmc.c
 index 8fe883066956..0cf24f0f7963 100644
 --- a/drivers/rtc/rtc-macsmc.c
 +++ b/drivers/rtc/rtc-macsmc.c
-@@ -42,17 +42,24 @@ static int macsmc_rtc_get_time(struct device *dev, struct rtc_time *tm)
- 	if (ret != RTC_BYTES)
- 		return -EIO;
+@@ -26,6 +26,26 @@ struct macsmc_rtc {
+ 	struct rtc_device *rtc_dev;
+ 	struct nvmem_cell *rtc_offset;
+ };
++
++static u64 macsmc_rtc_get_le48(const u8 buf[RTC_BYTES])
++{
++	return ((u64)buf[0]) |
++	       ((u64)buf[1] << 8) |
++	       ((u64)buf[2] << 16) |
++	       ((u64)buf[3] << 24) |
++	       ((u64)buf[4] << 32) |
++	       ((u64)buf[5] << 40);
++}
++
++static void macsmc_rtc_put_le48(u8 buf[RTC_BYTES], u64 val)
++{
++	buf[0] = val;
++	buf[1] = val >> 8;
++	buf[2] = val >> 16;
++	buf[3] = val >> 24;
++	buf[4] = val >> 32;
++	buf[5] = val >> 40;
++}
  
--	p_off = nvmem_cell_read(rtc->rtc_offset, &len);
--	if (IS_ERR(p_off))
--		return PTR_ERR(p_off);
--	if (len < RTC_BYTES) {
+ static int macsmc_rtc_get_time(struct device *dev, struct rtc_time *tm)
+ {
+@@ -32,27 +52,44 @@ static int macsmc_rtc_get_time(struct device *dev, struct rtc_time *tm)
+ 	struct macsmc_rtc *rtc = dev_get_drvdata(dev);
+ 	u64 ctr = 0, off = 0;
+ 	time64_t now;
+ 	void *p_off;
++	u8 buf[RTC_BYTES];
+ 	size_t len;
+ 	int ret;
+ 
+-	ret = apple_smc_read(rtc->smc, SMC_KEY(CLKM), &ctr, RTC_BYTES);
+-	if (ret < 0)
+-		return ret;
+-	if (ret != RTC_BYTES)
+-		return -EIO;
+-
 +	if (rtc->smc->is_acpi) {
-+		ret = apple_smc_read(rtc->smc, SMC_KEY(CLKO), &off, RTC_BYTES);
++		ret = apple_smc_read(rtc->smc, SMC_KEY(CLKM), buf, RTC_BYTES);
 +		if (ret < 0)
 +			return ret;
 +		if (ret != RTC_BYTES)
 +			return -EIO;
++		ctr = macsmc_rtc_get_le48(buf);
++
++		ret = apple_smc_read(rtc->smc, SMC_KEY(CLKO), buf, RTC_BYTES);
++		if (ret < 0)
++			return ret;
++		if (ret != RTC_BYTES)
++			return -EIO;
++		off = macsmc_rtc_get_le48(buf);
 +	} else {
++		ret = apple_smc_read(rtc->smc, SMC_KEY(CLKM), &ctr, RTC_BYTES);
++		if (ret < 0)
++			return ret;
++		if (ret != RTC_BYTES)
++			return -EIO;
++
+-	p_off = nvmem_cell_read(rtc->rtc_offset, &len);
 +		p_off = nvmem_cell_read(rtc->rtc_offset, &len);
+-	if (IS_ERR(p_off))
+-		return PTR_ERR(p_off);
+-	if (len < RTC_BYTES) {
+-		kfree(p_off);
+-		return -EIO;
+-	}
+-
+-	memcpy(&off, p_off, RTC_BYTES);
+-	kfree(p_off);
 +		if (IS_ERR(p_off))
 +			return PTR_ERR(p_off);
 +		if (len < RTC_BYTES) {
@@ -36,27 +108,50 @@ index 8fe883066956..0cf24f0f7963 100644
 +		}
 +
 +		memcpy(&off, p_off, RTC_BYTES);
- 		kfree(p_off);
--		return -EIO;
- 	}
--
--	memcpy(&off, p_off, RTC_BYTES);
--	kfree(p_off);
--
++		kfree(p_off);
++	}
+ 
  	/* Sign extend from 48 to 64 bits, then arithmetic shift right 15 bits to get seconds */
  	now = sign_extend64(ctr + off, RTC_BITS - 1) >> RTC_SEC_SHIFT;
  	rtc_time64_to_tm(now, tm);
-@@ -74,6 +81,9 @@ static int macsmc_rtc_set_time(struct device *dev, struct rtc_time *tm)
+@@ -63,16 +100,31 @@ static int macsmc_rtc_set_time(struct device *dev, struct rtc_time *tm)
+ {
+ 	struct macsmc_rtc *rtc = dev_get_drvdata(dev);
+ 	u64 ctr = 0, off = 0;
++	u8 buf[RTC_BYTES];
+ 	int ret;
+ 
+-	ret = apple_smc_read(rtc->smc, SMC_KEY(CLKM), &ctr, RTC_BYTES);
+-	if (ret < 0)
+-		return ret;
+-	if (ret != RTC_BYTES)
+-		return -EIO;
++	if (rtc->smc->is_acpi) {
++		ret = apple_smc_read(rtc->smc, SMC_KEY(CLKM), buf, RTC_BYTES);
++		if (ret < 0)
++			return ret;
++		if (ret != RTC_BYTES)
++			return -EIO;
++		ctr = macsmc_rtc_get_le48(buf);
++	} else {
++		ret = apple_smc_read(rtc->smc, SMC_KEY(CLKM), &ctr, RTC_BYTES);
++		if (ret < 0)
++			return ret;
++		if (ret != RTC_BYTES)
++			return -EIO;
++	}
  
  	/* This sets the offset such that the set second begins now */
  	off = (rtc_tm_to_time64(tm) << RTC_SEC_SHIFT) - ctr;
-+	if (rtc->smc->is_acpi)
-+		return apple_smc_write(rtc->smc, SMC_KEY(CLKO), &off, RTC_BYTES);
++	if (rtc->smc->is_acpi) {
++		macsmc_rtc_put_le48(buf, off);
++		return apple_smc_write(rtc->smc, SMC_KEY(CLKO), buf, RTC_BYTES);
++	}
 +
  	return nvmem_cell_write(rtc->rtc_offset, &off, RTC_BYTES);
  }
  
-@@ -92,7 +102,10 @@ static int macsmc_rtc_probe(struct platform_device *pdev)
+@@ -92,7 +144,10 @@ static int macsmc_rtc_probe(struct platform_device *pdev)
  	 * thus bail out early if the SMC on the current machines does not
  	 * support RTC and has no node in the device tree.
  	 */
@@ -68,7 +163,7 @@ index 8fe883066956..0cf24f0f7963 100644
  		return -ENODEV;
  
  	rtc = devm_kzalloc(&pdev->dev, sizeof(*rtc), GFP_KERNEL);
-@@ -102,11 +115,12 @@ static int macsmc_rtc_probe(struct platform_device *pdev)
+@@ -102,11 +157,12 @@ static int macsmc_rtc_probe(struct platform_device *pdev)
  	rtc->dev = &pdev->dev;
  	rtc->smc = smc;
  
@@ -86,11 +181,10 @@ index 8fe883066956..0cf24f0f7963 100644
  	rtc->rtc_dev = devm_rtc_allocate_device(&pdev->dev);
  	if (IS_ERR(rtc->rtc_dev))
  		return PTR_ERR(rtc->rtc_dev);
-@@ -138,3 +152,4 @@ module_platform_driver(macsmc_rtc_driver);
+@@ -138,3 +194,4 @@ module_platform_driver(macsmc_rtc_driver);
  MODULE_LICENSE("Dual MIT/GPL");
  MODULE_DESCRIPTION("Apple SMC RTC driver");
  MODULE_AUTHOR("Hector Martin <marcan@marcan.st>");
 +MODULE_ALIAS("platform:macsmc-rtc");
 -- 
 2.43.0
-
