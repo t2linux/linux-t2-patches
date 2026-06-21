@@ -1,4 +1,4 @@
-From 9eeea8257a004f7dfbe0099bc62083f91d33fe42 Mon Sep 17 00:00:00 2001
+From b425f66e9090383f402959031ffffc01848d9e46 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Fri, 24 Apr 2026 05:26:48 +0530
 Subject: [PATCH 02/12] acpi
@@ -8,16 +8,16 @@ Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
  MAINTAINERS                        |   5 +
  drivers/platform/x86/Kconfig       |  10 +
  drivers/platform/x86/Makefile      |   1 +
- drivers/platform/x86/macsmc-acpi.c | 480 +++++++++++++++++++++++++++++
+ drivers/platform/x86/macsmc-acpi.c | 460 +++++++++++++++++++++++++++++
  include/linux/mfd/macsmc.h         |  20 ++
- 5 files changed, 516 insertions(+)
+ 5 files changed, 496 insertions(+)
  create mode 100644 drivers/platform/x86/macsmc-acpi.c
 
 diff --git a/MAINTAINERS b/MAINTAINERS
-index e3c2f15c92d6..0a51ff99e7f9 100644
+index fe5b8620cc36..b80a92aaf6cc 100644
 --- a/MAINTAINERS
 +++ b/MAINTAINERS
-@@ -1937,6 +1937,11 @@ L:	linux-hwmon@vger.kernel.org
+@@ -1951,6 +1951,11 @@ L:	linux-hwmon@vger.kernel.org
  S:	Odd fixes
  F:	drivers/hwmon/applesmc.c
  
@@ -64,10 +64,10 @@ index 872ac3842391..5124dad7bd7a 100644
  # ASUS
 diff --git a/drivers/platform/x86/macsmc-acpi.c b/drivers/platform/x86/macsmc-acpi.c
 new file mode 100644
-index 000000000000..a93748742959
+index 000000000000..611d9a43b222
 --- /dev/null
 +++ b/drivers/platform/x86/macsmc-acpi.c
-@@ -0,0 +1,480 @@
+@@ -0,0 +1,460 @@
 +// SPDX-License-Identifier: GPL-2.0-only OR MIT
 +/*
 + * Apple SMC ACPI backend
@@ -497,24 +497,6 @@ index 000000000000..a93748742959
 +	return apple_smc_probe(smc->dev, &apple_smc_acpi_be_ops, smc);
 +}
 +
-+static int apple_smc_acpi_suspend_late(struct device *dev)
-+{
-+	struct apple_smc *smc = dev_get_drvdata(dev);
-+
-+	apple_smc_write_u8(smc, SMC_KEY(WKTP), 2);
-+	apple_smc_write_flag(smc, SMC_KEY(MSDW), false);
-+	return 0;
-+}
-+
-+static int apple_smc_acpi_resume_noirq(struct device *dev)
-+{
-+	struct apple_smc *smc = dev_get_drvdata(dev);
-+
-+	apple_smc_write_u8(smc, SMC_KEY(WKTP), 0);
-+	apple_smc_write_flag(smc, SMC_KEY(MSDW), true);
-+	return 0;
-+}
-+
 +static int apple_smc_acpi_poweroff_late(struct device *dev)
 +{
 +	struct apple_smc *smc = dev_get_drvdata(dev);
@@ -525,8 +507,6 @@ index 000000000000..a93748742959
 +}
 +
 +static const struct dev_pm_ops apple_smc_acpi_ops = {
-+	.suspend_late = apple_smc_acpi_suspend_late,
-+	.resume_noirq = apple_smc_acpi_resume_noirq,
 +	.poweroff_late = apple_smc_acpi_poweroff_late,
 +};
 +
