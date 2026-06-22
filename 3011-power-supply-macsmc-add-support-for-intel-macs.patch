@@ -1,15 +1,15 @@
-From 072220ddb0817231721d2e714d5bce011754cccd Mon Sep 17 00:00:00 2001
+From 7f64f6f52963a32dec56df2712c566df788af6c7 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sat, 25 Apr 2026 19:46:29 +0530
 Subject: [PATCH 11/12] power/supply/macsmc: add support for intel macs
 
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---
- drivers/power/supply/macsmc-power.c | 631 ++++++++++++++++++++++------
- 1 file changed, 501 insertions(+), 130 deletions(-)
+ drivers/power/supply/macsmc-power.c | 633 ++++++++++++++++++++++------
+ 1 file changed, 503 insertions(+), 130 deletions(-)
 
 diff --git a/drivers/power/supply/macsmc-power.c b/drivers/power/supply/macsmc-power.c
-index 33ca07460f3a..86a0db5ad9fa 100644
+index 33ca07460f3a..3fe975ad7e03 100644
 --- a/drivers/power/supply/macsmc-power.c
 +++ b/drivers/power/supply/macsmc-power.c
 @@ -4,9 +4,11 @@
@@ -799,7 +799,7 @@ index 33ca07460f3a..86a0db5ad9fa 100644
  		if (nprops > MACSMC_MAX_AC_PROPS)
  			return -ENOMEM;
  
-@@ -820,8 +1178,15 @@ static int macsmc_power_probe(struct platform_device *pdev)
+@@ -820,8 +1178,18 @@ static int macsmc_power_probe(struct platform_device *pdev)
  	if (!power->batt && !power->ac)
  		return -ENODEV;
  
@@ -811,13 +811,16 @@ index 33ca07460f3a..86a0db5ad9fa 100644
 +		power->nb.notifier_call = macsmc_power_event;
 +		blocking_notifier_chain_register(&smc_rtkit->event_handlers, &power->nb);
 +	} else {
-+		INIT_DELAYED_WORK(&power->poll_work, macsmc_power_acpi_work);
++		ret = devm_delayed_work_autocancel(dev, &power->poll_work,
++				macsmc_power_acpi_work);
++		if (ret)
++			return ret;
 +		schedule_delayed_work(&power->poll_work, HZ);
 +	}
  
  	return 0;
  }
-@@ -830,9 +1195,14 @@ static void macsmc_power_remove(struct platform_device *pdev)
+@@ -830,9 +1198,13 @@ static void macsmc_power_remove(struct platform_device *pdev)
  {
  	struct macsmc_power *power = dev_get_drvdata(&pdev->dev);
  
@@ -825,16 +828,15 @@ index 33ca07460f3a..86a0db5ad9fa 100644
 -}
 +	if (!power->smc->is_acpi) {
 +		struct apple_smc_rtkit *smc_rtkit = power->smc->be_cookie;
- 
-+		blocking_notifier_chain_unregister(&smc_rtkit->event_handlers, &power->nb);
 +
-+	} else
-+		cancel_delayed_work_sync(&power->poll_work);
++		blocking_notifier_chain_unregister(&smc_rtkit->event_handlers, &power->nb);
+ 
++	}
 +}
  static const struct platform_device_id macsmc_power_id[] = {
  	{ "macsmc-power" },
  	{ /* sentinel */ }
-@@ -853,3 +1223,4 @@ MODULE_LICENSE("Dual MIT/GPL");
+@@ -853,3 +1225,4 @@ MODULE_LICENSE("Dual MIT/GPL");
  MODULE_DESCRIPTION("Apple SMC battery and power management driver");
  MODULE_AUTHOR("Hector Martin <marcan@marcan.st>");
  MODULE_AUTHOR("Michael Reeves <michael.reeves077@gmail.com>");
