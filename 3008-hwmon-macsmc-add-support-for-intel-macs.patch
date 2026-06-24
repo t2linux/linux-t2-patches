@@ -3,8 +3,9 @@ From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Fri, 24 Apr 2026 22:52:07 +0530
 Subject: [PATCH 08/12] hwmon/macsmc: add support for intel macs
 
-(some code from github user @iltiades, and @klizas)
-
+Signed-off-by: iltiades <59462376+iltiades@users.noreply.github.com>
+Signed-off-by: klizas <lukas@klizas.lt>
+ 
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---
  drivers/hwmon/Kconfig        |   5 +-
