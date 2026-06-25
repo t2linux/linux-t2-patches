@@ -1,7 +1,7 @@
-From 07d77ffa76b38e3bfd20f96a4e215c4ca2fa26e0 Mon Sep 17 00:00:00 2001
+From 29a6735b8ab7f228363962d200cf0fd6bfee91be Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Wed, 27 May 2026 20:33:53 +0000
+Date: Thu, 25 Jun 2026 20:32:42 +0000
 Subject: [PATCH] Add APFS driver
 
 ---
@@ -22,7 +22,7 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/lzfse/lzfse_decode_base.c |  743 +++++++
  fs/apfs/lzfse/lzfse_fse.c         |  126 ++
  fs/apfs/lzfse/lzfse_fse.h         |  573 ++++++
- fs/apfs/lzfse/lzfse_internal.h    |  482 +++++
+ fs/apfs/lzfse/lzfse_internal.h    |  484 +++++
  fs/apfs/lzfse/lzvn_decode_base.c  |  487 +++++
  fs/apfs/lzfse/lzvn_decode_base.h  |   73 +
  fs/apfs/message.c                 |   29 +
@@ -39,7 +39,7 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/version.h                 |    1 +
  fs/apfs/xattr.c                   |  914 +++++++++
  fs/apfs/xfield.c                  |  171 ++
- 34 files changed, 27109 insertions(+)
+ 34 files changed, 27111 insertions(+)
  create mode 100644 fs/apfs/Makefile
  create mode 100644 fs/apfs/apfs.h
  create mode 100644 fs/apfs/apfs_raw.h
@@ -13875,10 +13875,10 @@ index 000000000..35b46866d
 +#endif /* LZFSE_FSE_H */
 diff --git a/fs/apfs/lzfse/lzfse_internal.h b/fs/apfs/lzfse/lzfse_internal.h
 new file mode 100644
-index 000000000..148748082
+index 000000000..3343cbfe8
 --- /dev/null
 +++ b/fs/apfs/lzfse/lzfse_internal.h
-@@ -0,0 +1,482 @@
+@@ -0,0 +1,484 @@
 +/* SPDX-License-Identifier: BSD-3-Clause */
 +/*
 + * Copyright (c) 2015-2016, Apple Inc. All rights reserved.
@@ -13951,7 +13951,9 @@ index 000000000..148748082
 +typedef int32_t lzfse_offset;
 +#endif
 +
++#if !defined(__APPLE__) || !defined(__MACH__)
 +typedef uint64_t uintmax_t;
++#endif
 +
 +/*! @abstract Decoder state object for lzfse compressed blocks. */
 +typedef struct {
