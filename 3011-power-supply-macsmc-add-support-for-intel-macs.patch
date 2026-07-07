@@ -367,7 +367,7 @@ index 33ca07460f3a..3fe975ad7e03 100644
  		ret = apple_smc_read_u16(power->smc, SMC_KEY(B0RV), &vu16);
 -		val->intval = vu16 * 1000;
 +		if (power->smc->is_acpi)
-+			val->intval = swab(vu16) * 1000;
++			val->intval = swab16(vu16) * 1000;
 +		else
 +			val->intval = vu16 * 1000;
  		break;
