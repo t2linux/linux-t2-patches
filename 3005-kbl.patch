@@ -6,18 +6,18 @@ Subject: [PATCH 05/12] kbl
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---
  MAINTAINERS                |  1 +
- drivers/leds/Kconfig       | 10 ++++++
+ drivers/leds/Kconfig       | 11 ++++++
  drivers/leds/Makefile      |  1 +
  drivers/leds/leds-macsmc.c | 70 ++++++++++++++++++++++++++++++++++++++
  drivers/mfd/macsmc-core.c  |  1 +
- 5 files changed, 83 insertions(+)
+ 5 files changed, 84 insertions(+)
  create mode 100644 drivers/leds/leds-macsmc.c
 
 diff --git a/MAINTAINERS b/MAINTAINERS
-index 25c8146b17a4..2f9573d6e6b7 100644
+index db697f91fbfa..6a7a9b082f83 100644
 --- a/MAINTAINERS
 +++ b/MAINTAINERS
-@@ -1942,6 +1942,7 @@ M:	Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
+@@ -1956,6 +1956,7 @@ M:	Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
  S:	Odd fixes
  F:	drivers/iio/accel/macsmc-accel.c
  F:	drivers/iio/light/macsmc-light.c
@@ -26,15 +26,16 @@ index 25c8146b17a4..2f9573d6e6b7 100644
  
  APPLETALK NETWORK LAYER
 diff --git a/drivers/leds/Kconfig b/drivers/leds/Kconfig
-index f4a0a3c8c870..bc38e4e7ccc2 100644
+index f4a0a3c8c870..f67280fd001d 100644
 --- a/drivers/leds/Kconfig
 +++ b/drivers/leds/Kconfig
-@@ -728,6 +728,16 @@ config LEDS_ADP5520
+@@ -728,6 +728,17 @@ config LEDS_ADP5520
  	  To compile this driver as a module, choose M here: the module will
  	  be called leds-adp5520.
  
 +config LEDS_MACSMC
 +	tristate "Keyboard Backlight support for Intel-Macs"
++	depends on LEDS_CLASS
 +	depends on MACSMC_ACPI
 +	help
 +	  This option enables support for the Keyboard backlight in

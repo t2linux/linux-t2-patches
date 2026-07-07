@@ -1,4 +1,4 @@
-From 7f64f6f52963a32dec56df2712c566df788af6c7 Mon Sep 17 00:00:00 2001
+From 14a9ad7b97bd31f7f3b6f4ff784eb1cc95fc79ce Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sat, 25 Apr 2026 19:46:29 +0530
 Subject: [PATCH 11/12] power/supply/macsmc: add support for intel macs
@@ -9,7 +9,7 @@ Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
  1 file changed, 503 insertions(+), 130 deletions(-)
 
 diff --git a/drivers/power/supply/macsmc-power.c b/drivers/power/supply/macsmc-power.c
-index 33ca07460f3a..3fe975ad7e03 100644
+index 33ca07460f3a..3ce0f7c5da27 100644
 --- a/drivers/power/supply/macsmc-power.c
 +++ b/drivers/power/supply/macsmc-power.c
 @@ -4,9 +4,11 @@
@@ -173,7 +173,7 @@ index 33ca07460f3a..3fe975ad7e03 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = mult_frac(cpu_to_be16(fp3d), scale, BIT(13));
++		*val = mult_frac(be16_to_cpu(fp3d), scale, BIT(13));
 +		break;
 +	}
 +
@@ -185,7 +185,7 @@ index 33ca07460f3a..3fe975ad7e03 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = mult_frac(cpu_to_be16(fp5b), scale, BIT(11));
++		*val = mult_frac(be16_to_cpu(fp5b), scale, BIT(11));
 +		break;
 +	}
 +
@@ -197,7 +197,7 @@ index 33ca07460f3a..3fe975ad7e03 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = mult_frac(cpu_to_be16(fp88), scale, BIT(8));
++		*val = mult_frac(be16_to_cpu(fp88), scale, BIT(8));
 +		break;
 +	}
 +
@@ -209,7 +209,7 @@ index 33ca07460f3a..3fe975ad7e03 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = mult_frac((s16)cpu_to_be16(sp3c), scale, BIT(12));
++		*val = mult_frac((s16)be16_to_cpu(sp3c), scale, BIT(12));
 +		break;
 +	}
 +
@@ -221,7 +221,7 @@ index 33ca07460f3a..3fe975ad7e03 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = mult_frac((s16)cpu_to_be16(sp4b), scale, BIT(11));
++		*val = mult_frac((s16)be16_to_cpu(sp4b), scale, BIT(11));
 +		break;
 +	}
 +
@@ -233,7 +233,7 @@ index 33ca07460f3a..3fe975ad7e03 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = mult_frac((s16)cpu_to_be16(sp5a), scale, BIT(10));
++		*val = mult_frac((s16)be16_to_cpu(sp5a), scale, BIT(10));
 +		break;
 +	}
 +
@@ -245,7 +245,7 @@ index 33ca07460f3a..3fe975ad7e03 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = mult_frac((s16)cpu_to_be16(sp69), scale, BIT(9));
++		*val = mult_frac((s16)be16_to_cpu(sp69), scale, BIT(9));
 +		break;
 +	}
 +
@@ -257,7 +257,7 @@ index 33ca07460f3a..3fe975ad7e03 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = mult_frac((s16)cpu_to_be16(sp78), scale, BIT(8));
++		*val = mult_frac((s16)be16_to_cpu(sp78), scale, BIT(8));
 +		break;
 +	}
 +
