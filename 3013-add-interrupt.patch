@@ -1,0 +1,222 @@
+From 573f027b4816b659dd3f8139cf75c625fd7c913f Mon Sep 17 00:00:00 2001
+From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
+Date: Wed, 8 Jul 2026 17:28:42 -0400
+Subject: [PATCH] add interrupt
+
+Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
+---
+ drivers/acpi/sbs.c                  |  3 +--
+ drivers/acpi/sbshc.c                | 40 ++++++++++++++++++++++++++++-
+ drivers/power/supply/Kconfig        |  2 +-
+ drivers/power/supply/macsmc-power.c | 36 ++++++++++++++++++++------
+ {drivers => include}/acpi/sbshc.h   |  3 +++
+ 5 files changed, 72 insertions(+), 12 deletions(-)
+ rename {drivers => include}/acpi/sbshc.h (86%)
+
+diff --git a/drivers/acpi/sbs.c b/drivers/acpi/sbs.c
+index 47a2e72e01bc..28d68545517c 100644
+--- a/drivers/acpi/sbs.c
++++ b/drivers/acpi/sbs.c
+@@ -23,8 +23,7 @@
+ #include <linux/power_supply.h>
+ #include <linux/platform_data/x86/apple.h>
+ #include <acpi/battery.h>
+-
+-#include "sbshc.h"
++#include <acpi/sbshc.h>
+ 
+ #define ACPI_SBS_DEVICE_NAME		"Smart Battery System"
+ #define ACPI_BATTERY_DIR_NAME		"BAT%i"
+diff --git a/drivers/acpi/sbshc.c b/drivers/acpi/sbshc.c
+index f413270415b6..6bf5c5de5b89 100644
+--- a/drivers/acpi/sbshc.c
++++ b/drivers/acpi/sbshc.c
+@@ -14,8 +14,8 @@
+ #include <linux/module.h>
+ #include <linux/interrupt.h>
+ #include <linux/platform_device.h>
++#include <acpi/sbshc.h>
+ 
+-#include "sbshc.h"
+ #include "internal.h"
+ 
+ struct acpi_smb_hc {
+@@ -49,6 +49,8 @@ static struct platform_driver acpi_smb_hc_driver = {
+ 	},
+ };
+ 
++static struct acpi_smb_hc *global_hc;
++
+ union acpi_smb_status {
+ 	u8 raw;
+ 	struct {
+@@ -198,6 +200,37 @@ int acpi_smbus_unregister_callback(struct acpi_smb_hc *hc)
+ 
+ EXPORT_SYMBOL_GPL(acpi_smbus_unregister_callback);
+ 
++int acpi_smbus_register_callback_global(smbus_alarm_callback callback, void *context)
++{
++	if (!global_hc)
++		return -EOPNOTSUPP;
++
++	struct acpi_smb_hc *hc = READ_ONCE(global_hc);
++
++	mutex_lock(&hc->lock);
++	hc->callback = callback;
++	hc->context = context;
++	mutex_unlock(&hc->lock);
++	return 0;
++}
++EXPORT_SYMBOL_GPL(acpi_smbus_register_callback_global);
++
++int acpi_smbus_unregister_callback_global(void)
++{
++	if (!global_hc)
++		return -EOPNOTSUPP;
++
++	struct acpi_smb_hc *hc = READ_ONCE(global_hc);
++
++	mutex_lock(&hc->lock);
++	hc->callback = NULL;
++	hc->context = NULL;
++	mutex_unlock(&hc->lock);
++	acpi_os_wait_events_complete();
++	return 0;
++}
++EXPORT_SYMBOL_GPL(acpi_smbus_unregister_callback_global);
++
+ static inline void acpi_smbus_callback(void *context)
+ {
+ 	struct acpi_smb_hc *hc = context;
+@@ -264,6 +297,8 @@ static int acpi_smbus_hc_probe(struct platform_device *pdev)
+ 	dev_info(&device->dev, "SBS HC: offset = 0x%0x, query_bit = 0x%0x\n",
+ 		 hc->offset, hc->query_bit);
+ 
++	global_hc = hc;
++
+ 	return 0;
+ }
+ 
+@@ -271,6 +306,9 @@ static void acpi_smbus_hc_remove(struct platform_device *pdev)
+ {
+ 	struct acpi_smb_hc *hc = platform_get_drvdata(pdev);
+ 
++	if (global_hc)
++		global_hc = NULL;
++
+ 	acpi_ec_remove_query_handler(hc->ec, hc->query_bit);
+ 	acpi_os_wait_events_complete();
+ 	kfree(hc);
+diff --git a/drivers/power/supply/Kconfig b/drivers/power/supply/Kconfig
+index b402f158930f..4a390c9d5e2a 100644
+--- a/drivers/power/supply/Kconfig
++++ b/drivers/power/supply/Kconfig
+@@ -1156,7 +1156,7 @@ config FUEL_GAUGE_MM8013
+ 
+ config MACSMC_POWER
+ 	tristate "Apple SMC Battery and Power Driver"
+-	depends on MFD_MACSMC_CORE
++	depends on MACSMC_RTKIT || (MACSMC_ACPI && ACPI_SBS)
+ 	help
+ 	  This driver provides support for the battery and AC adapter on
+ 	  Apple Silicon machines. It exposes battery telemetry (voltage,
+diff --git a/drivers/power/supply/macsmc-power.c b/drivers/power/supply/macsmc-power.c
+index 3ce0f7c5da27..21368e507b79 100644
+--- a/drivers/power/supply/macsmc-power.c
++++ b/drivers/power/supply/macsmc-power.c
+@@ -23,6 +23,7 @@
+ #include <linux/power_supply.h>
+ #include <linux/reboot.h>
+ #include <linux/workqueue.h>
++#include <acpi/sbshc.h>
+ 
+ #define MAX_STRING_LENGTH 256
+ 
+@@ -89,7 +90,6 @@ struct macsmc_power {
+ 	bool has_ch0c; /* Inhibit charge (Older firmware) */
+ 	bool has_chte; /* Inhibit charge (Modern firmware) */
+ 	bool has_pd0r; /* AC Adpater current power in watts (Old Intel macs) */
+-
+ 	u8 num_cells;
+ 	int nominal_voltage_mv;
+ 	u8 old_bncr;
+@@ -99,6 +99,7 @@ struct macsmc_power {
+ 	struct delayed_work poll_work;
+ 	bool emergency_shutdown_triggered;
+ 	bool orderly_shutdown_triggered;
++	bool using_polling;
+ };
+ 
+ static int macsmc_battery_get_status(struct macsmc_power *power)
+@@ -922,6 +923,19 @@ static void macsmc_power_acpi_work(struct work_struct *work)
+ 	schedule_delayed_work(&power->poll_work, HZ);
+ }
+ 
++static void macsmc_power_acpi_callback(void *context)
++{
++	struct macsmc_power *power = context;
++
++	u8 bncr;
++
++	if (apple_smc_read_u8(power->smc, SMC_KEY(BNCR), &bncr) == 0 && power->old_bncr != bncr) {
++		power_supply_changed(power->batt);
++		power_supply_changed(power->ac);
++		power->old_bncr = bncr;
++	}
++}
++
+ static int macsmc_power_probe(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
+@@ -1184,13 +1198,17 @@ static int macsmc_power_probe(struct platform_device *pdev)
+ 		power->nb.notifier_call = macsmc_power_event;
+ 		blocking_notifier_chain_register(&smc_rtkit->event_handlers, &power->nb);
+ 	} else {
+-		ret = devm_delayed_work_autocancel(dev, &power->poll_work,
+-				macsmc_power_acpi_work);
+-		if (ret)
+-			return ret;
+-		schedule_delayed_work(&power->poll_work, HZ);
++		power->using_polling = !!acpi_smbus_register_callback_global(
++				macsmc_power_acpi_callback, power);
++		if (power->using_polling) {
++			dev_warn(power->dev, "Using Polling for battery change\n");
++			ret = devm_delayed_work_autocancel(dev, &power->poll_work,
++					macsmc_power_acpi_work);
++			if (ret)
++				return ret;
++			schedule_delayed_work(&power->poll_work, HZ);
++		}
+ 	}
+-
+ 	return 0;
+ }
+ 
+@@ -1203,7 +1221,9 @@ static void macsmc_power_remove(struct platform_device *pdev)
+ 
+ 		blocking_notifier_chain_unregister(&smc_rtkit->event_handlers, &power->nb);
+ 
+-	}
++	} else if (!power->using_polling)
++		acpi_smbus_unregister_callback_global();
++
+ }
+ static const struct platform_device_id macsmc_power_id[] = {
+ 	{ "macsmc-power" },
+diff --git a/drivers/acpi/sbshc.h b/include/acpi/sbshc.h
+similarity index 86%
+rename from drivers/acpi/sbshc.h
+rename to include/acpi/sbshc.h
+index 695c390e2884..03d2cdfaaffd 100644
+--- a/drivers/acpi/sbshc.h
++++ b/include/acpi/sbshc.h
+@@ -30,3 +30,6 @@ extern int acpi_smbus_write(struct acpi_smb_hc *hc, u8 protocol, u8 slave_addres
+ extern int acpi_smbus_register_callback(struct acpi_smb_hc *hc,
+ 		smbus_alarm_callback callback, void *context);
+ extern int acpi_smbus_unregister_callback(struct acpi_smb_hc *hc);
++extern int acpi_smbus_register_callback_global(smbus_alarm_callback callback,
++		void *context);
++extern int acpi_smbus_unregister_callback_global(void);
+-- 
+2.43.0
+
