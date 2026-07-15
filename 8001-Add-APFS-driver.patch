@@ -1,19 +1,19 @@
-From 29a6735b8ab7f228363962d200cf0fd6bfee91be Mon Sep 17 00:00:00 2001
+From 5f42db38609d1ba31a46f20721cce3d17399297d Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Thu, 25 Jun 2026 20:32:42 +0000
+Date: Wed, 15 Jul 2026 19:46:14 +0000
 Subject: [PATCH] Add APFS driver
 
 ---
  fs/apfs/Makefile                  |   28 +
- fs/apfs/apfs.h                    | 1346 ++++++++++++
+ fs/apfs/apfs.h                    | 1368 +++++++++++++
  fs/apfs/apfs_raw.h                | 1570 ++++++++++++++
  fs/apfs/btree.c                   | 1174 +++++++++++
  fs/apfs/compress.c                |  478 +++++
  fs/apfs/dir.c                     | 1505 ++++++++++++++
- fs/apfs/extents.c                 | 2374 ++++++++++++++++++++++
+ fs/apfs/extents.c                 | 2372 ++++++++++++++++++++++
  fs/apfs/file.c                    |  224 ++
- fs/apfs/inode.c                   | 2598 ++++++++++++++++++++++++
+ fs/apfs/inode.c                   | 2597 ++++++++++++++++++++++++
  fs/apfs/key.c                     |  337 +++
  fs/apfs/libzbitmap.c              |  442 ++++
  fs/apfs/libzbitmap.h              |   31 +
@@ -33,13 +33,13 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/spaceman.c                | 1479 ++++++++++++++
  fs/apfs/super.c                   | 2263 +++++++++++++++++++++
  fs/apfs/symlink.c                 |   80 +
- fs/apfs/transaction.c             | 1034 ++++++++++
+ fs/apfs/transaction.c             | 1033 ++++++++++
  fs/apfs/unicode.c                 | 3156 +++++++++++++++++++++++++++++
  fs/apfs/unicode.h                 |   27 +
  fs/apfs/version.h                 |    1 +
  fs/apfs/xattr.c                   |  914 +++++++++
  fs/apfs/xfield.c                  |  171 ++
- 34 files changed, 27111 insertions(+)
+ 34 files changed, 27129 insertions(+)
  create mode 100644 fs/apfs/Makefile
  create mode 100644 fs/apfs/apfs.h
  create mode 100644 fs/apfs/apfs_raw.h
@@ -111,10 +111,10 @@ index 000000000..2bafc31f1
 +	make -C $(KERNEL_DIR) M=$(PWD) clean
 diff --git a/fs/apfs/apfs.h b/fs/apfs/apfs.h
 new file mode 100644
-index 000000000..0bbf98df3
+index 000000000..1dc299480
 --- /dev/null
 +++ b/fs/apfs/apfs.h
-@@ -0,0 +1,1346 @@
+@@ -0,0 +1,1368 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -161,10 +161,32 @@ index 000000000..0bbf98df3
 +#endif
 +
 +/* Compatibility wrapper around submit_bh() */
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0) || RHEL_VERSION_GE(9, 2)
-+#define apfs_submit_bh(op, op_flags, bh) submit_bh(op | op_flags, bh)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 2, 0)
++#define apfs_submit_bh(op, op_flags, bh)				\
++do {									\
++	if (op == REQ_OP_READ)						\
++		bh_submit(bh, op | op_flags, bh_end_read);		\
++	else								\
++		bh_submit(bh, op | op_flags, bh_end_write);		\
++} while (0)
++#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0) || RHEL_VERSION_GE(9, 2)
++#define apfs_submit_bh(op, op_flags, bh)				\
++do {									\
++	if (op == REQ_OP_READ)						\
++		bh->b_end_io = end_buffer_read_sync;			\
++	else								\
++		bh->b_end_io = end_buffer_write_sync;			\
++	submit_bh(op | op_flags, bh);					\
++} while (0)
 +#else
-+#define apfs_submit_bh(op, op_flags, bh) submit_bh(op, op_flags, bh)
++#define apfs_submit_bh(op, op_flags, bh)				\
++do {									\
++	if (op == REQ_OP_READ)						\
++		bh->b_end_io = end_buffer_read_sync;			\
++	else								\
++		bh->b_end_io = end_buffer_write_sync;			\
++	submit_bh(op, op_flags, bh);					\
++} while (0)
 +#endif
 +
 +/*
@@ -6214,10 +6236,10 @@ index 000000000..01f409b45
 +}
 diff --git a/fs/apfs/extents.c b/fs/apfs/extents.c
 new file mode 100644
-index 000000000..fabb2d230
+index 000000000..1f594ee3d
 --- /dev/null
 +++ b/fs/apfs/extents.c
-@@ -0,0 +1,2374 @@
+@@ -0,0 +1,2372 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -8518,7 +8540,6 @@ index 000000000..fabb2d230
 +		if (!buffer_uptodate(bh)) {
 +			get_bh(bh);
 +			lock_buffer(bh);
-+			bh->b_end_io = end_buffer_read_sync;
 +			apfs_submit_bh(REQ_OP_READ, 0, bh);
 +		}
 +	}
@@ -8585,7 +8606,6 @@ index 000000000..fabb2d230
 +		if (!buffer_uptodate(bh)) {
 +			get_bh(bh);
 +			lock_buffer(bh);
-+			bh->b_end_io = end_buffer_read_sync;
 +			apfs_submit_bh(REQ_OP_READ, 0, bh);
 +		}
 +		brelse(bh);
@@ -8824,10 +8844,10 @@ index 000000000..3e8a55897
 +};
 diff --git a/fs/apfs/inode.c b/fs/apfs/inode.c
 new file mode 100644
-index 000000000..7eb88bdb8
+index 000000000..32706cf6b
 --- /dev/null
 +++ b/fs/apfs/inode.c
-@@ -0,0 +1,2598 @@
+@@ -0,0 +1,2597 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -9386,7 +9406,6 @@ index 000000000..7eb88bdb8
 +			if (buffer_mapped(bh) && !buffer_uptodate(bh)) {
 +				get_bh(bh);
 +				lock_buffer(bh);
-+				bh->b_end_io = end_buffer_read_sync;
 +				apfs_submit_bh(REQ_OP_READ, 0, bh);
 +				wait_on_buffer(bh);
 +				if (!buffer_uptodate(bh)) {
@@ -22053,10 +22072,10 @@ index 000000000..be4f9df8f
 +};
 diff --git a/fs/apfs/transaction.c b/fs/apfs/transaction.c
 new file mode 100644
-index 000000000..e743ccb0b
+index 000000000..e9e13e948
 --- /dev/null
 +++ b/fs/apfs/transaction.c
-@@ -0,0 +1,1034 @@
+@@ -0,0 +1,1033 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2019 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -22780,7 +22799,6 @@ index 000000000..e743ccb0b
 +		clear_buffer_dirty(bh);
 +		get_bh(bh);
 +		lock_buffer(bh);
-+		bh->b_end_io = end_buffer_write_sync;
 +		apfs_submit_bh(REQ_OP_WRITE, REQ_SYNC, bh);
 +	}
 +	list_for_each_entry_safe(bhi, tmp, &nx_trans->t_buffers, list) {
