@@ -1,0 +1,34 @@
+From a24d5db9a6e0f07fe4e6e20fed746e855d1ff782 Mon Sep 17 00:00:00 2001
+From: "github-actions[bot]"
+ <41898282+github-actions[bot]@users.noreply.github.com>
+Date: Wed, 22 Jul 2026 10:21:19 +0000
+Subject: [PATCH] Integrate t2bce driver stack
+
+---
+ drivers/staging/Kconfig  | 2 ++
+ drivers/staging/Makefile | 1 +
+ 2 files changed, 3 insertions(+)
+
+diff --git a/drivers/staging/Kconfig b/drivers/staging/Kconfig
+index 075e775d3..029f66ace 100644
+--- a/drivers/staging/Kconfig
++++ b/drivers/staging/Kconfig
+@@ -50,4 +50,6 @@ source "drivers/staging/vme_user/Kconfig"
+ 
+ source "drivers/staging/gpib/Kconfig"
+ 
++source "drivers/staging/t2bce/Kconfig"
++
+ endif # STAGING
+diff --git a/drivers/staging/Makefile b/drivers/staging/Makefile
+index e681e4035..721cf36ff 100644
+--- a/drivers/staging/Makefile
++++ b/drivers/staging/Makefile
+@@ -14,3 +14,4 @@ obj-$(CONFIG_GREYBUS)		+= greybus/
+ obj-$(CONFIG_BCM2835_VCHIQ)	+= vc04_services/
+ obj-$(CONFIG_XIL_AXIS_FIFO)	+= axis-fifo/
+ obj-$(CONFIG_GPIB)	 	+= gpib/
++obj-$(CONFIG_T2BCE_CORE)		+= t2bce/
+-- 
+2.54.0
+
