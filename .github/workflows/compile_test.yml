@@ -30,10 +30,9 @@ jobs:
       run: |
         source ./version
         cd linux-$KVER
-        # Skip apple-bce because it needs a lot of formatting changes, and
-        # modules that we won't be sending upstream.
+        # Exclude patch sets that are not being prepared for upstream.
         scripts/checkpatch.pl --no-signoff --terse --no-summary \
-            $(echo ../*.patch | tr " " "\n" | grep -v -e "apple-bce" -e asahi -e applesmc -e bcm5974 ) || true
+            $(echo ../*.patch | tr " " "\n" | grep -v -e asahi -e applesmc -e bcm5974 ) || true
     - name: Apply Patches
       id: apply-patches
       run: |
