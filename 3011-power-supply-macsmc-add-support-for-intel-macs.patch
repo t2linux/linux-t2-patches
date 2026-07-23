@@ -1,15 +1,16 @@
-From 14a9ad7b97bd31f7f3b6f4ff784eb1cc95fc79ce Mon Sep 17 00:00:00 2001
+From f4eedde02cded22d2b3722cb72b50a27ee6e4d0f Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sat, 25 Apr 2026 19:46:29 +0530
-Subject: [PATCH 11/12] power/supply/macsmc: add support for intel macs
+Subject: [PATCH 11/13] power/supply/macsmc: add support for intel macs
 
+Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---
  drivers/power/supply/macsmc-power.c | 633 ++++++++++++++++++++++------
  1 file changed, 503 insertions(+), 130 deletions(-)
 
 diff --git a/drivers/power/supply/macsmc-power.c b/drivers/power/supply/macsmc-power.c
-index 33ca07460f3a..3ce0f7c5da27 100644
+index 33ca07460f3a..a442cded1982 100644
 --- a/drivers/power/supply/macsmc-power.c
 +++ b/drivers/power/supply/macsmc-power.c
 @@ -4,9 +4,11 @@
@@ -337,7 +338,7 @@ index 33ca07460f3a..3ce0f7c5da27 100644
 -		ret = apple_smc_read_s32(power->smc, SMC_KEY(B0AP), &vs32);
 -		val->intval = vs32 * 1000;
 +		if (power->smc->is_acpi)
-+			ret = macsmc_battery_acpi_read(power->smc, SMC_KEY(B0AP), &val->intval, 1000);
++			ret = macsmc_battery_acpi_read(power->smc, SMC_KEY(B0AP), &val->intval, 1000000);
 +		else {
 +			ret = apple_smc_read_u32(power->smc, SMC_KEY(B0AP), &vs32);
 +			val->intval = vs32 * 1000;

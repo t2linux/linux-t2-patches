@@ -1,16 +1,17 @@
-From 573f027b4816b659dd3f8139cf75c625fd7c913f Mon Sep 17 00:00:00 2001
+From 3ca858315bcdd38e41911ebbca7f7175a5d1962b Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Wed, 8 Jul 2026 17:28:42 -0400
-Subject: [PATCH] add interrupt
+Subject: [PATCH 13/13] add interrupt
 
+Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---
  drivers/acpi/sbs.c                  |  3 +--
  drivers/acpi/sbshc.c                | 40 ++++++++++++++++++++++++++++-
  drivers/power/supply/Kconfig        |  2 +-
- drivers/power/supply/macsmc-power.c | 36 ++++++++++++++++++++------
+ drivers/power/supply/macsmc-power.c | 31 ++++++++++++++++------
  {drivers => include}/acpi/sbshc.h   |  3 +++
- 5 files changed, 72 insertions(+), 12 deletions(-)
+ 5 files changed, 67 insertions(+), 12 deletions(-)
  rename {drivers => include}/acpi/sbshc.h (86%)
 
 diff --git a/drivers/acpi/sbs.c b/drivers/acpi/sbs.c
@@ -121,7 +122,7 @@ index b402f158930f..4a390c9d5e2a 100644
  	  This driver provides support for the battery and AC adapter on
  	  Apple Silicon machines. It exposes battery telemetry (voltage,
 diff --git a/drivers/power/supply/macsmc-power.c b/drivers/power/supply/macsmc-power.c
-index 3ce0f7c5da27..21368e507b79 100644
+index a442cded1982..d4614fd728c5 100644
 --- a/drivers/power/supply/macsmc-power.c
 +++ b/drivers/power/supply/macsmc-power.c
 @@ -23,6 +23,7 @@
@@ -148,7 +149,7 @@ index 3ce0f7c5da27..21368e507b79 100644
  };
  
  static int macsmc_battery_get_status(struct macsmc_power *power)
-@@ -922,6 +923,19 @@ static void macsmc_power_acpi_work(struct work_struct *work)
+@@ -922,6 +923,14 @@ static void macsmc_power_acpi_work(struct work_struct *work)
  	schedule_delayed_work(&power->poll_work, HZ);
  }
  
@@ -156,19 +157,14 @@ index 3ce0f7c5da27..21368e507b79 100644
 +{
 +	struct macsmc_power *power = context;
 +
-+	u8 bncr;
-+
-+	if (apple_smc_read_u8(power->smc, SMC_KEY(BNCR), &bncr) == 0 && power->old_bncr != bncr) {
-+		power_supply_changed(power->batt);
-+		power_supply_changed(power->ac);
-+		power->old_bncr = bncr;
-+	}
++	power_supply_changed(power->batt);
++	power_supply_changed(power->ac);
 +}
 +
  static int macsmc_power_probe(struct platform_device *pdev)
  {
  	struct device *dev = &pdev->dev;
-@@ -1184,13 +1198,17 @@ static int macsmc_power_probe(struct platform_device *pdev)
+@@ -1184,13 +1193,17 @@ static int macsmc_power_probe(struct platform_device *pdev)
  		power->nb.notifier_call = macsmc_power_event;
  		blocking_notifier_chain_register(&smc_rtkit->event_handlers, &power->nb);
  	} else {
@@ -192,7 +188,7 @@ index 3ce0f7c5da27..21368e507b79 100644
  	return 0;
  }
  
-@@ -1203,7 +1221,9 @@ static void macsmc_power_remove(struct platform_device *pdev)
+@@ -1203,7 +1216,9 @@ static void macsmc_power_remove(struct platform_device *pdev)
  
  		blocking_notifier_chain_unregister(&smc_rtkit->event_handlers, &power->nb);
  
