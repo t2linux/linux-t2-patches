@@ -29,6 +29,11 @@ jobs:
         run: |
           source ${{ github.workspace }}/version
           echo "kver=${KVER}" >> $GITHUB_ENV
+          patch_driver="${{ github.workspace }}/1001-Add-t2bce-driver-stack.patch"
+          patch_integration="${{ github.workspace }}/1002-Integrate-t2bce-driver-stack.patch"
+          if [ -e "$patch_driver" ] || [ -e "$patch_integration" ]; then
+          rm $patch_driver $patch_integration
+          fi
 
           FORK="${{ github.event.inputs.fork }}"
           if [ -z "$FORK" ]; then
@@ -79,6 +84,11 @@ jobs:
         run: |
           source ${{ github.workspace }}/version
           echo "kver=${KVER}" >> $GITHUB_ENV
+          patch_driver="${{ github.workspace }}/1001-Add-t2bce-driver-stack.patch"
+          patch_integration="${{ github.workspace }}/1002-Integrate-t2bce-driver-stack.patch"
+          if [ -e "$patch_driver" ] || [ -e "$patch_integration" ]; then
+          rm $patch_driver $patch_integration
+          fi
 
           FORK="${{ github.event.inputs.fork }}"
           if [ -z "$FORK" ]; then
