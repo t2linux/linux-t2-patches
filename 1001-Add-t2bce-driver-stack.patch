@@ -1,7 +1,7 @@
-From 39e45e3d8435f557ac2e09e97424d4652c73950d Mon Sep 17 00:00:00 2001
+From 8fa0363a09c616607538542305f6b46591e6dac7 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Wed, 22 Jul 2026 10:21:19 +0000
+Date: Fri, 31 Jul 2026 13:16:36 +0000
 Subject: [PATCH] Add t2bce driver stack
 
 ---
@@ -31,11 +31,11 @@ Subject: [PATCH] Add t2bce driver stack
  drivers/staging/t2bce/t2bce_vhci/command.h    |  206 +++
  drivers/staging/t2bce/t2bce_vhci/queue.c      |  269 ++++
  drivers/staging/t2bce/t2bce_vhci/queue.h      |   76 +
- drivers/staging/t2bce/t2bce_vhci/transfer.c   | 1224 ++++++++++++++++
- drivers/staging/t2bce/t2bce_vhci/transfer.h   |   81 ++
+ drivers/staging/t2bce/t2bce_vhci/transfer.c   | 1261 ++++++++++++++++
+ drivers/staging/t2bce/t2bce_vhci/transfer.h   |   86 ++
  drivers/staging/t2bce/t2bce_vhci/vhci.c       | 1293 +++++++++++++++++
  drivers/staging/t2bce/t2bce_vhci/vhci.h       |   69 +
- 30 files changed, 8186 insertions(+)
+ 30 files changed, 8228 insertions(+)
  create mode 100644 drivers/staging/t2bce/Kconfig
  create mode 100644 drivers/staging/t2bce/Makefile
  create mode 100644 drivers/staging/t2bce/t2bce_audio/Makefile
@@ -5745,10 +5745,10 @@ index 000000000..044eb2971
 +#endif //BCE_VHCI_QUEUE_H
 diff --git a/drivers/staging/t2bce/t2bce_vhci/transfer.c b/drivers/staging/t2bce/t2bce_vhci/transfer.c
 new file mode 100644
-index 000000000..c03bab65c
+index 000000000..1c9643e13
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_vhci/transfer.c
-@@ -0,0 +1,1224 @@
+@@ -0,0 +1,1261 @@
 +#include "transfer.h"
 +#include "vhci.h"
 +#include <linux/dma-mapping.h>
@@ -5763,9 +5763,11 @@ index 000000000..c03bab65c
 +static int bce_vhci_urb_update(struct bce_vhci_urb *urb, struct bce_vhci_message *msg);
 +static int bce_vhci_urb_transfer_completion(struct bce_vhci_urb *urb, struct t2bce_core_sq_completion_data *c);
 +static void bce_vhci_urb_complete(struct bce_vhci_urb *urb, int status);
++static void bce_vhci_urb_free(struct bce_vhci_urb *urb);
 +
 +static void bce_vhci_transfer_queue_reset_w(struct work_struct *work);
 +static void bce_vhci_transfer_queue_resume_w(struct work_struct *work);
++static void bce_vhci_transfer_queue_cancel_w(struct work_struct *work);
 +
 +void bce_vhci_create_transfer_queue(struct bce_vhci *vhci, struct bce_vhci_transfer_queue *q,
 +        struct usb_host_endpoint *endp, bce_vhci_device_t dev_addr, enum dma_data_direction dir)
@@ -5773,6 +5775,7 @@ index 000000000..c03bab65c
 +    char name[0x21];
 +    INIT_LIST_HEAD(&q->evq);
 +    INIT_LIST_HEAD(&q->giveback_urb_list);
++    INIT_LIST_HEAD(&q->cancel_urb_list);
 +    spin_lock_init(&q->urb_lock);
 +    mutex_init(&q->pause_lock);
 +    init_waitqueue_head(&q->sq_out_wait_queue);
@@ -5792,6 +5795,7 @@ index 000000000..c03bab65c
 +    q->cq = t2bce_core_create_cq(vhci->client, 0x100);
 +    INIT_WORK(&q->w_reset, bce_vhci_transfer_queue_reset_w);
 +    INIT_WORK(&q->w_resume, bce_vhci_transfer_queue_resume_w);
++    INIT_WORK(&q->w_cancel, bce_vhci_transfer_queue_cancel_w);
 +    q->sq_in = NULL;
 +    if (dir == DMA_FROM_DEVICE || dir == DMA_BIDIRECTIONAL) {
 +        snprintf(name, sizeof(name), "VHC1-%i-%02x", dev_addr, 0x80 | usb_endpoint_num(&endp->desc));
@@ -5810,6 +5814,7 @@ index 000000000..c03bab65c
 +{
 +    cancel_work_sync(&q->w_resume);
 +    cancel_work_sync(&q->w_reset);
++    cancel_work_sync(&q->w_cancel);
 +    bce_vhci_transfer_queue_giveback(q);
 +    bce_vhci_transfer_queue_remove_pending(q);
 +    if (q->sq_in)
@@ -6360,6 +6365,51 @@ index 000000000..c03bab65c
 +            q->remaining_active_requests);
 +}
 +
++static void bce_vhci_transfer_queue_cancel_w(struct work_struct *work)
++{
++    unsigned long flags;
++    struct bce_vhci_transfer_queue *q = container_of(work, struct bce_vhci_transfer_queue, w_cancel);
++    struct bce_vhci_urb *vurb;
++    struct urb *urb;
++    int status;
++    bool was_active;
++
++    for (;;) {
++        spin_lock_irqsave(&q->urb_lock, flags);
++        if (list_empty(&q->cancel_urb_list)) {
++            spin_unlock_irqrestore(&q->urb_lock, flags);
++            return;
++        }
++
++        vurb = list_first_entry(&q->cancel_urb_list, struct bce_vhci_urb, cancel_list);
++        list_del_init(&vurb->cancel_list);
++        urb = vurb->urb;
++        status = vurb->cancel_status;
++        was_active = vurb->cancel_was_active;
++        spin_unlock_irqrestore(&q->urb_lock, flags);
++
++        /* Endpoint pause talks to bridgeOS and may sleep. */
++        if (was_active) {
++            pr_debug("t2bce_vhci: [%02x] async cancelling URB\n", q->endp_addr);
++            bce_vhci_transfer_queue_pause(q, BCE_VHCI_PAUSE_INTERNAL_WQ);
++        }
++
++        spin_lock_irqsave(&q->urb_lock, flags);
++        if (was_active)
++            ++q->remaining_active_requests;
++        usb_hcd_unlink_urb_from_ep(q->vhci->hcd, urb);
++        urb->hcpriv = NULL;
++        spin_unlock_irqrestore(&q->urb_lock, flags);
++
++        usb_hcd_giveback_urb(q->vhci->hcd, urb, status);
++
++        if (was_active)
++            bce_vhci_transfer_queue_resume(q, BCE_VHCI_PAUSE_INTERNAL_WQ);
++
++        bce_vhci_urb_free(vurb);
++    }
++}
++
 +void bce_vhci_transfer_queue_request_reset(struct bce_vhci_transfer_queue *q)
 +{
 +    queue_work(q->vhci->tq_state_wq, &q->w_reset);
@@ -6533,6 +6583,7 @@ index 000000000..c03bab65c
 +    vurb->urb = urb;
 +    vurb->dir = usb_urb_dir_in(urb) ? DMA_FROM_DEVICE : DMA_TO_DEVICE;
 +    vurb->is_control = is_control;
++    INIT_LIST_HEAD(&vurb->cancel_list);
 +    status = bce_vhci_urb_init_sg_segments(vurb);
 +    if (status) {
 +        urb->hcpriv = NULL;
@@ -6637,6 +6688,10 @@ index 000000000..c03bab65c
 +    }
 +
 +    vurb = urb->hcpriv;
++    if (!vurb) {
++        spin_unlock_irqrestore(&q->urb_lock, flags);
++        return -ENOENT;
++    }
 +
 +    old_state = vurb->state;
 +    bce_vhci_urb_log_control(vurb, "cancel-request");
@@ -6648,31 +6703,13 @@ index 000000000..c03bab65c
 +    }
 +
 +    vurb->state = BCE_VHCI_URB_CANCELLED;
++    vurb->cancel_status = status;
++    vurb->cancel_was_active = old_state != BCE_VHCI_URB_INIT_PENDING;
 +
-+    /*
-+     * A posted URB may still receive bridgeOS events.  Pause the endpoint
-+     * before unlinking it from usbcore-visible state.
-+     */
-+    if (old_state != BCE_VHCI_URB_INIT_PENDING) {
-+        pr_debug("t2bce_vhci: [%02x] Cancelling URB\n", q->endp_addr);
-+
-+        spin_unlock_irqrestore(&q->urb_lock, flags);
-+        bce_vhci_transfer_queue_pause(q, BCE_VHCI_PAUSE_INTERNAL_WQ);
-+        spin_lock_irqsave(&q->urb_lock, flags);
-+
-+        ++q->remaining_active_requests;
-+    }
-+
-+    usb_hcd_unlink_urb_from_ep(q->vhci->hcd, urb);
-+
++    if (list_empty(&vurb->cancel_list))
++        list_add_tail(&vurb->cancel_list, &q->cancel_urb_list);
 +    spin_unlock_irqrestore(&q->urb_lock, flags);
-+
-+    usb_hcd_giveback_urb(q->vhci->hcd, urb, status);
-+
-+    if (old_state != BCE_VHCI_URB_INIT_PENDING)
-+        bce_vhci_transfer_queue_resume(q, BCE_VHCI_PAUSE_INTERNAL_WQ);
-+
-+    bce_vhci_urb_free(vurb);
++    queue_work(q->vhci->tq_state_wq, &q->w_cancel);
 +
 +    return 0;
 +}
@@ -6975,10 +7012,10 @@ index 000000000..c03bab65c
 +}
 diff --git a/drivers/staging/t2bce/t2bce_vhci/transfer.h b/drivers/staging/t2bce/t2bce_vhci/transfer.h
 new file mode 100644
-index 000000000..61c30dd3a
+index 000000000..5416b65c5
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_vhci/transfer.h
-@@ -0,0 +1,81 @@
+@@ -0,0 +1,86 @@
 +#ifndef BCEDRIVER_TRANSFER_H
 +#define BCEDRIVER_TRANSFER_H
 +
@@ -7015,9 +7052,11 @@ index 000000000..61c30dd3a
 +    struct list_head giveback_urb_list;
 +    wait_queue_head_t sq_out_wait_queue;
 +    atomic_t sq_out_pending;
++    struct list_head cancel_urb_list;
 +
 +    struct work_struct w_reset;
 +    struct work_struct w_resume;
++    struct work_struct w_cancel;
 +};
 +enum bce_vhci_urb_state {
 +    BCE_VHCI_URB_INIT_PENDING,
@@ -7043,6 +7082,9 @@ index 000000000..61c30dd3a
 +    size_t sg_segments_size;
 +    unsigned int sg_segment_count;
 +    bool sg_segments_for_device;
++    struct list_head cancel_list;
++    int cancel_status;
++    bool cancel_was_active;
 +};
 +
 +void bce_vhci_create_transfer_queue(struct bce_vhci *vhci, struct bce_vhci_transfer_queue *q,
@@ -7062,7 +7104,7 @@ index 000000000..61c30dd3a
 +#endif //BCEDRIVER_TRANSFER_H
 diff --git a/drivers/staging/t2bce/t2bce_vhci/vhci.c b/drivers/staging/t2bce/t2bce_vhci/vhci.c
 new file mode 100644
-index 000000000..0abfeb5ea
+index 000000000..682badb23
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_vhci/vhci.c
 @@ -0,0 +1,1293 @@
@@ -8355,7 +8397,7 @@ index 000000000..0abfeb5ea
 +MODULE_LICENSE("GPL");
 +MODULE_AUTHOR("André Eikmeyer <andre.eikmeyer@gmail.com>");
 +MODULE_DESCRIPTION("Apple T2 BCE VHCI Driver");
-+MODULE_VERSION("0.01");
++MODULE_VERSION("0.02");
 +MODULE_SOFTDEP("pre: t2bce_core");
 +module_init(bce_vhci_module_init);
 +module_exit(bce_vhci_module_exit);
