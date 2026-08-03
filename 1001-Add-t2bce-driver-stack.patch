@@ -1,14 +1,14 @@
-From 6f25d61cef92d1a91072e1a08f06463dbe332f3b Mon Sep 17 00:00:00 2001
+From 815a6505e71f02825682711dab1574ebb97382fe Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Fri, 31 Jul 2026 13:16:36 +0000
+Date: Mon, 3 Aug 2026 14:15:46 +0000
 Subject: [PATCH] Add t2bce driver stack
 
 ---
  drivers/staging/t2bce/Kconfig                 |   40 +
  drivers/staging/t2bce/Makefile                |    5 +
  drivers/staging/t2bce/t2bce_audio/Makefile    |    7 +
- drivers/staging/t2bce/t2bce_audio/audio.c     |  930 ++++++++++++
+ drivers/staging/t2bce/t2bce_audio/audio.c     |  929 ++++++++++++
  drivers/staging/t2bce/t2bce_audio/audio.h     |  148 ++
  .../staging/t2bce/t2bce_audio/description.h   |   42 +
  drivers/staging/t2bce/t2bce_audio/pcm.c       |  520 +++++++
@@ -35,7 +35,7 @@ Subject: [PATCH] Add t2bce driver stack
  drivers/staging/t2bce/t2bce_vhci/transfer.h   |   86 ++
  drivers/staging/t2bce/t2bce_vhci/vhci.c       | 1293 +++++++++++++++++
  drivers/staging/t2bce/t2bce_vhci/vhci.h       |   69 +
- 30 files changed, 8228 insertions(+)
+ 30 files changed, 8227 insertions(+)
  create mode 100644 drivers/staging/t2bce/Kconfig
  create mode 100644 drivers/staging/t2bce/Makefile
  create mode 100644 drivers/staging/t2bce/t2bce_audio/Makefile
@@ -139,10 +139,10 @@ index 000000000..1fba36e10
 +ccflags-y += -I$(src)/../t2bce_core/include
 diff --git a/drivers/staging/t2bce/t2bce_audio/audio.c b/drivers/staging/t2bce/t2bce_audio/audio.c
 new file mode 100644
-index 000000000..1d45126f0
+index 000000000..60f552c06
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_audio/audio.c
-@@ -0,0 +1,930 @@
+@@ -0,0 +1,929 @@
 +#include <linux/pci.h>
 +#include <linux/spinlock.h>
 +#include <linux/module.h>
@@ -586,8 +586,7 @@ index 000000000..1d45126f0
 +    INIT_LIST_HEAD(&sdev->list);
 +    sdev->dev_id = dev_id;
 +    sdev->buf_id = T2AUDIO_BUFFER_ID_NONE;
-+    strncpy(sdev->uid, uid, uid_len);
-+    sdev->uid[uid_len + 1] = '\0';
++    strscpy(sdev->uid, uid);
 +
 +    if (t2audio_cmd_get_primitive_property(a, dev_id, dev_id,
 +            T2AUDIO_PROP(T2AUDIO_PROP_SCOPE_INPUT, T2AUDIO_PROP_LATENCY, 0), NULL, 0, &sdev->in_latency, sizeof(u32)))
