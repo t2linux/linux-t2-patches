@@ -1,0 +1,125 @@
+From a4d5c0431327b985f6c34f916a29e7e1233da423 Mon Sep 17 00:00:00 2001
+From: Martin Bastien <martin@pige.dev>
+Date: Wed, 5 Aug 2026 19:46:30 -0400
+Subject: [PATCH 4/4] Bluetooth: limit discovery on BCM4364 with an active ACL
+
+The BCM4364B3 in MacBookPro16,1 systems cannot sustain ACL traffic while
+running the default near-continuous active LE scan or a concurrent BR/EDR
+inquiry. A2DP stalls for the entire 10.24 second LE discovery phase and
+resumes between discovery cycles.
+
+Add a controller quirk which always uses a 30 ms active LE scan window
+every 300 ms, so an ACL created during discovery is protected immediately.
+Omit the BR/EDR phase of interleaved discovery when an ACL exists. Active
+scanning keeps devices visible and permits scan responses.
+
+Restrict the quirk to BCM4364 chip id 150 on MacBookPro16,1 systems.
+
+Assisted-by: Codex:GPT-5
+---
+ drivers/bluetooth/btbcm.c        |  3 +++
+ include/net/bluetooth/hci.h      | 10 ++++++++++
+ include/net/bluetooth/hci_core.h |  2 ++
+ net/bluetooth/hci_sync.c         | 18 ++++++++++++++++--
+ 4 files changed, 31 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/bluetooth/btbcm.c b/drivers/bluetooth/btbcm.c
+index 35a586841..6dfe302a6 100644
+--- a/drivers/bluetooth/btbcm.c
++++ b/drivers/bluetooth/btbcm.c
+@@ -460,6 +460,9 @@ static int btbcm_read_info(struct hci_dev *hdev)
+ 	if (skb->data[1] == BCM4364_CHIP_ID &&
+ 	    dmi_first_match(apple_bcm4364))
+ 		hci_set_quirk(hdev, HCI_QUIRK_FIXUP_LE_ADV_REPORT_EVT_TYPE);
++	if (skb->data[1] == BCM4364_CHIP_ID &&
++	    dmi_first_match(apple_bcm4364))
++		hci_set_quirk(hdev, HCI_QUIRK_BROKEN_DISCOVERY_DURING_ACL);
+ 	kfree_skb(skb);
+ 
+ 	return 0;
+diff --git a/include/net/bluetooth/hci.h b/include/net/bluetooth/hci.h
+index f7bcffad2..d42d02705 100644
+--- a/include/net/bluetooth/hci.h
++++ b/include/net/bluetooth/hci.h
+@@ -369,6 +369,16 @@ enum {
+ 	 */
+ 	HCI_QUIRK_FIXUP_LE_ADV_REPORT_EVT_TYPE,
+ 
++	/*
++	 * When this quirk is set, full-duty LE scanning and BR/EDR inquiry
++	 * can starve an ACL connection. Use low-duty LE discovery so a new ACL
++	 * is protected immediately, and skip inquiry while an ACL is active.
++	 *
++	 * This quirk can be set before hci_register_dev is called or
++	 * during the hdev->setup vendor callback.
++	 */
++	HCI_QUIRK_BROKEN_DISCOVERY_DURING_ACL,
++
+ 	/* When this quirk is set, the HCI_OP_READ_VOICE_SETTING command is
+ 	 * skipped. This is required for a subset of the CSR controller clones
+ 	 * which erroneously claim to support it.
+diff --git a/include/net/bluetooth/hci_core.h b/include/net/bluetooth/hci_core.h
+index 3df59849d..5ef1a4758 100644
+--- a/include/net/bluetooth/hci_core.h
++++ b/include/net/bluetooth/hci_core.h
+@@ -2407,6 +2407,8 @@ void hci_mgmt_chan_unregister(struct hci_mgmt_chan *c);
+ #define DISCOV_CODED_SCAN_INT_SLOW2	0x3000 /* 7.68 sec */
+ #define DISCOV_CODED_SCAN_WIN_SLOW2	0x006c /* 67.5 msec */
+ #define DISCOV_LE_TIMEOUT		10240	/* msec */
++#define DISCOV_LE_LIMITED_SCAN_INT	0x01e0	/* 300 msec */
++#define DISCOV_LE_LIMITED_SCAN_WINDOW	0x0030	/* 30 msec */
+ #define DISCOV_INTERLEAVED_TIMEOUT	5120	/* msec */
+ #define DISCOV_INTERLEAVED_INQUIRY_LEN	0x04
+ #define DISCOV_BREDR_INQUIRY_LEN	0x08
+diff --git a/net/bluetooth/hci_sync.c b/net/bluetooth/hci_sync.c
+index c8d14128c..7b2a60c3d 100644
+--- a/net/bluetooth/hci_sync.c
++++ b/net/bluetooth/hci_sync.c
+@@ -361,6 +361,12 @@ static int interleaved_inquiry_sync(struct hci_dev *hdev, void *data)
+ 	return hci_inquiry_sync(hdev, DISCOV_INTERLEAVED_INQUIRY_LEN, 0);
+ }
+ 
++static bool hci_limit_discovery_during_acl(struct hci_dev *hdev)
++{
++	return hci_test_quirk(hdev, HCI_QUIRK_BROKEN_DISCOVERY_DURING_ACL) &&
++	       hci_conn_num(hdev, ACL_LINK);
++}
++
+ static void le_scan_disable(struct work_struct *work)
+ {
+ 	struct hci_dev *hdev = container_of(work, struct hci_dev,
+@@ -401,6 +407,9 @@ static void le_scan_disable(struct work_struct *work)
+ 		goto _return;
+ 	}
+ 
++	if (hci_limit_discovery_during_acl(hdev))
++		goto discov_stopped;
++
+ 	status = hci_cmd_sync_queue(hdev, interleaved_inquiry_sync, NULL, NULL);
+ 	if (status) {
+ 		bt_dev_err(hdev, "inquiry failed: status %d", status);
+@@ -6146,6 +6155,7 @@ int hci_inquiry_sync(struct hci_dev *hdev, u8 length, u8 num_rsp)
+ static int hci_active_scan_sync(struct hci_dev *hdev, uint16_t interval)
+ {
+ 	u8 own_addr_type;
++	u16 window = hdev->le_scan_window_discovery;
+ 	/* Accept list is not used for discovery */
+ 	u8 filter_policy = 0x00;
+ 	/* Default is to enable duplicates filter */
+@@ -6198,8 +6208,12 @@ static int hci_active_scan_sync(struct hci_dev *hdev, uint16_t interval)
+ 		filter_dup = LE_SCAN_FILTER_DUP_DISABLE;
+ 	}
+ 
+-	err = hci_start_scan_sync(hdev, LE_SCAN_ACTIVE, interval,
+-				  hdev->le_scan_window_discovery,
++	if (hci_test_quirk(hdev, HCI_QUIRK_BROKEN_DISCOVERY_DURING_ACL)) {
++		interval = DISCOV_LE_LIMITED_SCAN_INT;
++		window = DISCOV_LE_LIMITED_SCAN_WINDOW;
++	}
++
++	err = hci_start_scan_sync(hdev, LE_SCAN_ACTIVE, interval, window,
+ 				  own_addr_type, filter_policy, filter_dup);
+ 	if (!err)
+ 		return err;
+-- 
+2.55.0

@@ -1,0 +1,66 @@
+From bc73241b476f2b97054fe37409555bc1eb608ebe Mon Sep 17 00:00:00 2001
+From: Martin Bastien <martin@pige.dev>
+Date: Wed, 5 Aug 2026 19:46:30 -0400
+Subject: [PATCH 1/4] Bluetooth: hci_bcm: track usable reset resources
+
+Apple platforms provide the Bluetooth reset control through ACPI callbacks
+rather than a GPIO descriptor. Record explicitly whether resource discovery
+found a usable shutdown or reset control, including the Apple callbacks.
+
+Use this state when deciding whether the controller can switch away from
+its initial baud rate. This preserves the safe fallback on generic boards
+whose callback only wraps absent optional GPIOs.
+
+Assisted-by: Codex:GPT-5
+---
+ drivers/bluetooth/hci_bcm.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/bluetooth/hci_bcm.c b/drivers/bluetooth/hci_bcm.c
+index 1a4fc3882..93ab39db8 100644
+--- a/drivers/bluetooth/hci_bcm.c
++++ b/drivers/bluetooth/hci_bcm.c
+@@ -82,6 +82,7 @@ struct bcm_device_data {
+  *	either by accessing @device_wakeup or by calling @btlp
+  * @set_shutdown: callback to toggle BT_REG_ON pin
+  *	either by accessing @shutdown or by calling @btpu/@btpd
++ * @has_reset_resource: a shutdown or reset control is available
+  * @btlp: Apple ACPI method to toggle BT_WAKE pin ("Bluetooth Low Power")
+  * @btpu: Apple ACPI method to drive BT_REG_ON pin high ("Bluetooth Power Up")
+  * @btpd: Apple ACPI method to drive BT_REG_ON pin low ("Bluetooth Power Down")
+@@ -122,6 +123,7 @@ struct bcm_device {
+ 	struct gpio_desc	*reset;
+ 	int			(*set_device_wakeup)(struct bcm_device *, bool);
+ 	int			(*set_shutdown)(struct bcm_device *, bool);
++	bool			has_reset_resource;
+ #ifdef CONFIG_ACPI
+ 	acpi_handle		btlp, btpu, btpd;
+ 	int			gpio_count;
+@@ -1027,6 +1029,7 @@ static int bcm_apple_get_resources(struct bcm_device *dev)
+ 
+ 	dev->set_device_wakeup = bcm_apple_set_device_wakeup;
+ 	dev->set_shutdown = bcm_apple_set_shutdown;
++	dev->has_reset_resource = true;
+ 
+ 	return 0;
+ }
+@@ -1116,6 +1119,7 @@ static int bcm_get_resources(struct bcm_device *dev)
+ 					     GPIOD_OUT_LOW);
+ 	if (IS_ERR(dev->reset))
+ 		return PTR_ERR(dev->reset);
++	dev->has_reset_resource = dev->shutdown || dev->reset;
+ 
+ 	dev->set_device_wakeup = bcm_gpio_set_device_wakeup;
+ 	dev->set_shutdown = bcm_gpio_set_shutdown;
+@@ -1533,7 +1537,7 @@ static int bcm_serdev_probe(struct serdev_device *serdev)
+ 	if (err)
+ 		return err;
+ 
+-	if (!bcmdev->shutdown) {
++	if (!bcmdev->has_reset_resource) {
+ 		dev_warn(&serdev->dev,
+ 			 "No reset resource, using default baud rate\n");
+ 		bcmdev->oper_speed = bcmdev->init_speed;
+-- 
+2.55.0
+

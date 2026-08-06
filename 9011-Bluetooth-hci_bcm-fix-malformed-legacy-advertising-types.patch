@@ -1,0 +1,113 @@
+From a5b3c764e6c05a06304ec994e5f02cfef2d0b42a Mon Sep 17 00:00:00 2001
+From: Martin Bastien <martin@pige.dev>
+Date: Wed, 5 Aug 2026 19:46:30 -0400
+Subject: [PATCH 2/4] Bluetooth: hci_bcm: fix malformed legacy advertising
+ types
+
+The BCM4364B3 in MacBookPro16,1 systems sets reserved upper bits in
+the event type byte of legacy LE advertising reports. The Bluetooth
+core rejects those reports as unknown, so nearby devices disappear
+from discovery results.
+
+Add a dedicated quirk for masking the vendor bits before validating
+the legacy event type. Keep the DMI match in btbcm setup code so the
+generic event parser remains platform agnostic.
+
+Assisted-by: Codex:GPT-5
+---
+ drivers/bluetooth/btbcm.c   | 14 ++++++++++++++
+ include/net/bluetooth/hci.h | 10 ++++++++++
+ net/bluetooth/hci_event.c   | 11 ++++++++---
+ 3 files changed, 32 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/bluetooth/btbcm.c b/drivers/bluetooth/btbcm.c
+index 463d59890..35a586841 100644
+--- a/drivers/bluetooth/btbcm.c
++++ b/drivers/bluetooth/btbcm.c
+@@ -20,6 +20,7 @@
+ #include "btbcm.h"
+ 
+ #define VERSION "0.1"
++#define BCM4364_CHIP_ID 150
+ 
+ #define BDADDR_BCM20702A0 (&(bdaddr_t) {{0x00, 0xa0, 0x02, 0x70, 0x20, 0x00}})
+ #define BDADDR_BCM20702A1 (&(bdaddr_t) {{0x00, 0x00, 0xa0, 0x02, 0x70, 0x20}})
+@@ -436,6 +437,16 @@ static const struct dmi_system_id disable_broken_read_transmit_power[] = {
+ 	{ }
+ };
+ 
++static const struct dmi_system_id apple_bcm4364[] = {
++	{
++		.matches = {
++			DMI_MATCH(DMI_BOARD_VENDOR, "Apple Inc."),
++			DMI_MATCH(DMI_PRODUCT_NAME, "MacBookPro16,1"),
++		},
++	},
++	{ }
++};
++
+ static int btbcm_read_info(struct hci_dev *hdev)
+ {
+ 	struct sk_buff *skb;
+@@ -446,6 +457,9 @@ static int btbcm_read_info(struct hci_dev *hdev)
+ 		return PTR_ERR(skb);
+ 
+ 	bt_dev_info(hdev, "BCM: chip id %u", skb->data[1]);
++	if (skb->data[1] == BCM4364_CHIP_ID &&
++	    dmi_first_match(apple_bcm4364))
++		hci_set_quirk(hdev, HCI_QUIRK_FIXUP_LE_ADV_REPORT_EVT_TYPE);
+ 	kfree_skb(skb);
+ 
+ 	return 0;
+diff --git a/include/net/bluetooth/hci.h b/include/net/bluetooth/hci.h
+index 50f0eef71..f7bcffad2 100644
+--- a/include/net/bluetooth/hci.h
++++ b/include/net/bluetooth/hci.h
+@@ -359,6 +359,16 @@ enum {
+ 	 */
+ 	HCI_QUIRK_FIXUP_LE_EXT_ADV_REPORT_PHY,
+ 
++	/*
++	 * When this quirk is set, reserved upper bits in legacy LE
++	 * advertising report event types are discarded. Some Apple/Broadcom
++	 * controllers use those bits for vendor-specific flags.
++	 *
++	 * This quirk can be set before hci_register_dev is called or
++	 * during the hdev->setup vendor callback.
++	 */
++	HCI_QUIRK_FIXUP_LE_ADV_REPORT_EVT_TYPE,
++
+ 	/* When this quirk is set, the HCI_OP_READ_VOICE_SETTING command is
+ 	 * skipped. This is required for a subset of the CSR controller clones
+ 	 * which erroneously claim to support it.
+diff --git a/net/bluetooth/hci_event.c b/net/bluetooth/hci_event.c
+index 741d658e9..ffc7dfd3e 100644
+--- a/net/bluetooth/hci_event.c
++++ b/net/bluetooth/hci_event.c
+@@ -6182,7 +6182,11 @@ static void process_adv_report(struct hci_dev *hdev, u8 type, bdaddr_t *bdaddr,
+ 	struct hci_conn *conn;
+ 	bool match, bdaddr_resolved;
+ 	u32 flags;
+-	u8 *ptr;
++	u8 *ptr, raw_type = type;
++
++	if (hci_test_quirk(hdev,
++			   HCI_QUIRK_FIXUP_LE_ADV_REPORT_EVT_TYPE))
++		type &= 0x07;
+ 
+ 	switch (type) {
+ 	case LE_ADV_IND:
+@@ -6192,8 +6196,9 @@ static void process_adv_report(struct hci_dev *hdev, u8 type, bdaddr_t *bdaddr,
+ 	case LE_ADV_SCAN_RSP:
+ 		break;
+ 	default:
+-		bt_dev_err_ratelimited(hdev, "unknown advertising packet "
+-				       "type: 0x%02x", type);
++		bt_dev_err_ratelimited(hdev,
++				       "unknown advertising packet type: 0x%02x",
++				       raw_type);
+ 		return;
+ 	}
+ 
+-- 
+2.55.0

@@ -1,0 +1,64 @@
+From 31debc90302d3f688d29086720861d5b5214b922 Mon Sep 17 00:00:00 2001
+From: Martin Bastien <martin@pige.dev>
+Date: Wed, 5 Aug 2026 19:46:30 -0400
+Subject: [PATCH 3/4] Bluetooth: hci_bcm: find Apple power methods under BLTH
+ child
+
+Some Intel Mac ACPI tables place BTLP, BTPU and BTPD below a BLTH
+child of the UART node instead of directly below the UART node. In
+that layout the driver fails to acquire the power controls and falls
+back to generic resources.
+
+Try the existing direct lookup first, then look below the BLTH child
+relative to the same ACPI companion. This avoids hard-coding an
+absolute namespace path or a particular Mac model.
+
+Assisted-by: Codex:GPT-5
+---
+ drivers/bluetooth/hci_bcm.c | 24 +++++++++++++++++++++---
+ 1 file changed, 21 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/bluetooth/hci_bcm.c b/drivers/bluetooth/hci_bcm.c
+index 93ab39db8..08d27432f 100644
+--- a/drivers/bluetooth/hci_bcm.c
++++ b/drivers/bluetooth/hci_bcm.c
+@@ -1012,15 +1012,33 @@ static int bcm_apple_set_shutdown(struct bcm_device *dev, bool powered)
+ 	return 0;
+ }
+ 
++static acpi_status bcm_apple_get_handle(struct acpi_device *adev,
++					const char *name,
++					const char *child_name,
++					acpi_handle *handle)
++{
++	acpi_status status;
++
++	status = acpi_get_handle(adev->handle, (acpi_string)name, handle);
++	if (ACPI_FAILURE(status))
++		status = acpi_get_handle(adev->handle, (acpi_string)child_name,
++					 handle);
++
++	return status;
++}
++
+ static int bcm_apple_get_resources(struct bcm_device *dev)
+ {
+ 	struct acpi_device *adev = ACPI_COMPANION(dev->dev);
+ 	const union acpi_object *obj;
+ 
+ 	if (!adev ||
+-	    ACPI_FAILURE(acpi_get_handle(adev->handle, "BTLP", &dev->btlp)) ||
+-	    ACPI_FAILURE(acpi_get_handle(adev->handle, "BTPU", &dev->btpu)) ||
+-	    ACPI_FAILURE(acpi_get_handle(adev->handle, "BTPD", &dev->btpd)))
++	    ACPI_FAILURE(bcm_apple_get_handle(adev, "BTLP", "BLTH.BTLP",
++					      &dev->btlp)) ||
++	    ACPI_FAILURE(bcm_apple_get_handle(adev, "BTPU", "BLTH.BTPU",
++					      &dev->btpu)) ||
++	    ACPI_FAILURE(bcm_apple_get_handle(adev, "BTPD", "BLTH.BTPD",
++					      &dev->btpd)))
+ 		return -ENODEV;
+ 
+ 	if (!acpi_dev_get_property(adev, "baud", ACPI_TYPE_BUFFER, &obj) &&
+-- 
+2.55.0
+
