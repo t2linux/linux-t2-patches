@@ -1,14 +1,14 @@
-From 815a6505e71f02825682711dab1574ebb97382fe Mon Sep 17 00:00:00 2001
+From 1f394e202800d60bbf2223ad44fcfde5a5c99125 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Mon, 3 Aug 2026 14:15:46 +0000
+Date: Fri, 7 Aug 2026 15:55:33 +0000
 Subject: [PATCH] Add t2bce driver stack
 
 ---
  drivers/staging/t2bce/Kconfig                 |   40 +
  drivers/staging/t2bce/Makefile                |    5 +
  drivers/staging/t2bce/t2bce_audio/Makefile    |    7 +
- drivers/staging/t2bce/t2bce_audio/audio.c     |  929 ++++++++++++
+ drivers/staging/t2bce/t2bce_audio/audio.c     |  930 ++++++++++++
  drivers/staging/t2bce/t2bce_audio/audio.h     |  148 ++
  .../staging/t2bce/t2bce_audio/description.h   |   42 +
  drivers/staging/t2bce/t2bce_audio/pcm.c       |  520 +++++++
@@ -35,7 +35,7 @@ Subject: [PATCH] Add t2bce driver stack
  drivers/staging/t2bce/t2bce_vhci/transfer.h   |   86 ++
  drivers/staging/t2bce/t2bce_vhci/vhci.c       | 1293 +++++++++++++++++
  drivers/staging/t2bce/t2bce_vhci/vhci.h       |   69 +
- 30 files changed, 8227 insertions(+)
+ 30 files changed, 8228 insertions(+)
  create mode 100644 drivers/staging/t2bce/Kconfig
  create mode 100644 drivers/staging/t2bce/Makefile
  create mode 100644 drivers/staging/t2bce/t2bce_audio/Makefile
@@ -139,10 +139,10 @@ index 000000000..1fba36e10
 +ccflags-y += -I$(src)/../t2bce_core/include
 diff --git a/drivers/staging/t2bce/t2bce_audio/audio.c b/drivers/staging/t2bce/t2bce_audio/audio.c
 new file mode 100644
-index 000000000..60f552c06
+index 000000000..98c0fef39
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_audio/audio.c
-@@ -0,0 +1,929 @@
+@@ -0,0 +1,930 @@
 +#include <linux/pci.h>
 +#include <linux/spinlock.h>
 +#include <linux/module.h>
@@ -580,6 +580,7 @@ index 000000000..60f552c06
 +        dev_err(a->dev, "Failed to get device uid for device %llx\n", dev_id);
 +        goto fail;
 +    }
++    uid[uid_len] = '\0';
 +    pr_debug("t2bce_audio: Remote device %llx %.*s\n", dev_id, (int) uid_len, uid);
 +
 +    sdev->a = a;
