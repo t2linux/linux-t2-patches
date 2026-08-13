@@ -1,7 +1,7 @@
-From 99b856117d2959ee409271ac84ebab7e4533c98f Mon Sep 17 00:00:00 2001
+From 234b395307c3c19c06e92893fef3c50365837dd9 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Wed, 12 Aug 2026 19:39:04 +0000
+Date: Thu, 13 Aug 2026 19:35:35 +0000
 Subject: [PATCH] Add APFS driver
 
 ---
@@ -111,7 +111,7 @@ index 000000000..2bafc31f1
 +	make -C $(KERNEL_DIR) M=$(PWD) clean
 diff --git a/fs/apfs/apfs.h b/fs/apfs/apfs.h
 new file mode 100644
-index 000000000..1dc299480
+index 000000000..f797a1044
 --- /dev/null
 +++ b/fs/apfs/apfs.h
 @@ -0,0 +1,1368 @@
@@ -1463,7 +1463,7 @@ index 000000000..1dc299480
 +		block -= nxi->nx_tier2_bno;
 +	}
 +
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 7, 0)
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 7, 0) && !RHEL_VERSION_GE(9, 8)
 +	return __getblk_gfp(info->blki_bdev, block, sb->s_blocksize, __GFP_MOVABLE);
 +#else
 +	return bdev_getblk(info->blki_bdev, block, sb->s_blocksize, __GFP_MOVABLE);
@@ -26306,11 +26306,11 @@ index 000000000..e3b7edc51
 +#endif	/* _APFS_UNICODE_H */
 diff --git a/fs/apfs/version.h b/fs/apfs/version.h
 new file mode 100644
-index 000000000..822cf93f4
+index 000000000..e16b23c10
 --- /dev/null
 +++ b/fs/apfs/version.h
 @@ -0,0 +1 @@
-+#define GIT_COMMIT	"v0.3.21"
++#define GIT_COMMIT	""
 diff --git a/fs/apfs/xattr.c b/fs/apfs/xattr.c
 new file mode 100644
 index 000000000..c21b8e469
