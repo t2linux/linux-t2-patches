@@ -1,12 +1,12 @@
-From 234b395307c3c19c06e92893fef3c50365837dd9 Mon Sep 17 00:00:00 2001
+From 88ea501d4ab2da76ea18a5adaab0712f56e5b4ad Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Thu, 13 Aug 2026 19:35:35 +0000
+Date: Sat, 15 Aug 2026 18:57:37 +0000
 Subject: [PATCH] Add APFS driver
 
 ---
  fs/apfs/Makefile                  |   28 +
- fs/apfs/apfs.h                    | 1368 +++++++++++++
+ fs/apfs/apfs.h                    | 1369 +++++++++++++
  fs/apfs/apfs_raw.h                | 1570 ++++++++++++++
  fs/apfs/btree.c                   | 1174 +++++++++++
  fs/apfs/compress.c                |  478 +++++
@@ -30,16 +30,16 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/node.c                    | 2069 +++++++++++++++++++
  fs/apfs/object.c                  |  315 +++
  fs/apfs/snapshot.c                |  687 +++++++
- fs/apfs/spaceman.c                | 1479 ++++++++++++++
- fs/apfs/super.c                   | 2263 +++++++++++++++++++++
+ fs/apfs/spaceman.c                | 1480 ++++++++++++++
+ fs/apfs/super.c                   | 2269 +++++++++++++++++++++
  fs/apfs/symlink.c                 |   80 +
- fs/apfs/transaction.c             | 1033 ++++++++++
+ fs/apfs/transaction.c             | 1036 ++++++++++
  fs/apfs/unicode.c                 | 3156 +++++++++++++++++++++++++++++
  fs/apfs/unicode.h                 |   27 +
  fs/apfs/version.h                 |    1 +
  fs/apfs/xattr.c                   |  914 +++++++++
  fs/apfs/xfield.c                  |  171 ++
- 34 files changed, 27129 insertions(+)
+ 34 files changed, 27140 insertions(+)
  create mode 100644 fs/apfs/Makefile
  create mode 100644 fs/apfs/apfs.h
  create mode 100644 fs/apfs/apfs_raw.h
@@ -111,10 +111,10 @@ index 000000000..2bafc31f1
 +	make -C $(KERNEL_DIR) M=$(PWD) clean
 diff --git a/fs/apfs/apfs.h b/fs/apfs/apfs.h
 new file mode 100644
-index 000000000..f797a1044
+index 000000000..6e4c201ba
 --- /dev/null
 +++ b/fs/apfs/apfs.h
-@@ -0,0 +1,1368 @@
+@@ -0,0 +1,1369 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -164,6 +164,7 @@ index 000000000..f797a1044
 +#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 2, 0)
 +#define apfs_submit_bh(op, op_flags, bh)				\
 +do {									\
++	put_bh(bh);							\
 +	if (op == REQ_OP_READ)						\
 +		bh_submit(bh, op | op_flags, bh_end_read);		\
 +	else								\
@@ -18232,10 +18233,10 @@ index 000000000..8459a8d2a
 +}
 diff --git a/fs/apfs/spaceman.c b/fs/apfs/spaceman.c
 new file mode 100644
-index 000000000..31bf439e9
+index 000000000..629a38d44
 --- /dev/null
 +++ b/fs/apfs/spaceman.c
-@@ -0,0 +1,1479 @@
+@@ -0,0 +1,1480 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2019 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -18546,6 +18547,7 @@ index 000000000..31bf439e9
 +	err = apfs_transaction_join(sb, bh);
 +	if (err)
 +		goto fail;
++	put_bh(bh);
 +	bh = NULL;
 +
 +	spaceman->sm_ip_bmaps[idx].dirty = false;
@@ -19717,10 +19719,10 @@ index 000000000..31bf439e9
 +}
 diff --git a/fs/apfs/super.c b/fs/apfs/super.c
 new file mode 100644
-index 000000000..bcc353a33
+index 000000000..719f96832
 --- /dev/null
 +++ b/fs/apfs/super.c
-@@ -0,0 +1,2263 @@
+@@ -0,0 +1,2269 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -20066,8 +20068,8 @@ index 000000000..bcc353a33
 +	xid = le64_to_cpu(msb_raw->nx_o.o_xid);
 +	for (i = 0; i < desc_blocks; ++i) {
 +		struct apfs_nx_superblock *desc_raw;
++		bool ignore;
 +
-+		brelse(desc_bh);
 +		desc_bh = apfs_sb_bread(sb, desc_base + i);
 +		if (!desc_bh) {
 +			apfs_err(sb, "unable to read checkpoint descriptor");
@@ -20075,18 +20077,24 @@ index 000000000..bcc353a33
 +		}
 +		desc_raw = (struct apfs_nx_superblock *)desc_bh->b_data;
 +
++		ignore = false;
 +		if (le32_to_cpu(desc_raw->nx_magic) != APFS_NX_MAGIC)
-+			continue; /* Not a superblock */
++			ignore = true; /* Not a superblock */
 +		if (le64_to_cpu(desc_raw->nx_o.o_xid) <= xid)
-+			continue; /* Old */
++			ignore = true; /* Old */
 +		if (!apfs_obj_verify_csum(sb, desc_bh))
-+			continue; /* Corrupted */
++			ignore = true; /* Corrupted */
 +
-+		xid = le64_to_cpu(desc_raw->nx_o.o_xid);
-+		msb_raw = desc_raw;
-+		bno = desc_base + i;
-+		brelse(bh);
-+		bh = desc_bh;
++		if (ignore) {
++			brelse(desc_bh);
++		} else {
++			xid = le64_to_cpu(desc_raw->nx_o.o_xid);
++			msb_raw = desc_raw;
++			bno = desc_base + i;
++			brelse(bh);
++			bh = desc_bh;
++		}
++		desc_raw = NULL;
 +		desc_bh = NULL;
 +	}
 +
@@ -22072,10 +22080,10 @@ index 000000000..be4f9df8f
 +};
 diff --git a/fs/apfs/transaction.c b/fs/apfs/transaction.c
 new file mode 100644
-index 000000000..e9e13e948
+index 000000000..ef66e6ea4
 --- /dev/null
 +++ b/fs/apfs/transaction.c
-@@ -0,0 +1,1033 @@
+@@ -0,0 +1,1036 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2019 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -22718,6 +22726,9 @@ index 000000000..e9e13e948
 +		}
 +		data_len += obj_blkcnt;
 +	}
++	brelse(cpm_bh);
++	cpm = NULL;
++	cpm_bh = NULL;
 +
 +	/*
 +	 * The checkpoint superblock can't be set until the very end of the
