@@ -1081,7 +1081,7 @@ index 4ad971f8b..9bf1d3660 100644
 2.50.1
 
 
-From 38ab43df5df32d202219a5eb1ba834ab31097846 Mon Sep 17 00:00:00 2001
+From f930537360d10664bc72be7ab35fc61d5dbae24b Mon Sep 17 00:00:00 2001
 From: Janne Grunau <j@jannau.net>
 Date: Sun, 11 Dec 2022 22:56:16 +0100
 Subject: [PATCH 12/18] HID: magicmouse: Add .reset_resume for SPI trackpads
@@ -1090,41 +1090,22 @@ The trackpad has to request multi touch reports during resume.
 
 Signed-off-by: Janne Grunau <j@jannau.net>
 ---
- drivers/hid/hid-magicmouse.c | 14 ++++++++++++++
- 1 file changed, 14 insertions(+)
+ drivers/hid/hid-magicmouse.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/drivers/hid/hid-magicmouse.c b/drivers/hid/hid-magicmouse.c
-index 9bf1d3660..3f124d1a1 100644
+index aae3a0f05c3bf5..6f3df4c991efd1 100644
 --- a/drivers/hid/hid-magicmouse.c
 +++ b/drivers/hid/hid-magicmouse.c
-@@ -1350,6 +1350,16 @@ static const struct hid_device_id magic_mice[] = {
- };
- MODULE_DEVICE_TABLE(hid, magic_mice);
+@@ -1361,7 +1361,7 @@ static int magicmouse_reset_resume(struct hid_device *hdev)
+ 	 * enable report.  Only the HID_TYPE_USBMOUSE interface accepts it, and
+ 	 * it must be deferred. Sending it inline here is too early.
+ 	 */
+-	if (msc && hdev->type == HID_TYPE_USBMOUSE)
++	if (msc && (hdev->type == HID_TYPE_USBMOUSE || hdev->bus == BUS_SPI))
+ 		schedule_delayed_work(&msc->work, msecs_to_jiffies(500));
  
-+#ifdef CONFIG_PM
-+static int magicmouse_reset_resume(struct hid_device *hdev)
-+{
-+	if (hdev->bus == BUS_SPI)
-+		return magicmouse_enable_multitouch(hdev);
-+
-+	return 0;
-+}
-+#endif
-+
- static struct hid_driver magicmouse_driver = {
- 	.name = "magicmouse",
- 	.id_table = magic_mice,
-@@ -1360,6 +1370,10 @@ static struct hid_driver magicmouse_driver = {
- 	.event = magicmouse_event,
- 	.input_mapping = magicmouse_input_mapping,
- 	.input_configured = magicmouse_input_configured,
-+#ifdef CONFIG_PM
-+        .reset_resume = magicmouse_reset_resume,
-+#endif
-+
- };
- module_hid_driver(magicmouse_driver);
- 
+ 	return 0;
 -- 
 2.50.1
 
