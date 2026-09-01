@@ -1,0 +1,17 @@
+diff --git a/drivers/power/supply/macsmc-power.c b/drivers/power/supply/macsmc-power.c
+index 48ae552ca337..49585c050f7c 100644
+--- a/drivers/power/supply/macsmc-power.c
++++ b/drivers/power/supply/macsmc-power.c
+@@ -562,10 +562,12 @@ static int macsmc_battery_get_property(struct power_supply *psy,
+ 		break;
+ 	case POWER_SUPPLY_PROP_TIME_TO_EMPTY_NOW:
+ 		ret = apple_smc_read_u16(power->smc, SMC_KEY(B0TE), &vu16);
++		dev_warn(power->dev, "B0TE: %X\n", vu16);
+ 		val->intval = vu16 == 0xffff ? 0 : vu16 * 60;
+ 		break;
+ 	case POWER_SUPPLY_PROP_TIME_TO_FULL_NOW:
+ 		ret = apple_smc_read_u16(power->smc, SMC_KEY(B0TF), &vu16);
++		dev_warn(power->dev, "B0TF: %X\n" vu16);
+ 		if (power->smc->is_acpi)
+ 			val->intval = vu16 == 0xffff ? 0 : swab16(vu16) * 60;
+ 		else
