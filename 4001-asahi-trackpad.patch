@@ -598,7 +598,7 @@ index c4498bc8e..d7612a02b 100644
  struct magicmouse_input_ops {
  	int (*raw_event)(struct hid_device *hdev,
 @@ -537,6 +550,154 @@ static int magicmouse_raw_event_usb(struct hid_device *hdev,
- 	return 1;
+ 	return __magicmouse_raw_event(hdev, report, data, size, false);
  }
  
 +/**
