@@ -1,0 +1,34 @@
+From: Willy Van Sickle <vansicklewilly@gmail.com>
+Date: Wed, 2 Sep 2026 21:50:00 -0400
+Subject: [PATCH] i915: 4 lane eDP quirk for MacBookPro15,3
+
+The MacBookPro15,3 shares the Coffee Lake-H iGPU + AMD Vega dGPU + T2
+architecture of the MacBookPro15,1 already handled by
+2008-i915-4-lane-quirk-for-mbp15-1. When the firmware boots the panel on the
+discrete GPU it leaves DDI_A_4_LANES clear on the iGPU, so i915 caps DDI A at
+two lanes. The internal 2880x1800 panel needs ~7.9 Gbps (2 lanes give ~5.2 at
+the panel's 2.7 Gbps/lane max), so every mode is pruned and the panel comes up
+with "Cannot find any crtc or sizes".
+
+The 15,3 iGPU reports PCI subsystem id 0x106b:0x019c (shared with the
+MacBookPro16,1). Add it to the existing force-4-lanes quirk table.
+
+Verified on a MacBookPro15,3: forcing DDI_A_4_LANES makes the eDP link train at
+4 lanes and the native 2880x1800 mode return. Without it the connector is
+present with a valid EDID but zero modes.
+---
+ drivers/gpu/drm/i915/display/intel_quirks.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+--- a/drivers/gpu/drm/i915/display/intel_quirks.c
++++ b/drivers/gpu/drm/i915/display/intel_quirks.c
+@@ -274,6 +274,9 @@
+ 
+ 	/* Apple MacBookPro15,1 */
+ 	{ 0x3e9b, 0x106b, 0x0176, quirk_ddi_a_force_4_lanes },
++
++	/* Apple MacBookPro15,3 (iGPU subsys id, shared with MacBookPro16,1) */
++	{ 0x3e9b, 0x106b, 0x019c, quirk_ddi_a_force_4_lanes },
+ };
+ 
+ static const struct intel_dpcd_quirk intel_dpcd_quirks[] = {
