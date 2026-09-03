@@ -1,4 +1,4 @@
-From 77b74631085c64b0a25f3a87f47d77678843fed3 Mon Sep 17 00:00:00 2001
+From 757eabd1548764438154c6e55c66b2499dd6f304 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sat, 25 Apr 2026 19:46:29 +0530
 Subject: [PATCH 11/12] power/supply/macsmc: add support for intel macs
@@ -6,11 +6,11 @@ Subject: [PATCH 11/12] power/supply/macsmc: add support for intel macs
 Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---
- drivers/power/supply/macsmc-power.c | 660 ++++++++++++++++++++++------
- 1 file changed, 530 insertions(+), 130 deletions(-)
+ drivers/power/supply/macsmc-power.c | 659 ++++++++++++++++++++++------
+ 1 file changed, 529 insertions(+), 130 deletions(-)
 
 diff --git a/drivers/power/supply/macsmc-power.c b/drivers/power/supply/macsmc-power.c
-index 33ca07460f3a..48ae552ca337 100644
+index 33ca07460f3a..03bad5209b27 100644
 --- a/drivers/power/supply/macsmc-power.c
 +++ b/drivers/power/supply/macsmc-power.c
 @@ -4,11 +4,14 @@
@@ -451,13 +451,7 @@ index 33ca07460f3a..48ae552ca337 100644
  	default:
  		return false;
  	}
-@@ -496,17 +780,35 @@ static int macsmc_ac_get_property(struct power_supply *psy,
- {
- 	struct macsmc_power *power = power_supply_get_drvdata(psy);
- 	int ret = 0;
-+	u8 vu8;
- 	u16 vu16;
- 	u32 vu32;
+@@ -501,12 +785,29 @@ static int macsmc_ac_get_property(struct power_supply *psy,
  
  	switch (psp) {
  	case POWER_SUPPLY_PROP_ONLINE:
@@ -491,7 +485,7 @@ index 33ca07460f3a..48ae552ca337 100644
  		break;
  	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT:
  		ret = apple_smc_read_u16(power->smc, SMC_KEY(AC-i), &vu16);
-@@ -611,6 +913,22 @@ static int macsmc_power_event(struct notifier_block *nb, unsigned long event, vo
+@@ -611,6 +912,22 @@ static int macsmc_power_event(struct notifier_block *nb, unsigned long event, vo
  	return NOTIFY_DONE;
  }
  
@@ -514,7 +508,7 @@ index 33ca07460f3a..48ae552ca337 100644
  static int macsmc_power_probe(struct platform_device *pdev)
  {
  	struct device *dev = &pdev->dev;
-@@ -645,15 +963,29 @@ static int macsmc_power_probe(struct platform_device *pdev)
+@@ -645,15 +962,29 @@ static int macsmc_power_probe(struct platform_device *pdev)
  	/*
  	 * Check for battery presence.
  	 * B0AV is a fundamental key.
@@ -547,7 +541,7 @@ index 33ca07460f3a..48ae552ca337 100644
  	if (apple_smc_key_exists(smc, SMC_KEY(CHIS)))
  		has_ac_adapter = true;
  
-@@ -670,104 +1002,128 @@ static int macsmc_power_probe(struct platform_device *pdev)
+@@ -670,104 +1001,128 @@ static int macsmc_power_probe(struct platform_device *pdev)
  
  		nprops = 0;
  
@@ -766,7 +760,7 @@ index 33ca07460f3a..48ae552ca337 100644
  		psy_cfg.drv_data = power;
  		power->batt = devm_power_supply_register(dev, &power->batt_desc, &psy_cfg);
  		if (IS_ERR(power->batt)) {
-@@ -788,19 +1144,28 @@ static int macsmc_power_probe(struct platform_device *pdev)
+@@ -788,19 +1143,28 @@ static int macsmc_power_probe(struct platform_device *pdev)
  
  		nprops = 0;
  
@@ -807,7 +801,7 @@ index 33ca07460f3a..48ae552ca337 100644
  		if (nprops > MACSMC_MAX_AC_PROPS)
  			return -ENOMEM;
  
-@@ -820,8 +1185,35 @@ static int macsmc_power_probe(struct platform_device *pdev)
+@@ -820,8 +1184,35 @@ static int macsmc_power_probe(struct platform_device *pdev)
  	if (!power->batt && !power->ac)
  		return -ENODEV;
  
@@ -838,14 +832,14 @@ index 33ca07460f3a..48ae552ca337 100644
 +							   &power->adapter_status);
 +
 +		if (ACPI_FAILURE(status))
-+			return;
++			return -EIO;
 +
 +		power->adapter_status = !!power->adapter_status;
 +	}
  
  	return 0;
  }
-@@ -830,9 +1222,16 @@ static void macsmc_power_remove(struct platform_device *pdev)
+@@ -830,9 +1221,16 @@ static void macsmc_power_remove(struct platform_device *pdev)
  {
  	struct macsmc_power *power = dev_get_drvdata(&pdev->dev);
  
@@ -864,7 +858,7 @@ index 33ca07460f3a..48ae552ca337 100644
  static const struct platform_device_id macsmc_power_id[] = {
  	{ "macsmc-power" },
  	{ /* sentinel */ }
-@@ -853,3 +1252,4 @@ MODULE_LICENSE("Dual MIT/GPL");
+@@ -853,3 +1251,4 @@ MODULE_LICENSE("Dual MIT/GPL");
  MODULE_DESCRIPTION("Apple SMC battery and power management driver");
  MODULE_AUTHOR("Hector Martin <marcan@marcan.st>");
  MODULE_AUTHOR("Michael Reeves <michael.reeves077@gmail.com>");
