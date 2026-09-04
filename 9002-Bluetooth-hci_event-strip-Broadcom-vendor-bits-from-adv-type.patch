@@ -1,0 +1,63 @@
+From e09bde5c4c139e73f244e355f756c857abc0846f Mon Sep 17 00:00:00 2001
+From: Jose Miguel Ochoa <josemiguelo.ochoa@gmail.com>
+Date: Fri, 28 Aug 2026 13:08:15 -0500
+Subject: [PATCH] Bluetooth: hci_event: strip Broadcom vendor bits from legacy
+ adv report type
+
+On Apple T2 Macs whose Broadcom controller runs its ROM firmware (no
+patchram available, e.g. BCM4364B3 "Trinidad" on MacBookPro16,1 via
+hci_uart_bcm), the LE Advertising Report event carries vendor bits
+0x10/0x20/0x80 in Event_Type. Reports that should be ADV_DIRECT_IND
+(0x01) arrive as 0x11/0x21/0x81/0x91/0xa1 (and occasionally 0x80/0x90/
+0xa0/0x14/0x24 for the other types). process_adv_report() rejects them:
+
+  Bluetooth: hci0: unknown advertising packet type: 0x81
+
+Since directed advertising is exactly what bonded LE HID peripherals use
+to reconnect, the passive-scan auto-connect never fires and a Logitech
+MX Master 3 / Keychron K15 Max only reconnect when a report happens to
+come through clean (observed ratio roughly 1 clean : 20 mangled). The
+low nibble always holds a valid type (0x0-0x4), so strip the noise for
+Broadcom controllers before validation.
+
+Scope: keyed on the local controller's manufacturer, not on the peer,
+and only for types that were being discarded anyway; reports with a
+valid type (0x0-0x4) are untouched, so devices that work today see no
+change. Low nibbles >= 5 remain invalid and are still dropped. The
+BR/EDR path is not involved. Broadcom controllers with proper firmware
+never emit such types, so the branch is inert there.
+
+Verified with btmon on 7.0.10: with the fix the directed report is
+parsed, LE Create Connection is issued immediately and the mouse is
+encrypted and usable ~70 ms after waking; no "unknown advertising
+packet type" messages remain.
+
+Signed-off-by: Jose Miguel Ochoa <josemiguelo.ochoa@gmail.com>
+---
+ net/bluetooth/hci_event.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/net/bluetooth/hci_event.c b/net/bluetooth/hci_event.c
+index 1b3b913..10afa21 100644
+--- a/net/bluetooth/hci_event.c
++++ b/net/bluetooth/hci_event.c
+@@ -6424,6 +6424,16 @@ static void hci_le_adv_report_evt(struct hci_dev *hdev, void *data,
+ 
+ 		hci_store_wake_reason(hdev, &info->bdaddr, info->bdaddr_type);
+ 
++		/* Broadcom ROM firmware (e.g. BCM4364B3 on Apple T2 Macs
++		 * without a patchram) sets vendor bits 0x10/0x20/0x80 in the
++		 * legacy advertising Event_Type, so ADV_DIRECT_IND arrives as
++		 * 0x81/0x91/0xa1/... and every report is dropped as unknown:
++		 * bonded LE peripherals then never auto-reconnect. The real
++		 * type is in the low nibble; strip the noise.
++		 */
++		if (hdev->manufacturer == 15 && info->type > LE_ADV_SCAN_RSP)
++			info->type &= 0x0f;
++
+ 		if (info->length <= max_adv_len(hdev)) {
+ 			rssi = info->data[info->length];
+ 			process_adv_report(hdev, info->type, &info->bdaddr,
+-- 
+2.55.0
+
