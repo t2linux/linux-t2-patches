@@ -1,7 +1,7 @@
-From 201fe0d47cd1491433b9c9f2a5229fdee499e764 Mon Sep 17 00:00:00 2001
+From dd83eed214a88cda41b634839c2371c5d1fe7bb9 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Wed, 2 Sep 2026 21:13:17 +0000
+Date: Fri, 4 Sep 2026 20:57:48 +0000
 Subject: [PATCH] Add APFS driver
 
 ---
@@ -31,7 +31,7 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/object.c                  |  315 +++
  fs/apfs/snapshot.c                |  687 +++++++
  fs/apfs/spaceman.c                | 1480 ++++++++++++++
- fs/apfs/super.c                   | 2278 +++++++++++++++++++++
+ fs/apfs/super.c                   | 2284 +++++++++++++++++++++
  fs/apfs/symlink.c                 |   80 +
  fs/apfs/transaction.c             | 1036 ++++++++++
  fs/apfs/unicode.c                 | 3156 +++++++++++++++++++++++++++++
@@ -39,7 +39,7 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/version.h                 |    1 +
  fs/apfs/xattr.c                   |  914 +++++++++
  fs/apfs/xfield.c                  |  171 ++
- 34 files changed, 27370 insertions(+)
+ 34 files changed, 27376 insertions(+)
  create mode 100644 fs/apfs/Makefile
  create mode 100644 fs/apfs/apfs.h
  create mode 100644 fs/apfs/apfs_raw.h
@@ -19940,10 +19940,10 @@ index 000000000..629a38d44
 +}
 diff --git a/fs/apfs/super.c b/fs/apfs/super.c
 new file mode 100644
-index 000000000..78b692d17
+index 000000000..2453529d4
 --- /dev/null
 +++ b/fs/apfs/super.c
-@@ -0,0 +1,2278 @@
+@@ -0,0 +1,2284 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -22200,6 +22200,12 @@ index 000000000..78b692d17
 +static int __init init_apfs_fs(void)
 +{
 +	int err = 0;
++
++	/*
++	 * The driver has only been tested with a page size of 4 KiB, and I
++	 * would be shocked if other page sizes don't cause serious problems.
++	 */
++	BUILD_BUG_ON(PAGE_SIZE != 4096);
 +
 +	err = init_inodecache();
 +	if (err)
