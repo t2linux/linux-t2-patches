@@ -1,0 +1,34 @@
+From: Willy VanSickle <vansicklewilly@gmail.com>
+Subject: [PATCH] staging: t2bce: do not manually delete the managed device link
+
+t2bce_core_client_get() creates the client's link with
+DL_FLAG_AUTOREMOVE_CONSUMER, which makes it a managed link: the driver
+core removes it itself when the consumer unbinds, and refuses a manual
+device_link_del() on it:
+
+  WARNING: drivers/base/core.c:1020 at device_link_put_kref+0x2b/0x70
+  Unable to drop a managed device link reference
+
+t2bce_core_client_put() called device_link_del() anyway, so every unload
+(for example the rmmod done before suspend on T2 Macs) trips the WARN and
+leaves the DL_FLAG_PM_RUNTIME link in place after the client is freed.
+
+Drop the manual delete and let the core remove the link.
+
+Signed-off-by: Willy VanSickle <vansicklewilly@gmail.com>
+---
+--- a/drivers/staging/t2bce/t2bce_core/transport.c
++++ b/drivers/staging/t2bce/t2bce_core/transport.c
+@@ -93,8 +93,10 @@
+ 
+     synchronize_srcu(&client->bce->clients_srcu);
+ 
+-    if (client->link)
+-        device_link_del(client->link);
++    /* client->link is DL_FLAG_AUTOREMOVE_CONSUMER: the driver core removes it
++     * when the consumer unbinds and refuses a manual device_link_del() with
++     * "Unable to drop a managed device link reference". Do not delete it here.
++     */
+     kfree(client);
+ }
+ EXPORT_SYMBOL_GPL(t2bce_core_client_put);
