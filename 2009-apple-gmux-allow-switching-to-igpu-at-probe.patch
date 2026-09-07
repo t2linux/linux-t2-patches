@@ -93,11 +93,11 @@ index 1417e230edbd..e69785af8e1d 100644
 +
 +		pdev = pci_get_domain_bus_and_slot(0, 0, PCI_DEVFN(2, 0));
 +		if (pdev) {
-+			pr_info("Switching to IGD");
++			pr_info("Switching to IGD\n");
 +			gmux_switchto(VGA_SWITCHEROO_IGD);
 +			vga_set_default_device(pdev);
 +		} else {
-+			pr_err("force_igd is true, but couldn't find iGPU at 00:02.0! Is apple-set-os working?");
++			pr_err("force_igd is true, but couldn't find iGPU at 00:02.0! Is apple-set-os working?\n");
 +		}
 +	}
 +
