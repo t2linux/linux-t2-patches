@@ -3,9 +3,9 @@ From: Ed Schofield <ed@aicharmers.com>
 Date: Tue, 8 Sep 2026 14:35:05 +1000
 Subject: [PATCH] drm/amd/pm: defer UCLK DPM enablement on Apple Navi 14 0218
 
-On the Apple 1002:7340/106b:0218 revision 41 board, enabling UCLK DPM
-with EnableAllSmuFeatures can time out and leave amdgpu without a DRM
-device. Omitting only UCLK avoids that timeout; enabling it separately
+On the Apple iMac 1002:7340/106b:0218 revision 41 board, enabling UCLK
+DPM with EnableAllSmuFeatures can time out and leave amdgpu without a
+DRM device. Omitting only UCLK avoids that timeout; enabling it separately
 immediately afterwards still timed out in a local experiment.
 
 Defer UCLK enablement to the Navi post-init callback, then verify the
@@ -22,6 +22,7 @@ it does not change T2's existing 0219 allowed-mask workaround.
 Link: https://www.mail-archive.com/amd-gfx@lists.freedesktop.org/msg149770.html
 Link: https://github.com/t2linux/kernel/issues/19#issuecomment-5537823876
 Assisted-by: LLM
+Signed-off-by: Ed Schofield <ed@aicharmers.com>
 ---
  .../gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c   | 79 ++++++++++++++++++-
  1 file changed, 78 insertions(+), 1 deletion(-)
@@ -153,4 +154,3 @@ index 6dfc3b585..3e6baa4ae 100644
  		dev_err(adev->dev, "Failed to apply umc cdr workaround!\n");
 -- 
 2.55.0
-
