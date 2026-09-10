@@ -22,6 +22,9 @@ memory-voltage feature bits from the constructed allowed list so that
 it respects the deferred-UCLK and public memory-DPM policies. Preserve
 the other bits of the fixed mask.
 
+Log the successful enable at info level so that remote testers can
+confirm from dmesg that the deferred path ran on their board.
+
 This builds on Atharva Tiwari's delayed-UCLK work for 0219 and the 0218
 implementation in T2 PR 60. The additional board matches are experimental.
 The new T2 candidate has host-test and changed-object build coverage;
@@ -37,7 +40,7 @@ Signed-off-by: Ed Schofield <ed@aicharmers.com>
 ---
 
 diff --git a/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c b/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c
-index 6dfc3b585..a24d8dff7 100644
+index 6dfc3b585..5fe0023e6 100644
 --- a/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c
 +++ b/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c
 @@ -58,6 +58,41 @@
@@ -129,7 +132,7 @@ index 6dfc3b585..a24d8dff7 100644
  }
  
  static int navi10_tables_init(struct smu_context *smu)
-@@ -3212,6 +3271,41 @@ static int navi10_enable_mgpu_fan_boost(struct smu_context *smu)
+@@ -3212,6 +3271,48 @@ static int navi10_enable_mgpu_fan_boost(struct smu_context *smu)
  					       NULL);
  }
  
@@ -165,13 +168,20 @@ index 6dfc3b585..a24d8dff7 100644
 +	if (!ppt->DpmDescriptor[PPCLK_UCLK].SnapToDiscrete)
 +		table->flags |= SMU_DPM_TABLE_FINE_GRAINED;
 +
-+	return smu_v11_0_init_max_sustainable_clocks(smu);
++	ret = smu_v11_0_init_max_sustainable_clocks(smu);
++	if (ret)
++		return ret;
++
++	dev_info(smu->adev->dev, "Apple: late UCLK DPM enabled, %u levels\n",
++		 table->count);
++
++	return 0;
 +}
 +
  static int navi10_post_smu_init(struct smu_context *smu)
  {
  	struct amdgpu_device *adev = smu->adev;
-@@ -3220,6 +3314,12 @@ static int navi10_post_smu_init(struct smu_context *smu)
+@@ -3220,6 +3321,12 @@ static int navi10_post_smu_init(struct smu_context *smu)
  	if (amdgpu_sriov_vf(adev))
  		return 0;
  
