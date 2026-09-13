@@ -1,7 +1,7 @@
-From 1f394e202800d60bbf2223ad44fcfde5a5c99125 Mon Sep 17 00:00:00 2001
+From 13d8d6e4f1aa02122913dd13823628eab4b958b5 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Fri, 7 Aug 2026 15:55:33 +0000
+Date: Sun, 13 Sep 2026 13:54:09 +0000
 Subject: [PATCH] Add t2bce driver stack
 
 ---
@@ -5745,7 +5745,7 @@ index 000000000..044eb2971
 +#endif //BCE_VHCI_QUEUE_H
 diff --git a/drivers/staging/t2bce/t2bce_vhci/transfer.c b/drivers/staging/t2bce/t2bce_vhci/transfer.c
 new file mode 100644
-index 000000000..1c9643e13
+index 000000000..41d34ca56
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_vhci/transfer.c
 @@ -0,0 +1,1261 @@
@@ -6401,10 +6401,10 @@ index 000000000..1c9643e13
 +        urb->hcpriv = NULL;
 +        spin_unlock_irqrestore(&q->urb_lock, flags);
 +
-+        usb_hcd_giveback_urb(q->vhci->hcd, urb, status);
-+
 +        if (was_active)
 +            bce_vhci_transfer_queue_resume(q, BCE_VHCI_PAUSE_INTERNAL_WQ);
++
++        usb_hcd_giveback_urb(q->vhci->hcd, urb, status);
 +
 +        bce_vhci_urb_free(vurb);
 +    }
@@ -8477,5 +8477,5 @@ index 000000000..cc18c6c58
 +
 +#endif //BCE_VHCI_H
 -- 
-2.54.0
+2.55.0
 
