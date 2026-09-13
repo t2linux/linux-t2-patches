@@ -1,7 +1,7 @@
-From 36ab0b6dd36d5225ea152e178502ca8a835e0821 Mon Sep 17 00:00:00 2001
+From 024d9b331bdc3224980c57a389e24b6283f03114 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Fri, 7 Aug 2026 15:55:34 +0000
+Date: Sun, 13 Sep 2026 13:54:15 +0000
 Subject: [PATCH] Integrate t2bce driver stack
 
 ---
@@ -30,5 +30,5 @@ index f5b8876aa..6b61cce48 100644
  obj-$(CONFIG_XIL_AXIS_FIFO)	+= axis-fifo/
 +obj-$(CONFIG_T2BCE_CORE)		+= t2bce/
 -- 
-2.54.0
+2.55.0
 
