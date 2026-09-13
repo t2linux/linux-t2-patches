@@ -37,7 +37,7 @@ jobs:
 
           FORK="${{ github.event.inputs.fork }}"
           if [ -z "$FORK" ]; then
-          FORK='https://github.com/deqrocks/t2bce.git'
+          FORK='https://github.com/AdityaGarg8/t2bce'
           fi
           BRANCH="${{ github.event.inputs.branch }}"
           git clone --depth 1 --single-branch --branch "v${KVER}" https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git
@@ -92,7 +92,7 @@ jobs:
 
           FORK="${{ github.event.inputs.fork }}"
           if [ -z "$FORK" ]; then
-          FORK='https://github.com/deqrocks/t2bce.git'
+          FORK='https://github.com/AdityaGarg8/t2bce'
           fi
           BRANCH="${{ github.event.inputs.branch }}"
           git clone --depth 1 --single-branch --branch "v${KVER}" https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git
