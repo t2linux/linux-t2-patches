@@ -1,11 +1,11 @@
-From d9e78426a280982526c8cfe9743d25cf8cf37649 Mon Sep 17 00:00:00 2001
+From 3a06f7f9de5f716893c8ae0cc3d3ed2f7ccdbb56 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Sun, 13 Sep 2026 14:23:02 +0000
+Date: Sun, 13 Sep 2026 15:45:54 +0000
 Subject: [PATCH] Add t2bce driver stack
 
 ---
- drivers/staging/t2bce/Kconfig                 |   48 +
+ drivers/staging/t2bce/Kconfig                 |   50 +
  drivers/staging/t2bce/Makefile                |    6 +
  drivers/staging/t2bce/t2bce_audio/Makefile    |    7 +
  drivers/staging/t2bce/t2bce_audio/audio.c     |  995 +++++++++++++
@@ -43,7 +43,7 @@ Subject: [PATCH] Add t2bce driver stack
  drivers/staging/t2bce/t2bce_vhci/transfer.h   |   81 ++
  drivers/staging/t2bce/t2bce_vhci/vhci.c       | 1146 +++++++++++++++
  drivers/staging/t2bce/t2bce_vhci/vhci.h       |   67 +
- 38 files changed, 11971 insertions(+)
+ 38 files changed, 11973 insertions(+)
  create mode 100644 drivers/staging/t2bce/Kconfig
  create mode 100644 drivers/staging/t2bce/Makefile
  create mode 100644 drivers/staging/t2bce/t2bce_audio/Makefile
@@ -85,10 +85,10 @@ Subject: [PATCH] Add t2bce driver stack
 
 diff --git a/drivers/staging/t2bce/Kconfig b/drivers/staging/t2bce/Kconfig
 new file mode 100644
-index 000000000..e10d42b67
+index 000000000..949d2a8b5
 --- /dev/null
 +++ b/drivers/staging/t2bce/Kconfig
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,50 @@
 +# SPDX-License-Identifier: GPL-2.0-only
 +menu "Apple T2 Buffer Copy Engine support"
 +
@@ -131,6 +131,8 @@ index 000000000..e10d42b67
 +config T2BCE_AVE
 +	tristate "Apple T2 audio video encoder support"
 +	depends on T2BCE_CORE
++	depends on VIDEO_DEV
++	select V4L2_MEM2MEM_DEV
 +	help
 +	  Driver to support audio and video encoder present on the T2 Chip.
 +
