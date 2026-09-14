@@ -1,0 +1,25 @@
+From 2156e60da55cc3a0611238ad7add3f209c1a1c0a Mon Sep 17 00:00:00 2001
+From: Aditya Garg <gargaditya08@live.com>
+Date: Mon, 14 Sep 2026 15:33:55 +0000
+Subject: [PATCH] Fix for 6.18
+
+---
+ drivers/staging/t2bce/t2bce_ave/video.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/staging/t2bce/t2bce_ave/video.c b/drivers/staging/t2bce/t2bce_ave/video.c
+index a9098945f4e8..1b62dba8c520 100644
+--- a/drivers/staging/t2bce/t2bce_ave/video.c
++++ b/drivers/staging/t2bce/t2bce_ave/video.c
+@@ -741,7 +741,7 @@ static void t2bce_ave_device_run(void *priv)
+ 	ctx->force_keyframe = false;
+ 
+ 	vb2_set_plane_payload(dst_vb, 0, encoded_size);
+-	v4l2_m2m_buf_copy_metadata(src_buf, dst_buf);
++	v4l2_m2m_buf_copy_metadata(src_buf, dst_buf, false);
+ 	dst_buf->sequence = src_buf->sequence;
+ 	dst_buf->flags &= ~(V4L2_BUF_FLAG_KEYFRAME | V4L2_BUF_FLAG_PFRAME |
+ 			    V4L2_BUF_FLAG_BFRAME);
+-- 
+2.55.0
+
