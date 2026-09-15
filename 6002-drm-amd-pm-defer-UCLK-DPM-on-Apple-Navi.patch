@@ -1,0 +1,219 @@
+From 6b6704c6160b66dcdf0e3b0aeda4243bb41214bb Mon Sep 17 00:00:00 2001
+From: Ed Schofield <ed@aicharmers.com>
+Date: Thu, 10 Sep 2026 13:13:35 +1000
+Subject: [RFC PATCH] drm/amd/pm: defer UCLK DPM enablement on Apple Navi 10/14
+
+Some Apple Navi boards fail during SMU initialization or on the first
+memory-clock transition. Extend the delayed-UCLK implementation for
+0218 to the reported 0219, 020f, 021a and 021b device/subsystem pairs.
+
+Keep the Navi post-init placement, firmware readback, memory DPM table
+rebuild and sustainable-clock refresh from the 0218 patch. On the normal
+display-enabled probe path this callback follows display hardware init.
+That ordering is consistent with the proposed DC dependency, but the
+firmware's root cause remains unknown.
+
+Honor PP_MCLK_DPM_MASK and the existing secure Navi 10 exclusion.
+Preserve the revision restrictions for 0218, 020f and 021a. Match 0219
+and 021b by device/subsystem without a revision restriction.
+
+T2 patch 6001 sends a fixed allowed mask for 0219. Take its UCLK and
+memory-voltage feature bits from the constructed allowed list so that
+it respects the deferred-UCLK and public memory-DPM policies. Preserve
+the other bits of the fixed mask.
+
+Log the successful enable at info level so that remote testers can
+confirm from dmesg that the deferred path ran on their board.
+
+This builds on Atharva Tiwari's delayed-UCLK work for 0219 and the 0218
+implementation in T2 PR 60. The additional board matches are experimental.
+The new T2 candidate has host-test and changed-object build coverage;
+hardware validation of the broader scope is pending.
+
+Link: https://github.com/t2linux/linux-t2-patches/pull/60
+Link: https://github.com/t2linux/wiki/issues/743
+Link: https://github.com/t2linux/wiki/issues/753
+Link: https://github.com/omacom/omarchy/pull/10169
+Link: https://www.mail-archive.com/amd-gfx@lists.freedesktop.org/msg149770.html
+Assisted-by: LLM
+Signed-off-by: Ed Schofield <ed@aicharmers.com>
+---
+
+diff --git a/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c b/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c
+index 6dfc3b585..5fe0023e6 100644
+--- a/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c
++++ b/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c
+@@ -58,6 +58,41 @@
+ #undef pr_info
+ #undef pr_debug
+ 
++static bool is_asic_secure(struct smu_context *smu);
++
++static bool navi10_apple_needs_late_uclk(struct smu_context *smu)
++{
++	struct amdgpu_device *adev = smu->adev;
++	struct pci_dev *pdev = adev->pdev;
++
++	if (pdev->vendor != PCI_VENDOR_ID_ATI ||
++	    pdev->subsystem_vendor != PCI_VENDOR_ID_APPLE ||
++	    !(adev->pm.pp_feature & PP_MCLK_DPM_MASK))
++		return false;
++
++	/* Preserve the existing secure Navi 10 memory-DPM exclusion. */
++	if (is_asic_secure(smu) &&
++	    amdgpu_ip_version(adev, MP1_HWIP, 0) == IP_VERSION(11, 0, 0) &&
++	    adev->rev_id == 0)
++		return false;
++
++	switch (pdev->device) {
++	case 0x7340:
++		return (pdev->subsystem_device == 0x0218 &&
++			pdev->revision == 0x41) ||
++		       pdev->subsystem_device == 0x0219 ||
++		       (pdev->subsystem_device == 0x020f &&
++			pdev->revision == 0x40);
++	case 0x731b:
++		return pdev->subsystem_device == 0x021a &&
++		       pdev->revision == 0x40;
++	case 0x7319:
++		return pdev->subsystem_device == 0x021b;
++	default:
++		return false;
++	}
++}
++
+ static const struct smu_feature_bits navi10_dpm_features = {
+ 	.bits = {
+ 		SMU_FEATURE_BIT_INIT(FEATURE_DPM_PREFETCHER_BIT),
+@@ -354,6 +389,11 @@ navi10_init_allowed_features(struct smu_context *smu)
+ 		smu_feature_list_set_bit(smu, SMU_FEATURE_LIST_ALLOWED, FEATURE_MEM_MVDD_SCALING_BIT);
+ 	}
+ 
++	/* Defer UCLK on the selected Apple boards until IP late init. */
++	if (navi10_apple_needs_late_uclk(smu))
++		smu_feature_list_clear_bit(smu, SMU_FEATURE_LIST_ALLOWED,
++					   FEATURE_DPM_UCLK_BIT);
++
+ 	if (is_asic_secure(smu) &&
+ 	    (amdgpu_ip_version(adev, MP1_HWIP, 0) == IP_VERSION(11, 0, 0)) &&
+ 	    (adev->rev_id == 0))
+@@ -468,6 +508,25 @@ static int navi10_store_powerplay_table(struct smu_context *smu)
+ 	return 0;
+ }
+ 
++/* DCN20 consumes these PPT states before the post-init UCLK enable. */
++static int navi10_apple_check_uclk_states(struct smu_context *smu)
++{
++	PPTable_t *ppt = smu->smu_table.driver_pptable;
++	unsigned int count, i;
++
++	if (!navi10_apple_needs_late_uclk(smu))
++		return 0;
++
++	count = ppt->DpmDescriptor[PPCLK_UCLK].NumDiscreteLevels;
++	if (!count || count > ARRAY_SIZE(ppt->FreqTableUclk))
++		return -EINVAL;
++	for (i = 0; i < count; i++) {
++		if (!ppt->FreqTableUclk[i])
++			return -EINVAL;
++	}
++	return 0;
++}
++
+ static int navi10_setup_pptable(struct smu_context *smu)
+ {
+ 	int ret = 0;
+@@ -488,7 +547,7 @@ static int navi10_setup_pptable(struct smu_context *smu)
+ 	if (ret)
+ 		return ret;
+ 
+-	return ret;
++	return navi10_apple_check_uclk_states(smu);
+ }
+ 
+ static int navi10_tables_init(struct smu_context *smu)
+@@ -3212,6 +3271,48 @@ static int navi10_enable_mgpu_fan_boost(struct smu_context *smu)
+ 					       NULL);
+ }
+ 
++/* IP late init follows display hw_init; refresh clocks before UMC/UMD setup. */
++static int navi10_apple_late_uclk_enable(struct smu_context *smu)
++{
++	struct smu_11_0_dpm_context *dpm = smu->smu_dpm.dpm_context;
++	struct smu_dpm_table *table = &dpm->dpm_tables.uclk_table;
++	PPTable_t *ppt = smu->smu_table.driver_pptable;
++	struct smu_feature_bits enabled;
++	int ret;
++
++	if (!navi10_apple_needs_late_uclk(smu))
++		return 0;
++
++	ret = smu_cmn_feature_set_enabled(smu, SMU_FEATURE_DPM_UCLK_BIT, true);
++	if (ret)
++		return ret;
++	ret = smu_cmn_get_enabled_mask(smu, &enabled);
++	if (ret)
++		return ret;
++	if (!smu_feature_bits_is_set(&enabled, FEATURE_DPM_UCLK_BIT))
++		return -EIO;
++
++	smu_feature_list_set_bit(smu, SMU_FEATURE_LIST_SUPPORTED,
++				 FEATURE_DPM_UCLK_BIT);
++	table->clk_type = SMU_UCLK;
++	ret = smu_v11_0_set_single_dpm_table(smu, SMU_UCLK, table);
++	if (ret)
++		return ret;
++	if (!table->count)
++		return -EINVAL;
++	if (!ppt->DpmDescriptor[PPCLK_UCLK].SnapToDiscrete)
++		table->flags |= SMU_DPM_TABLE_FINE_GRAINED;
++
++	ret = smu_v11_0_init_max_sustainable_clocks(smu);
++	if (ret)
++		return ret;
++
++	dev_info(smu->adev->dev, "Apple: late UCLK DPM enabled, %u levels\n",
++		 table->count);
++
++	return 0;
++}
++
+ static int navi10_post_smu_init(struct smu_context *smu)
+ {
+ 	struct amdgpu_device *adev = smu->adev;
+@@ -3220,6 +3321,12 @@ static int navi10_post_smu_init(struct smu_context *smu)
+ 	if (amdgpu_sriov_vf(adev))
+ 		return 0;
+ 
++	ret = navi10_apple_late_uclk_enable(smu);
++	if (ret) {
++		dev_err(adev->dev, "Failed to enable late UCLK DPM: %d\n", ret);
++		return ret;
++	}
++
+ 	ret = navi10_run_umc_cdr_workaround(smu);
+ 	if (ret)
+ 		dev_err(adev->dev, "Failed to apply umc cdr workaround!\n");
+diff --git a/drivers/gpu/drm/amd/pm/swsmu/smu11/smu_v11_0.c b/drivers/gpu/drm/amd/pm/swsmu/smu11/smu_v11_0.c
+index 1d0c6874d..45097ed25 100644
+--- a/drivers/gpu/drm/amd/pm/swsmu/smu11/smu_v11_0.c
++++ b/drivers/gpu/drm/amd/pm/swsmu/smu11/smu_v11_0.c
+@@ -677,8 +677,17 @@ int smu_v11_0_set_allowed_mask(struct smu_context *smu)
+ 	if (smu->adev->pdev->vendor == 0x1002 && smu->adev->pdev->device == 0x7340 &&
+ 			smu->adev->pdev->subsystem_vendor == 0x106B &&
+ 			smu->adev->pdev->subsystem_device == 0x0219) {
++		/* Navi firmware bits: UCLK, MEM_VDDCI and MEM_MVDD scaling. */
++		u32 memory_features = BIT(3) | BIT(8) | BIT(9);
++
++		smu_feature_list_to_arr32(smu, SMU_FEATURE_LIST_ALLOWED,
++					  feature_mask);
++		/* Preserve 6001's other bits while honoring memory policy. */
++		feature_mask[0] = 0xABC9AFBB &
++			(~memory_features | feature_mask[0]);
++
+ 		ret = smu_cmn_send_smc_msg_with_param(smu, SMU_MSG_SetAllowedFeaturesMaskLow,
+-				0xABC9AFBB, NULL);
++				feature_mask[0], NULL);
+ 		if (ret)
+ 			goto failed;
+ 
