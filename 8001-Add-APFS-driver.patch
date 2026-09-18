@@ -1,7 +1,7 @@
-From 2658b9e870c496f265ec59d46a7286f5f93f52e9 Mon Sep 17 00:00:00 2001
+From 225eef098d4234c2ef936e85a9874ed1f80f36ec Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Fri, 4 Sep 2026 20:57:49 +0000
+Date: Fri, 18 Sep 2026 21:09:18 +0000
 Subject: [PATCH] Add APFS driver
 
 ---
@@ -31,7 +31,7 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/object.c                  |  315 +++
  fs/apfs/snapshot.c                |  687 +++++++
  fs/apfs/spaceman.c                | 1480 ++++++++++++++
- fs/apfs/super.c                   | 2284 +++++++++++++++++++++
+ fs/apfs/super.c                   | 2280 +++++++++++++++++++++
  fs/apfs/symlink.c                 |   80 +
  fs/apfs/transaction.c             | 1036 ++++++++++
  fs/apfs/unicode.c                 | 3156 +++++++++++++++++++++++++++++
@@ -39,7 +39,7 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/version.h                 |    1 +
  fs/apfs/xattr.c                   |  914 +++++++++
  fs/apfs/xfield.c                  |  171 ++
- 34 files changed, 27376 insertions(+)
+ 34 files changed, 27372 insertions(+)
  create mode 100644 fs/apfs/Makefile
  create mode 100644 fs/apfs/apfs.h
  create mode 100644 fs/apfs/apfs_raw.h
@@ -19940,10 +19940,10 @@ index 000000000..629a38d44
 +}
 diff --git a/fs/apfs/super.c b/fs/apfs/super.c
 new file mode 100644
-index 000000000..2453529d4
+index 000000000..7ed5c215c
 --- /dev/null
 +++ b/fs/apfs/super.c
-@@ -0,0 +1,2284 @@
+@@ -0,0 +1,2280 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -21208,6 +21208,8 @@ index 000000000..2453529d4
 +
 +	apfs_set_nx_flags(sb, nx_flags);
 +	if (!(sb->s_flags & SB_RDONLY)) {
++		if (PAGE_SIZE != 4096)
++			apfs_warn(sb, "your system's page size (%lu) is untested for writes\n", PAGE_SIZE);
 +		if (nxi->nx_flags & APFS_READWRITE) {
 +			apfs_notice(sb, "experimental write support is enabled");
 +		} else {
@@ -22200,12 +22202,6 @@ index 000000000..2453529d4
 +static int __init init_apfs_fs(void)
 +{
 +	int err = 0;
-+
-+	/*
-+	 * The driver has only been tested with a page size of 4 KiB, and I
-+	 * would be shocked if other page sizes don't cause serious problems.
-+	 */
-+	BUILD_BUG_ON(PAGE_SIZE != 4096);
 +
 +	err = init_inodecache();
 +	if (err)
