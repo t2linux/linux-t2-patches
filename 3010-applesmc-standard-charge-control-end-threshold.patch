@@ -1,0 +1,271 @@
+From 77aacad9b93a52c465e7c79ca0f73907ed61876c Mon Sep 17 00:00:00 2001
+From: Edgar Granados <edgar.granados.perez@miasio.com>
+Date: Sat, 19 Sep 2026 12:30:55 -0500
+Subject: [PATCH] applesmc: expose the charge limit as
+ charge_control_end_threshold
+
+The SMC's BCLM key caps how far the battery is charged. It is currently
+exposed only as the applesmc-specific "battery_charge_limit" attribute,
+which generic userspace does not know about, so UPower, GNOME, KDE and
+TLP cannot drive it on these machines.
+
+Register a power supply extension providing the standard
+POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD, backed by the same key.
+The legacy attribute is retained so existing users keep working.
+
+The battery on T2 Macs is provided by the ACPI SBS driver, which does
+not implement the acpi_battery_hook mechanism that other charge control
+drivers attach through, so the battery is located by walking registered
+power supplies. It may also be registered after applesmc probes, so a
+power supply notifier retries the attach.
+
+Tested on a MacBookPro15,1: the attribute appears on BAT0, reads the
+live BCLM value, writes propagate to the SMC in both directions, and
+out-of-range values are rejected.
+
+Signed-off-by: Edgar Granados <edgar.granados.perez@miasio.com>
+---
+ drivers/hwmon/applesmc.c | 173 +++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 173 insertions(+)
+
+diff --git a/drivers/hwmon/applesmc.c b/drivers/hwmon/applesmc.c
+index 918baa0..7e1c134 100644
+--- a/drivers/hwmon/applesmc.c
++++ b/drivers/hwmon/applesmc.c
+@@ -34,6 +34,7 @@
+ #include <linux/workqueue.h>
+ #include <linux/err.h>
+ #include <linux/bits.h>
++#include <linux/power_supply.h>
+ 
+ /* data port used by Apple SMC */
+ #define APPLESMC_DATA_PORT	0
+@@ -177,6 +178,11 @@ struct applesmc_device {
+ 	struct workqueue_struct *backlight_wq;
+ 	struct work_struct backlight_work;
+ 	struct led_classdev backlight_dev;
++
++	/* Standard charge-control interface attached to the system battery. */
++	struct power_supply *battery;
++	struct notifier_block psy_notifier;
++	struct mutex psy_mutex;
+ };
+ 
+ static const int debug;
+@@ -936,6 +942,10 @@ static int applesmc_init_resources(struct applesmc_device *smc);
+ static void applesmc_free_resources(struct applesmc_device *smc);
+ static int applesmc_create_modules(struct applesmc_device *smc);
+ static void applesmc_destroy_modules(struct applesmc_device *smc);
++static void applesmc_attach_battery(struct applesmc_device *smc);
++static void applesmc_detach_battery(struct applesmc_device *smc);
++static int applesmc_psy_notify(struct notifier_block *nb, unsigned long action,
++		void *data);
+ 
+ static int applesmc_add(struct acpi_device *dev)
+ {
+@@ -948,6 +958,7 @@ static int applesmc_add(struct acpi_device *dev)
+ 	smc->dev = dev;
+ 	smc->ldev = &dev->dev;
+ 	mutex_init(&smc->reg.mutex);
++	mutex_init(&smc->psy_mutex);
+ 
+ 	dev_set_drvdata(&dev->dev, smc);
+ 
+@@ -965,6 +976,10 @@ static int applesmc_add(struct acpi_device *dev)
+ 	if (ret)
+ 		goto out_reg;
+ 
++	smc->psy_notifier.notifier_call = applesmc_psy_notify;
++	power_supply_reg_notifier(&smc->psy_notifier);
++	applesmc_attach_battery(smc);
++
+ 	return 0;
+ 
+ out_reg:
+@@ -974,6 +989,7 @@ out_res:
+ out_mem:
+ 	dev_set_drvdata(&dev->dev, NULL);
+ 	mutex_destroy(&smc->reg.mutex);
++	mutex_destroy(&smc->psy_mutex);
+ 	kfree(smc);
+ 
+ 	return ret;
+@@ -983,11 +999,15 @@ static void applesmc_remove(struct acpi_device *dev)
+ {
+ 	struct applesmc_device *smc = dev_get_drvdata(&dev->dev);
+ 
++	power_supply_unreg_notifier(&smc->psy_notifier);
++	applesmc_detach_battery(smc);
++
+ 	applesmc_destroy_modules(smc);
+ 	applesmc_destroy_smcreg(smc);
+ 	applesmc_free_resources(smc);
+ 
+ 	mutex_destroy(&smc->reg.mutex);
++	mutex_destroy(&smc->psy_mutex);
+ 	kfree(smc);
+ 
+ 	return;
+@@ -1477,6 +1497,159 @@ static void applesmc_brightness_set(struct led_classdev *led_cdev,
+ 		dev_dbg(led_cdev->dev, "work was already on the queue.\n");
+ }
+ 
++/*
++ * Standard charge-control interface.
++ *
++ * The SMC's BCLM key caps how far the battery is charged, which the kernel
++ * expresses as POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD.  Exposing it
++ * under the standard name lets generic userspace (UPower, GNOME, KDE, TLP)
++ * drive it, instead of the applesmc-specific battery_charge_limit attribute,
++ * which is kept for compatibility.
++ *
++ * The battery on these machines is owned by the ACPI SBS driver, which does
++ * not implement the acpi_battery_hook mechanism that other charge-control
++ * drivers attach through.  The battery is therefore located by walking the
++ * registered power supplies, and may appear after this driver has probed, so
++ * a power supply notifier retries the attach.
++ */
++
++struct applesmc_battery_match {
++	char name[32];
++	bool found;
++};
++
++static int applesmc_match_battery(struct power_supply *psy, void *data)
++{
++	struct applesmc_battery_match *match = data;
++
++	if (psy->desc->type != POWER_SUPPLY_TYPE_BATTERY)
++		return 0;
++
++	strscpy(match->name, psy->desc->name, sizeof(match->name));
++	match->found = true;
++
++	return 1;
++}
++
++static int applesmc_psy_get_property(struct power_supply *psy,
++		const struct power_supply_ext *ext, void *data,
++		enum power_supply_property psp,
++		union power_supply_propval *val)
++{
++	struct applesmc_device *smc = data;
++	u8 bclm;
++
++	switch (psp) {
++	case POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD:
++		if (applesmc_read_key(smc, "BCLM", &bclm, 1))
++			return -EIO;
++		/* The SMC reports zero when no limit is configured. */
++		val->intval = bclm ? bclm : 100;
++		return 0;
++	default:
++		return -EINVAL;
++	}
++}
++
++static int applesmc_psy_set_property(struct power_supply *psy,
++		const struct power_supply_ext *ext, void *data,
++		enum power_supply_property psp,
++		const union power_supply_propval *val)
++{
++	struct applesmc_device *smc = data;
++	u8 bclm;
++
++	switch (psp) {
++	case POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD:
++		if (val->intval < 1 || val->intval > 100)
++			return -EINVAL;
++		bclm = val->intval;
++		if (applesmc_write_key(smc, "BCLM", &bclm, 1))
++			return -EIO;
++		return 0;
++	default:
++		return -EINVAL;
++	}
++}
++
++static int applesmc_psy_property_is_writeable(struct power_supply *psy,
++		const struct power_supply_ext *ext, void *data,
++		enum power_supply_property psp)
++{
++	return psp == POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD;
++}
++
++static const enum power_supply_property applesmc_psy_properties[] = {
++	POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD,
++};
++
++static const struct power_supply_ext applesmc_psy_ext = {
++	.name			= "applesmc",
++	.properties		= applesmc_psy_properties,
++	.num_properties		= ARRAY_SIZE(applesmc_psy_properties),
++	.get_property		= applesmc_psy_get_property,
++	.set_property		= applesmc_psy_set_property,
++	.property_is_writeable	= applesmc_psy_property_is_writeable,
++};
++
++static void applesmc_attach_battery(struct applesmc_device *smc)
++{
++	struct applesmc_battery_match match = { };
++	struct power_supply *psy;
++	int ret;
++
++	mutex_lock(&smc->psy_mutex);
++
++	if (smc->battery)
++		goto out;
++
++	power_supply_for_each_psy(&match, applesmc_match_battery);
++	if (!match.found)
++		goto out;
++
++	psy = power_supply_get_by_name(match.name);
++	if (!psy)
++		goto out;
++
++	ret = power_supply_register_extension(psy, &applesmc_psy_ext,
++					      smc->ldev, smc);
++	if (ret) {
++		dev_warn(smc->ldev, "failed to attach charge control to %s: %d\n",
++			 match.name, ret);
++		power_supply_put(psy);
++		goto out;
++	}
++
++	smc->battery = psy;
++
++out:
++	mutex_unlock(&smc->psy_mutex);
++}
++
++static void applesmc_detach_battery(struct applesmc_device *smc)
++{
++	mutex_lock(&smc->psy_mutex);
++
++	if (smc->battery) {
++		power_supply_unregister_extension(smc->battery, &applesmc_psy_ext);
++		power_supply_put(smc->battery);
++		smc->battery = NULL;
++	}
++
++	mutex_unlock(&smc->psy_mutex);
++}
++
++static int applesmc_psy_notify(struct notifier_block *nb, unsigned long action,
++		void *data)
++{
++	struct applesmc_device *smc = container_of(nb, struct applesmc_device,
++						   psy_notifier);
++
++	applesmc_attach_battery(smc);
++
++	return NOTIFY_OK;
++}
++
+ static ssize_t applesmc_BCLM_store(struct device *dev,
+ 		struct device_attribute *attr, char *sysfsbuf, size_t count)
+ {
+-- 
+2.55.0
+
