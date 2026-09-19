@@ -1,16 +1,16 @@
-From 225eef098d4234c2ef936e85a9874ed1f80f36ec Mon Sep 17 00:00:00 2001
+From ad21f8cde478ff5f5af4a205c2ba6c10949352a4 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Fri, 18 Sep 2026 21:09:18 +0000
+Date: Sat, 19 Sep 2026 20:56:11 +0000
 Subject: [PATCH] Add APFS driver
 
 ---
  fs/apfs/Makefile                  |   28 +
- fs/apfs/apfs.h                    | 1370 +++++++++++++
+ fs/apfs/apfs.h                    | 1375 +++++++++++++
  fs/apfs/apfs_raw.h                | 1570 ++++++++++++++
  fs/apfs/btree.c                   | 1174 +++++++++++
  fs/apfs/compress.c                |  478 +++++
- fs/apfs/dir.c                     | 1505 ++++++++++++++
+ fs/apfs/dir.c                     | 1513 ++++++++++++++
  fs/apfs/extents.c                 | 2372 ++++++++++++++++++++++
  fs/apfs/file.c                    |  400 ++++
  fs/apfs/inode.c                   | 2641 ++++++++++++++++++++++++
@@ -39,7 +39,7 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/version.h                 |    1 +
  fs/apfs/xattr.c                   |  914 +++++++++
  fs/apfs/xfield.c                  |  171 ++
- 34 files changed, 27372 insertions(+)
+ 34 files changed, 27385 insertions(+)
  create mode 100644 fs/apfs/Makefile
  create mode 100644 fs/apfs/apfs.h
  create mode 100644 fs/apfs/apfs_raw.h
@@ -111,10 +111,10 @@ index 000000000..2bafc31f1
 +	make -C $(KERNEL_DIR) M=$(PWD) clean
 diff --git a/fs/apfs/apfs.h b/fs/apfs/apfs.h
 new file mode 100644
-index 000000000..1aa19325c
+index 000000000..d96352ed4
 --- /dev/null
 +++ b/fs/apfs/apfs.h
-@@ -0,0 +1,1370 @@
+@@ -0,0 +1,1375 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -1113,8 +1113,13 @@ index 000000000..1aa19325c
 +extern int apfs_rename(struct mnt_idmap *idmap, struct inode *old_dir,
 +		       struct dentry *old_dentry, struct inode *new_dir,
 +		       struct dentry *new_dentry, unsigned int flags);
++# if LINUX_VERSION_CODE < KERNEL_VERSION(7, 3, 0)
 +extern int apfs_create(struct mnt_idmap *idmap, struct inode *dir,
 +		       struct dentry *dentry, umode_t mode, bool excl);
++# else
++extern int apfs_create(struct mnt_idmap *idmap, struct inode *dir,
++		       struct dentry *dentry, umode_t mode);
++# endif
 +#endif
 +
 +extern int apfs_link(struct dentry *old_dentry, struct inode *dir,
@@ -4727,10 +4732,10 @@ index 000000000..2e05e7a02
 +}
 diff --git a/fs/apfs/dir.c b/fs/apfs/dir.c
 new file mode 100644
-index 000000000..01f409b45
+index 000000000..9caba9f0c
 --- /dev/null
 +++ b/fs/apfs/dir.c
-@@ -0,0 +1,1505 @@
+@@ -0,0 +1,1513 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -5491,10 +5496,18 @@ index 000000000..01f409b45
 +	return apfs_mknod(mnt_userns, dir, dentry, mode, 0 /* rdev */);
 +}
 +
-+#else
++#elif LINUX_VERSION_CODE < KERNEL_VERSION(7, 3, 0)
 +
 +int apfs_create(struct mnt_idmap *idmap, struct inode *dir,
 +		struct dentry *dentry, umode_t mode, bool excl)
++{
++	return apfs_mknod(idmap, dir, dentry, mode, 0 /* rdev */);
++}
++
++#else
++
++int apfs_create(struct mnt_idmap *idmap, struct inode *dir,
++		struct dentry *dentry, umode_t mode)
 +{
 +	return apfs_mknod(idmap, dir, dentry, mode, 0 /* rdev */);
 +}
@@ -19940,7 +19953,7 @@ index 000000000..629a38d44
 +}
 diff --git a/fs/apfs/super.c b/fs/apfs/super.c
 new file mode 100644
-index 000000000..7ed5c215c
+index 000000000..fff12585b
 --- /dev/null
 +++ b/fs/apfs/super.c
 @@ -0,0 +1,2280 @@
@@ -21209,7 +21222,7 @@ index 000000000..7ed5c215c
 +	apfs_set_nx_flags(sb, nx_flags);
 +	if (!(sb->s_flags & SB_RDONLY)) {
 +		if (PAGE_SIZE != 4096)
-+			apfs_warn(sb, "your system's page size (%lu) is untested for writes\n", PAGE_SIZE);
++			apfs_warn(sb, "your system's page size (%lu) is untested for writes", PAGE_SIZE);
 +		if (nxi->nx_flags & APFS_READWRITE) {
 +			apfs_notice(sb, "experimental write support is enabled");
 +		} else {
