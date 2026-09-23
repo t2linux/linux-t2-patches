@@ -1,7 +1,7 @@
-From 65d0d2a57a71647f122d8610b5bc101b7dd3a64d Mon Sep 17 00:00:00 2001
+From b139cb38390639c53cb1033e3e82f1bed0af434b Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Mon, 14 Sep 2026 15:05:49 +0000
+Date: Wed, 23 Sep 2026 06:58:12 +0000
 Subject: [PATCH] Add t2bce driver stack
 
 ---
@@ -19,7 +19,7 @@ Subject: [PATCH] Add t2bce driver stack
  .../staging/t2bce/t2bce_audio/protocol_bce.h  |   72 +
  drivers/staging/t2bce/t2bce_ave/Makefile      |    7 +
  drivers/staging/t2bce/t2bce_ave/ave.c         |  129 ++
- drivers/staging/t2bce/t2bce_ave/encoder.c     | 1014 ++++++++++++++
+ drivers/staging/t2bce/t2bce_ave/encoder.c     | 1019 ++++++++++++++
  drivers/staging/t2bce/t2bce_ave/encoder.h     |   75 +
  drivers/staging/t2bce/t2bce_ave/protocol.c    | 1015 ++++++++++++++
  drivers/staging/t2bce/t2bce_ave/protocol.h    |  124 ++
@@ -41,9 +41,9 @@ Subject: [PATCH] Add t2bce driver stack
  drivers/staging/t2bce/t2bce_vhci/queue.h      |   76 +
  drivers/staging/t2bce/t2bce_vhci/transfer.c   | 1246 +++++++++++++++++
  drivers/staging/t2bce/t2bce_vhci/transfer.h   |   81 ++
- drivers/staging/t2bce/t2bce_vhci/vhci.c       | 1146 +++++++++++++++
+ drivers/staging/t2bce/t2bce_vhci/vhci.c       | 1154 +++++++++++++++
  drivers/staging/t2bce/t2bce_vhci/vhci.h       |   67 +
- 38 files changed, 11976 insertions(+)
+ 38 files changed, 11989 insertions(+)
  create mode 100644 drivers/staging/t2bce/Kconfig
  create mode 100644 drivers/staging/t2bce/Makefile
  create mode 100644 drivers/staging/t2bce/t2bce_audio/Makefile
@@ -3022,10 +3022,10 @@ index 000000000..0d7170dbc
 +MODULE_VERSION("0.01");
 diff --git a/drivers/staging/t2bce/t2bce_ave/encoder.c b/drivers/staging/t2bce/t2bce_ave/encoder.c
 new file mode 100644
-index 000000000..25a2108ee
+index 000000000..8da949bef
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_ave/encoder.c
-@@ -0,0 +1,1014 @@
+@@ -0,0 +1,1019 @@
 +#define pr_fmt(fmt) "apple-ave: " fmt
 +
 +#include "encoder.h"
@@ -3351,8 +3351,13 @@ index 000000000..25a2108ee
 +		goto fail_queues;
 +	}
 +
-+	if (params->bitrate_mode == V4L2_MPEG_VIDEO_BITRATE_MODE_CBR) {
-+		status = t2bce_ave_send_set_property_bool(session, "ConstantBitRate", true);
++	/* AverageBitRate alone leaves the AVE in constant-QP; the rate control is
++	 * only engaged once ConstantBitRate is set, so send it for VBR (false)
++	 * as well as CBR (true). CQ uses Quality instead. */
++	if (params->bitrate_mode != V4L2_MPEG_VIDEO_BITRATE_MODE_CQ) {
++		bool cbr = params->bitrate_mode == V4L2_MPEG_VIDEO_BITRATE_MODE_CBR;
++
++		status = t2bce_ave_send_set_property_bool(session, "ConstantBitRate", cbr);
 +		if (status == -ETIMEDOUT)
 +			goto fail_queues;
 +		if (status)
@@ -11065,10 +11070,10 @@ index 000000000..0ae979040
 +#endif //BCEDRIVER_TRANSFER_H
 diff --git a/drivers/staging/t2bce/t2bce_vhci/vhci.c b/drivers/staging/t2bce/t2bce_vhci/vhci.c
 new file mode 100644
-index 000000000..30ed51a09
+index 000000000..17f781f42
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_vhci/vhci.c
-@@ -0,0 +1,1146 @@
+@@ -0,0 +1,1154 @@
 +#include "vhci.h"
 +#include "command.h"
 +#include <linux/usb.h>
@@ -11446,6 +11451,7 @@ index 000000000..30ed51a09
 +{
 +    struct bce_vhci *vhci = bce_vhci_from_hcd(hcd);
 +    int status;
++    int port;
 +    struct usb_hub_descriptor *hd;
 +    struct usb_hub_status *hs;
 +    struct usb_port_status *ps;
@@ -11456,9 +11462,16 @@ index 000000000..30ed51a09
 +        hd->bDescLength = sizeof(struct usb_hub_descriptor);
 +        hd->bDescriptorType = USB_DT_HUB;
 +        hd->bNbrPorts = (u8) vhci->port_count;
-+        hd->wHubCharacteristics = HUB_CHAR_INDV_PORT_LPSM | HUB_CHAR_INDV_PORT_OCPM;
++        hd->wHubCharacteristics = cpu_to_le16(HUB_CHAR_INDV_PORT_LPSM |
++                                              HUB_CHAR_INDV_PORT_OCPM |
++                                              HUB_CHAR_COMPOUND);
 +        hd->bPwrOn2PwrGood = 0;
 +        hd->bHubContrCurrent = 0;
++
++        /* All devices exposed by the T2 virtual hub are built into the system. */
++        for (port = 1; port <= vhci->port_count; port++)
++            hd->u.hs.DeviceRemovable[port / 8] |= BIT(port % 8);
++
 +        return 0;
 +    } else if (typeReq == GetHubStatus && wLength >= sizeof(struct usb_hub_status)) {
 +        hs = (struct usb_hub_status *) buf;
