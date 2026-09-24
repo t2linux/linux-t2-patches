@@ -1,0 +1,92 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Joshua Doll <brektyme@brektyme.com>
+Date: Tue, 23 Sep 2026 10:40:00 -0700
+Subject: [PATCH] thunderbolt: Gate ICM per controller on NVM_AUTH_DONE on Apple
+ T2 Ice Lake
+
+The Ice Lake entry in icm_probe() uses icm_fr_is_supported(), a blanket
+"never on Apple". On a MacBookPro16,2 that is wrong for whichever of the
+two NHIs holds a firmware-established tunnel at boot.
+
+Apple's firmware brings Thunderbolt up before Linux, so a device attached
+at power-on is already tunneled. On the controller carrying that tunnel
+the T2's ICM is running and owns the control channel, and the software
+connection manager cannot reach the router at all:
+
+  thunderbolt 0000:00:0d.2: error -ETIMEDOUT: failed to allocate host router
+  thunderbolt 0000:00:0d.2: probe with driver thunderbolt failed with error -110
+
+That is TB_CTL_RETRIES (4) x TB_TIMEOUT (100 ms) of silence on the first
+tb_cfg_read() of the root router. The failure follows the attached device
+between controllers, and a module load long after boot fails identically,
+so it is not a probe-ordering race.
+
+The idle NHI must keep the software connection manager: with no ICM
+running it never answers ICM driver ready, and enabling ICM on both
+controllers costs ICM_RETRIES x 20 s before each domain is torn down.
+
+icm_firmware_running() cannot be used to tell them apart. It reads
+ICM_EN, which the driver itself sets while initialising the NHI, so by
+the time is_supported() runs it is set on both -- on the idle controller
+REG_FW_STS reads 0x00000100 before the driver loads and 0x000001a1 after
+a successful probe. NVM_AUTH_DONE is set only by the firmware, and only
+on the controller it drives:
+
+  0000:00:0d.2 holding a tunnel  REG_FW_STS 0x800001a1  NVM_AUTH_DONE 1
+  0000:00:0d.3 idle              REG_FW_STS 0x00000100  NVM_AUTH_DONE 0
+
+both read with thunderbolt blacklisted, before the driver had touched
+either controller.
+
+Give Ice Lake its own predicate that keeps the unconditional "yes" for
+non-Apple systems and otherwise tests NVM_AUTH_DONE, as
+icm_tgl_is_supported() already does for later generations.
+
+Tested on MacBookPro16,2 with an OWC Thunderbolt 3 Dock attached at power
+on to either controller: the one holding the tunnel comes up on the
+firmware connection manager and enumerates the device, the idle one uses
+the software connection manager as before. Also tested with no device
+attached, on hotplug after boot, and across suspend/resume.
+
+Signed-off-by: Joshua Doll <brektyme@brektyme.com>
+---
+ drivers/thunderbolt/icm.c | 25 ++++++++++++++++++++++++-
+ 1 file changed, 24 insertions(+), 1 deletion(-)
+
+--- a/drivers/thunderbolt/icm.c
++++ b/drivers/thunderbolt/icm.c
+@@ -1657,6 +1657,25 @@
+ 	return 0;
+ }
+ 
++static bool icm_icl_is_supported(struct tb *tb)
++{
++	if (!x86_apple_machine)
++		return true;
++
++	/*
++	 * On Apple T2 the ICM only runs on the controller whose ports the
++	 * firmware has already tunneled; the idle one never answers driver
++	 * ready and costs ICM_RETRIES * 20 s before the domain is torn down.
++	 *
++	 * ICM_EN cannot tell them apart: it reads back set on both once the
++	 * driver has initialised the NHI, and clear on both before that.
++	 * NVM_AUTH_DONE is only ever set by the firmware, and only on the
++	 * controller it is actually driving.
++	 */
++	return !!(ioread32(tb->nhi->iobase + REG_FW_STS) &
++		  REG_FW_STS_NVM_AUTH_DONE);
++}
++
+ static int
+ icm_icl_driver_ready(struct tb *tb, enum tb_security_level *security_level,
+ 		     u8 *proto_version, size_t *nboot_acl, bool *rpm)
+@@ -2548,7 +2567,7 @@
+ 
+ 	case PCI_DEVICE_ID_INTEL_ICL_NHI0:
+ 	case PCI_DEVICE_ID_INTEL_ICL_NHI1:
+-		icm->is_supported = icm_fr_is_supported;
++		icm->is_supported = icm_icl_is_supported;
+ 		icm->driver_ready = icm_icl_driver_ready;
+ 		icm->set_uuid = icm_icl_set_uuid;
+ 		icm->device_connected = icm_icl_device_connected;
