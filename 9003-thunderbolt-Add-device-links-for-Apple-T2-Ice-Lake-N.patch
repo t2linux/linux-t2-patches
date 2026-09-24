@@ -1,0 +1,111 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Joshua Doll <brektyme@brektyme.com>
+Date: Sun, 20 Sep 2026 16:50:00 -0700
+Subject: [PATCH] thunderbolt: Add device links for Apple T2 Ice Lake NHI
+
+tb_apple_add_links() only matches the discrete Thunderbolt controllers
+(Light Ridge, Cactus Ridge, Falcon Ridge), where the NHI sits behind a
+PCIe switch and the tunneled downstream ports can be found by walking
+upstream. Ice Lake integrates the controller into the SoC: the NHI and
+the PCIe root ports it tunnels are siblings on the root bus, so the
+upstream walk finds nothing and the function bails out.
+
+tb_acpi_add_links() does not help either, because Apple firmware does not
+describe the tunneled ports the way it expects. Both paths therefore fail
+on T2 Macs and tb_probe() complains:
+
+  thunderbolt 0000:00:0d.2: device links to tunneled native ports are missing!
+
+Without those links there is no PM dependency between the NHI and the
+PCIe root ports it tunnels, so on resume the tunneled PCIe and USB devices
+can be resumed before the NHI has reestablished their tunnels. Observed on
+a MacBookPro16,2 with a Thunderbolt dock attached: long stalls with xHCI
+command timeouts during suspend, and the tunneled devices unresponsive
+after resume.
+
+Match the Ice Lake root ports by PCI ID on the root bus instead, and add
+the device links from there.
+
+The port to NHI assignment follows the upstream "thunderbolt: Add device
+links" series: NHI0 tunnels 0x8a1d and 0x8a1f, NHI1 tunnels 0x8a21 and
+0x8a23.
+
+Tested on MacBookPro16,2 (kernel 7.2.6): the warning is gone and all four
+Thunderbolt root ports gain a supplier link to their NHI.
+
+Signed-off-by: Joshua Doll <brektyme@brektyme.com>
+---
+ drivers/thunderbolt/tb.c | 48 ++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 48 insertions(+)
+
+diff --git a/drivers/thunderbolt/tb.c b/drivers/thunderbolt/tb.c
+--- a/drivers/thunderbolt/tb.c
++++ b/drivers/thunderbolt/tb.c
+@@ -3302,6 +3302,54 @@
+ 	.disconnect_xdomain_paths = tb_disconnect_xdomain_paths,
+ };
+ 
++static bool tb_add_nhi_link(struct tb_nhi *nhi, struct pci_dev *pdev)
++{
++	const struct device_link *link;
++
++	link = device_link_add(&pdev->dev, nhi->dev,
++			       DL_FLAG_AUTOREMOVE_SUPPLIER | DL_FLAG_PM_RUNTIME);
++	if (!link) {
++		dev_warn(nhi->dev, "device link creation from %s failed\n",
++			 dev_name(&pdev->dev));
++		return false;
++	}
++
++	dev_dbg(nhi->dev, "created link from %s\n", dev_name(&pdev->dev));
++	return true;
++}
++
++/*
++ * Ice Lake integrates the Thunderbolt controller into the SoC, so the NHI and
++ * the PCIe root ports it tunnels are siblings on the root bus instead of
++ * sitting below a common upstream switch port. Match the root ports by PCI ID
++ * rather than walking upstream.
++ */
++static bool tb_icl_add_links(struct tb_nhi *nhi)
++{
++	struct pci_dev *nhi_pdev = to_pci_dev(nhi->dev);
++	struct pci_bus *bus = nhi_pdev->bus;
++	struct pci_dev *pdev;
++	bool ret = false;
++
++	if (!pci_is_root_bus(bus))
++		return false;
++
++	for_each_pci_bridge(pdev, bus) {
++		switch (nhi_pdev->device) {
++		case PCI_DEVICE_ID_INTEL_ICL_NHI0:
++			if (pdev->device == 0x8a1d || pdev->device == 0x8a1f)
++				ret |= tb_add_nhi_link(nhi, pdev);
++			break;
++		case PCI_DEVICE_ID_INTEL_ICL_NHI1:
++			if (pdev->device == 0x8a21 || pdev->device == 0x8a23)
++				ret |= tb_add_nhi_link(nhi, pdev);
++			break;
++		}
++	}
++
++	return ret;
++}
++
+ /*
+  * During suspend the Thunderbolt controller is reset and all PCIe
+  * tunnels are lost. The NHI driver will try to reestablish all tunnels
+@@ -3324,6 +3372,9 @@
+ 	case PCI_DEVICE_ID_INTEL_FALCON_RIDGE_2C_NHI:
+ 	case PCI_DEVICE_ID_INTEL_FALCON_RIDGE_4C_NHI:
+ 		break;
++	case PCI_DEVICE_ID_INTEL_ICL_NHI0:
++	case PCI_DEVICE_ID_INTEL_ICL_NHI1:
++		return tb_icl_add_links(nhi);
+ 	default:
+ 		return false;
+ 	}
+-- 
+2.55.0
+
