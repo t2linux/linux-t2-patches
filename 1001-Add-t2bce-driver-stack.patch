@@ -1,22 +1,23 @@
-From b139cb38390639c53cb1033e3e82f1bed0af434b Mon Sep 17 00:00:00 2001
+From 85a0861e60f2f74bebab5ecf96980b4c554fb870 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Wed, 23 Sep 2026 06:58:12 +0000
+Date: Mon, 28 Sep 2026 08:47:00 +0000
 Subject: [PATCH] Add t2bce driver stack
 
 ---
  drivers/staging/t2bce/Kconfig                 |   53 +
  drivers/staging/t2bce/Makefile                |    6 +
  drivers/staging/t2bce/t2bce_audio/Makefile    |    7 +
- drivers/staging/t2bce/t2bce_audio/audio.c     |  995 +++++++++++++
+ drivers/staging/t2bce/t2bce_audio/audio.c     |  998 +++++++++++++
  drivers/staging/t2bce/t2bce_audio/audio.h     |  157 +++
  .../staging/t2bce/t2bce_audio/description.h   |   42 +
- drivers/staging/t2bce/t2bce_audio/pcm.c       |  611 ++++++++
- drivers/staging/t2bce/t2bce_audio/pcm.h       |   19 +
- drivers/staging/t2bce/t2bce_audio/protocol.c  |  347 +++++
- drivers/staging/t2bce/t2bce_audio/protocol.h  |  147 ++
- .../staging/t2bce/t2bce_audio/protocol_bce.c  |  260 ++++
+ drivers/staging/t2bce/t2bce_audio/pcm.c       |  619 ++++++++
+ drivers/staging/t2bce/t2bce_audio/pcm.h       |   22 +
+ drivers/staging/t2bce/t2bce_audio/protocol.c  |  356 +++++
+ drivers/staging/t2bce/t2bce_audio/protocol.h  |  149 ++
+ .../staging/t2bce/t2bce_audio/protocol_bce.c  |  263 ++++
  .../staging/t2bce/t2bce_audio/protocol_bce.h  |   72 +
+ drivers/staging/t2bce/t2bce_audio/timing.h    |   58 +
  drivers/staging/t2bce/t2bce_ave/Makefile      |    7 +
  drivers/staging/t2bce/t2bce_ave/ave.c         |  129 ++
  drivers/staging/t2bce/t2bce_ave/encoder.c     | 1019 ++++++++++++++
@@ -27,23 +28,23 @@ Subject: [PATCH] Add t2bce driver stack
  drivers/staging/t2bce/t2bce_ave/video.h       |   12 +
  drivers/staging/t2bce/t2bce_core/Makefile     |    7 +
  .../t2bce_core/include/t2bce_core_transport.h |   97 ++
- drivers/staging/t2bce/t2bce_core/mailbox.c    |  234 ++++
+ drivers/staging/t2bce/t2bce_core/mailbox.c    |  249 ++++
  drivers/staging/t2bce/t2bce_core/mailbox.h    |   64 +
- drivers/staging/t2bce/t2bce_core/t2bce.h      |   51 +
- drivers/staging/t2bce/t2bce_core/t2bce_main.c |  774 ++++++++++
- drivers/staging/t2bce/t2bce_core/transport.c  |  477 +++++++
+ drivers/staging/t2bce/t2bce_core/t2bce.h      |   53 +
+ drivers/staging/t2bce/t2bce_core/t2bce_main.c |  932 ++++++++++++
+ drivers/staging/t2bce/t2bce_core/transport.c  |  482 +++++++
  drivers/staging/t2bce/t2bce_dma/Makefile      |    6 +
- .../t2bce/t2bce_dma/include/t2bce_dma_queue.h |  201 +++
- drivers/staging/t2bce/t2bce_dma/queue.c       |  815 +++++++++++
+ .../t2bce/t2bce_dma/include/t2bce_dma_queue.h |  208 +++
+ drivers/staging/t2bce/t2bce_dma/queue.c       |  852 +++++++++++
  drivers/staging/t2bce/t2bce_vhci/Makefile     |    7 +
  drivers/staging/t2bce/t2bce_vhci/command.h    |  206 +++
  drivers/staging/t2bce/t2bce_vhci/queue.c      |  276 ++++
  drivers/staging/t2bce/t2bce_vhci/queue.h      |   76 +
  drivers/staging/t2bce/t2bce_vhci/transfer.c   | 1246 +++++++++++++++++
  drivers/staging/t2bce/t2bce_vhci/transfer.h   |   81 ++
- drivers/staging/t2bce/t2bce_vhci/vhci.c       | 1154 +++++++++++++++
- drivers/staging/t2bce/t2bce_vhci/vhci.h       |   67 +
- 38 files changed, 11989 insertions(+)
+ drivers/staging/t2bce/t2bce_vhci/vhci.c       | 1218 ++++++++++++++++
+ drivers/staging/t2bce/t2bce_vhci/vhci.h       |   69 +
+ 39 files changed, 12365 insertions(+)
  create mode 100644 drivers/staging/t2bce/Kconfig
  create mode 100644 drivers/staging/t2bce/Makefile
  create mode 100644 drivers/staging/t2bce/t2bce_audio/Makefile
@@ -56,6 +57,7 @@ Subject: [PATCH] Add t2bce driver stack
  create mode 100644 drivers/staging/t2bce/t2bce_audio/protocol.h
  create mode 100644 drivers/staging/t2bce/t2bce_audio/protocol_bce.c
  create mode 100644 drivers/staging/t2bce/t2bce_audio/protocol_bce.h
+ create mode 100644 drivers/staging/t2bce/t2bce_audio/timing.h
  create mode 100644 drivers/staging/t2bce/t2bce_ave/Makefile
  create mode 100644 drivers/staging/t2bce/t2bce_ave/ave.c
  create mode 100644 drivers/staging/t2bce/t2bce_ave/encoder.c
@@ -169,10 +171,10 @@ index 000000000..1fba36e10
 +ccflags-y += -I$(src)/../t2bce_core/include
 diff --git a/drivers/staging/t2bce/t2bce_audio/audio.c b/drivers/staging/t2bce/t2bce_audio/audio.c
 new file mode 100644
-index 000000000..7caef98d6
+index 000000000..47042983d
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_audio/audio.c
-@@ -0,0 +1,995 @@
+@@ -0,0 +1,998 @@
 +#include <linux/pci.h>
 +#include <linux/spinlock.h>
 +#include <linux/module.h>
@@ -184,6 +186,7 @@ index 000000000..7caef98d6
 +#include <sound/jack.h>
 +#include "audio.h"
 +#include "pcm.h"
++#include "timing.h"
 +#include <linux/version.h>
 +#include <linux/debugfs.h>
 +#include <linux/uaccess.h>
@@ -257,6 +260,12 @@ index 000000000..7caef98d6
 +    init_completion(&t2audio->remote_alive);
 +    INIT_WORK(&t2audio->resume_work, t2audio_resume_work);
 +    INIT_LIST_HEAD(&t2audio->subdevice_list);
++    t2audio->pcm_io_wq = alloc_ordered_workqueue("t2bce_audio_io",
++                                                  WQ_MEM_RECLAIM);
++    if (!t2audio->pcm_io_wq) {
++        status = -ENOMEM;
++        goto fail;
++    }
 +
 +    /* Init: set an unknown flag in the bitset */
 +    if (pci_read_config_dword(dev, 4, &cfg))
@@ -351,6 +360,8 @@ index 000000000..7caef98d6
 +            pci_iounmap(dev, t2audio->reg_mem_cfg);
 +        if (t2audio->bce)
 +            t2bce_core_client_set_pm_ops(t2audio->bce, NULL, NULL);
++        if (t2audio->pcm_io_wq)
++            destroy_workqueue(t2audio->pcm_io_wq);
 +        t2bce_core_client_put(t2audio->bce);
 +        kfree(t2audio);
 +    }
@@ -371,6 +382,8 @@ index 000000000..7caef98d6
 +    struct t2audio_device *t2audio = pci_get_drvdata(dev);
 +
 +    cancel_work_sync(&t2audio->resume_work);
++    list_for_each_entry(sdev, &t2audio->subdevice_list, list)
++        t2audio_pcm_quiesce_subdevice(sdev);
 +    debugfs_remove_recursive(t2audio->debugfs_dir);
 +    t2audio->debugfs_dir = NULL;
 +    snd_card_free(t2audio->card);
@@ -379,6 +392,7 @@ index 000000000..7caef98d6
 +        list_del(&sdev->list);
 +        t2audio_free_dev(sdev);
 +    }
++    destroy_workqueue(t2audio->pcm_io_wq);
 +    pci_iounmap(dev, t2audio->reg_mem_bs);
 +    pci_iounmap(dev, t2audio->reg_mem_cfg);
 +    device_destroy(t2audio_class, t2audio->devt);
@@ -393,7 +407,6 @@ index 000000000..7caef98d6
 +static int t2audio_quiesce(struct t2audio_device *t2audio, bool suspend_pcm)
 +{
 +    struct t2audio_subdevice *sdev;
-+    size_t i;
 +    int status;
 +
 +    if (t2audio->pm_quiesced)
@@ -402,30 +415,16 @@ index 000000000..7caef98d6
 +    cancel_work_sync(&t2audio->resume_work);
 +    t2audio->resume_deferred = false;
 +
-+    /* Suspend PCM streams */
++    /* Stop PCM I/O while the BCE command transport is still available. */
 +    list_for_each_entry(sdev, &t2audio->subdevice_list, list) {
-+        bool stopped_io = false;
-+
-+        for (i = 0; i < sdev->out_stream_cnt; i++) {
-+            if (!smp_load_acquire(&sdev->out_streams[i].started))
-+                continue;
-+            stopped_io = true;
-+            t2audio_pcm_quiesce_stream(&sdev->out_streams[i]);
-+        }
-+
-+        for (i = 0; i < sdev->in_stream_cnt; i++) {
-+            if (!smp_load_acquire(&sdev->in_streams[i].started))
-+                continue;
-+            stopped_io = true;
-+            smp_store_release(&sdev->in_streams[i].started, 0);
-+        }
-+
-+        if (stopped_io)
-+            t2audio_cmd_stop_io(sdev->a, sdev->dev_id);
++        if (t2audio_pcm_quiesce_subdevice(sdev))
++            dev_warn(t2audio->dev, "Failed to stop %s during quiesce\n",
++                     sdev->uid);
 +
 +        if (suspend_pcm && sdev->pcm)
 +            snd_pcm_suspend_all(sdev->pcm);
 +    }
++    flush_workqueue(t2audio->pcm_io_wq);
 +
 +    status = t2audio_cmd_set_remote_access(t2audio, T2AUDIO_REMOTE_ACCESS_OFF);
 +    if (status)
@@ -542,10 +541,7 @@ index 000000000..7caef98d6
 +static void t2audio_reset_stream(struct t2audio_stream *stream)
 +{
 +    t2audio_pcm_quiesce_stream(stream);
-+    stream->waiting_for_first_ts = true;
-+    stream->remote_timestamp = 0;
-+    stream->timestamp_accept_after = 0;
-+    stream->frame_min = stream->latency;
++    t2audio_pcm_reset_timing(stream);
 +}
 +
 +static void t2audio_reset_streams(struct t2audio_device *a)
@@ -700,6 +696,8 @@ index 000000000..7caef98d6
 +static void t2audio_free_dev(struct t2audio_subdevice *sdev)
 +{
 +    size_t i;
++
++    t2audio_pcm_cleanup_subdevice(sdev);
 +    for (i = 0; i < sdev->in_stream_cnt; i++) {
 +        struct t2audio_dma_buf *buf = sdev->in_streams[i].buffers;
 +
@@ -1053,19 +1051,26 @@ index 000000000..7caef98d6
 +
 +void t2audio_handle_cmd_timestamp(struct t2audio_device *a, struct t2audio_msg *msg)
 +{
-+    ktime_t time_os = ktime_get_boottime();
 +    struct t2audio_send_ctx sctx;
 +    struct t2audio_subdevice *sdev;
-+    u64 devid, timestamp, update_seed;
-+    t2audio_msg_read_update_timestamp(msg, &devid, &timestamp, &update_seed);
++    u64 devid, timestamp, update_seed, sample_time, sample_frames;
 +
-+    pr_debug("t2bce_audio: timestamp dev=%llx t2=%llx host=%lld seed=%llx\n",
-+            devid, timestamp, ktime_to_ns(time_os), update_seed);
++    if (t2audio_msg_read_update_timestamp(msg, &devid, &timestamp,
++                &update_seed, &sample_time) ||
++            !t2audio_decode_sample_time(sample_time, &sample_frames) ||
++            update_seed > 1) {
++        dev_warn_ratelimited(a->dev, "Invalid or unsupported timestamp message (%zu bytes)\n",
++                msg->size);
++        goto reply;
++    }
 +
++    pr_debug("t2bce_audio: timestamp dev=%llx t2=%llu host=%llu seed=%llu sample=%llu\n",
++            devid, timestamp, msg->received_ns, update_seed, sample_frames);
 +    sdev = t2audio_find_dev_by_dev_id(a, devid);
 +    if (sdev)
-+        t2audio_handle_timestamp(sdev, time_os);
-+
++        t2audio_handle_timestamp(sdev, timestamp, update_seed,
++                sample_frames);
++reply:
 +    t2audio_send_cmd_response(a, &sctx, msg,
 +            t2audio_msg_write_update_timestamp_response);
 +}
@@ -1165,12 +1170,12 @@ index 000000000..7caef98d6
 +MODULE_LICENSE("GPL");
 +MODULE_AUTHOR("André Eikmeyer <andre.eikmeyer@kait2en.org>");
 +MODULE_DESCRIPTION("Apple T2 Audio Driver");
-+MODULE_VERSION("0.02");
++MODULE_VERSION("0.04");
 +module_init(t2audio_module_init);
 +module_exit(t2audio_module_exit);
 diff --git a/drivers/staging/t2bce/t2bce_audio/audio.h b/drivers/staging/t2bce/t2bce_audio/audio.h
 new file mode 100644
-index 000000000..5b34349a4
+index 000000000..81eeb86db
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_audio/audio.h
 @@ -0,0 +1,157 @@
@@ -1178,7 +1183,6 @@ index 000000000..5b34349a4
 +#define T2AUDIO_H
 +
 +#include <linux/types.h>
-+#include <linux/hrtimer.h>
 +#include <linux/spinlock.h>
 +#include <linux/workqueue.h>
 +#include <sound/pcm.h>
@@ -1255,24 +1259,24 @@ index 000000000..5b34349a4
 +    struct snd_pcm_hardware *alsa_hw_desc;
 +    u32 latency;
 +
-+    struct hrtimer playback_timer;
-+    spinlock_t playback_lock;
-+    struct snd_pcm_substream *playback_substream;
-+    void *playback_area;
-+    size_t playback_bytes;
-+    ktime_t playback_last;
-+    u64 playback_remainder;
-+    u64 playback_frames;
-+    snd_pcm_uframes_t bridge_pos;
-+    snd_pcm_uframes_t period_pos;
-+    bool playback_timer_initialized;
-+
 +    bool waiting_for_first_ts;
 +
 +    ktime_t remote_timestamp;
 +    ktime_t timestamp_accept_after;
-+    snd_pcm_sframes_t frame_min;
++    u64 last_device_timestamp;
++    u64 last_sample_frames;
++    u64 sample_frames;
++    u64 reported_frames;
++    bool timeline_fault;
 +    int started;
++
++    struct t2audio_subdevice *sdev;
++    struct snd_pcm_substream *substream;
++    struct work_struct io_work;
++    spinlock_t io_lock;
++    u32 io_generation;
++    bool io_requested;
++    int remote_io_state;
 +};
 +struct t2audio_subdevice {
 +    struct t2audio_device *a;
@@ -1318,6 +1322,7 @@ index 000000000..5b34349a4
 +
 +    struct completion remote_alive;
 +    struct work_struct resume_work;
++    struct workqueue_struct *pcm_io_wq;
 +    bool resume_deferred;
 +    bool pm_quiesced;
 +
@@ -1381,18 +1386,16 @@ index 000000000..011ebfd69
 +#endif //T2AUDIO_DESCRIPTION_H
 diff --git a/drivers/staging/t2bce/t2bce_audio/pcm.c b/drivers/staging/t2bce/t2bce_audio/pcm.c
 new file mode 100644
-index 000000000..c339d9bf6
+index 000000000..6c15068e6
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_audio/pcm.c
-@@ -0,0 +1,611 @@
+@@ -0,0 +1,619 @@
 +#include "pcm.h"
 +#include "audio.h"
++#include "timing.h"
 +#include <linux/dma-mapping.h>
 +#include <linux/io.h>
 +#include <linux/ktime.h>
-+#include <linux/vmalloc.h>
-+
-+#define T2AUDIO_PLAYBACK_TICK_NS NSEC_PER_MSEC
 +
 +static u64 t2audio_get_alsa_fmtbit(struct t2audio_apple_description *desc)
 +{
@@ -1509,6 +1512,12 @@ index 000000000..c339d9bf6
 +    return &stream->buffers[0];
 +}
 +
++enum t2audio_remote_io_state {
++    T2AUDIO_REMOTE_IO_UNKNOWN = -1,
++    T2AUDIO_REMOTE_IO_STOPPED,
++    T2AUDIO_REMOTE_IO_STARTED,
++};
++
 +static void t2audio_dma_memset(struct t2audio_dma_buf *buf, size_t offset, int value, size_t size)
 +{
 +    if (!buf || offset >= buf->size)
@@ -1525,127 +1534,33 @@ index 000000000..c339d9bf6
 +    }
 +}
 +
-+static void t2audio_dma_copy_to(struct t2audio_dma_buf *buf, size_t offset, const void *src, size_t size)
-+{
-+    if (!buf || offset >= buf->size)
-+        return;
-+
-+    size = min(size, buf->size - offset);
-+    switch (buf->type) {
-+        case T2AUDIO_DMA_BUF_IOMEM:
-+            memcpy_toio((u8 __iomem *) buf->ptr + offset, src, size);
-+            break;
-+        case T2AUDIO_DMA_BUF_COHERENT:
-+            memcpy((u8 *) buf->ptr + offset, src, size);
-+            break;
-+    }
-+}
-+
-+static void t2audio_playback_copy(struct snd_pcm_substream *substream,
-+        snd_pcm_uframes_t frames)
-+{
-+    struct t2audio_stream *stream = t2audio_pcm_stream(substream);
-+    struct t2audio_dma_buf *bridge = t2audio_pcm_dma_buf(stream);
-+    struct snd_pcm_runtime *runtime = substream->runtime;
-+    snd_pcm_uframes_t host_pos;
-+
-+    if (!bridge || !runtime->buffer_size || !frames)
-+        return;
-+
-+    host_pos = stream->playback_frames % runtime->buffer_size;
-+    while (frames) {
-+        snd_pcm_uframes_t chunk = frames;
-+        size_t src_offset;
-+        size_t dst_offset;
-+
-+        chunk = min(chunk, runtime->buffer_size - host_pos);
-+        chunk = min(chunk, runtime->buffer_size - stream->bridge_pos);
-+        src_offset = frames_to_bytes(runtime, host_pos);
-+        dst_offset = frames_to_bytes(runtime, stream->bridge_pos);
-+        t2audio_dma_copy_to(bridge, dst_offset,
-+                (u8 *)stream->playback_area + src_offset,
-+                frames_to_bytes(runtime, chunk));
-+
-+        host_pos = (host_pos + chunk) % runtime->buffer_size;
-+        stream->bridge_pos = (stream->bridge_pos + chunk) % runtime->buffer_size;
-+        stream->playback_frames += chunk;
-+        stream->period_pos += chunk;
-+        frames -= chunk;
-+    }
-+}
-+
-+static enum hrtimer_restart t2audio_playback_timer(struct hrtimer *timer)
-+{
-+    struct t2audio_stream *stream = container_of(timer, struct t2audio_stream,
-+            playback_timer);
-+    struct snd_pcm_substream *substream = stream->playback_substream;
-+    struct snd_pcm_runtime *runtime;
-+    unsigned long flags;
-+    ktime_t now;
-+    s64 elapsed_ns;
-+    u64 scaled;
-+    snd_pcm_uframes_t frames;
-+    unsigned int periods = 0;
-+
-+    if (!substream || !smp_load_acquire(&stream->started))
-+        return HRTIMER_NORESTART;
-+
-+    runtime = substream->runtime;
-+    now = ktime_get();
-+
-+    spin_lock_irqsave(&stream->playback_lock, flags);
-+    elapsed_ns = ktime_to_ns(ktime_sub(now, stream->playback_last));
-+    if (elapsed_ns > 0 && runtime->rate && runtime->buffer_size) {
-+        scaled = (u64)elapsed_ns * runtime->rate + stream->playback_remainder;
-+        frames = div64_u64_rem(scaled, NSEC_PER_SEC,
-+                &stream->playback_remainder);
-+        stream->playback_last = now;
-+
-+        if (frames) {
-+            t2audio_playback_copy(substream, frames);
-+            if (runtime->period_size) {
-+                periods = stream->period_pos / runtime->period_size;
-+                stream->period_pos %= runtime->period_size;
-+            }
-+        }
-+    }
-+    spin_unlock_irqrestore(&stream->playback_lock, flags);
-+
-+    if (!runtime->no_period_wakeup)
-+        while (periods--)
-+            snd_pcm_period_elapsed(substream);
-+
-+    if (!smp_load_acquire(&stream->started))
-+        return HRTIMER_NORESTART;
-+    hrtimer_forward_now(timer, ns_to_ktime(T2AUDIO_PLAYBACK_TICK_NS));
-+    return HRTIMER_RESTART;
-+}
-+
 +void t2audio_pcm_quiesce_stream(struct t2audio_stream *stream)
 +{
 +    smp_store_release(&stream->started, 0);
-+    if (stream->playback_timer_initialized)
-+        hrtimer_cancel(&stream->playback_timer);
++}
++
++void t2audio_pcm_reset_timing(struct t2audio_stream *stream)
++{
++    stream->waiting_for_first_ts = true;
++    stream->remote_timestamp = 0;
++    stream->timestamp_accept_after = 0;
++    stream->last_device_timestamp = 0;
++    stream->last_sample_frames = 0;
++    stream->sample_frames = 0;
++    stream->reported_frames = 0;
++    stream->timeline_fault = false;
 +}
 +
 +static int t2audio_pcm_open(struct snd_pcm_substream *substream)
 +{
 +    struct t2audio_subdevice *sdev = snd_pcm_substream_chip(substream);
-+    struct t2audio_stream *stream = t2audio_pcm_stream(substream);
-+
 +    pr_debug("t2bce_audio: pcm open dev=%s direction=%s substream=%u\n",
 +            sdev->uid,
 +            substream->stream == SNDRV_PCM_STREAM_PLAYBACK ? "playback" : "capture",
 +            substream->number);
-+    substream->runtime->hw = *stream->alsa_hw_desc;
-+
-+    if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-+        spin_lock_init(&stream->playback_lock);
-+        hrtimer_setup(&stream->playback_timer, t2audio_playback_timer,
-+                CLOCK_MONOTONIC, HRTIMER_MODE_REL_PINNED);
-+        stream->playback_timer_initialized = true;
-+        stream->playback_substream = substream;
-+    }
++    if (!t2audio_pcm_stream(substream)->alsa_hw_desc)
++        return -ENODEV;
++    substream->runtime->hw = *t2audio_pcm_stream(substream)->alsa_hw_desc;
 +
 +    return 0;
 +}
@@ -1654,16 +1569,11 @@ index 000000000..c339d9bf6
 +{
 +    struct t2audio_subdevice *sdev = snd_pcm_substream_chip(substream);
 +    struct t2audio_stream *stream = t2audio_pcm_stream(substream);
-+
-+    if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-+        t2audio_pcm_quiesce_stream(stream);
-+        stream->playback_substream = NULL;
-+    }
-+
 +    pr_debug("t2bce_audio: pcm close dev=%s direction=%s substream=%u\n",
 +            sdev->uid,
 +            substream->stream == SNDRV_PCM_STREAM_PLAYBACK ? "playback" : "capture",
 +            substream->number);
++    flush_work(&stream->io_work);
 +    return 0;
 +}
 +
@@ -1671,16 +1581,14 @@ index 000000000..c339d9bf6
 +{
 +    struct t2audio_stream *stream = t2audio_pcm_stream(substream);
 +
-+    stream->waiting_for_first_ts = true;
-+    stream->remote_timestamp = 0;
-+    stream->timestamp_accept_after = 0;
-+    stream->frame_min = stream->latency;
++    /* A previous asynchronous STOP must finish before the ring is cleared. */
++    flush_work(&stream->io_work);
++    t2audio_pcm_reset_timing(stream);
 +
-+    if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
++    /* Neither direction may expose samples left over from the previous run. */
++    {
 +        struct t2audio_dma_buf *bridge = t2audio_pcm_dma_buf(stream);
 +
-+        if (stream->playback_area && stream->playback_bytes)
-+            memset(stream->playback_area, 0, stream->playback_bytes);
 +        if (bridge)
 +            t2audio_dma_memset(bridge, 0, 0, bridge->size);
 +    }
@@ -1701,27 +1609,13 @@ index 000000000..c339d9bf6
 +    if (!astream->buffer_cnt || !astream->buffers)
 +        return -EINVAL;
 +
-+    if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-+        size_t bytes = params_buffer_bytes(hw_params);
-+        void *area;
++    if (params_buffer_bytes(hw_params) != astream->buffers[0].size)
++        return -EINVAL;
 +
-+        vfree(astream->playback_area);
-+        area = vmalloc_user(bytes);
-+        if (!area) {
-+            astream->playback_area = NULL;
-+            astream->playback_bytes = 0;
-+            return -ENOMEM;
-+        }
-+        astream->playback_area = area;
-+        astream->playback_bytes = bytes;
-+        substream->runtime->dma_area = area;
-+        substream->runtime->dma_addr = 0;
-+        substream->runtime->dma_bytes = bytes;
-+    } else {
-+        substream->runtime->dma_area = astream->buffers[0].ptr;
-+        substream->runtime->dma_addr = astream->buffers[0].dma_addr;
-+        substream->runtime->dma_bytes = astream->buffers[0].size;
-+    }
++    /* Match BridgeAudioController: expose the bridgeOS ring itself. */
++    substream->runtime->dma_area = astream->buffers[0].ptr;
++    substream->runtime->dma_addr = astream->buffers[0].dma_addr;
++    substream->runtime->dma_bytes = astream->buffers[0].size;
 +    return 0;
 +}
 +
@@ -1729,24 +1623,15 @@ index 000000000..c339d9bf6
 +{
 +    struct t2audio_subdevice *sdev = snd_pcm_substream_chip(substream);
 +    struct t2audio_stream *stream = t2audio_pcm_stream(substream);
-+
-+    if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-+        t2audio_pcm_quiesce_stream(stream);
-+        vfree(stream->playback_area);
-+        stream->playback_area = NULL;
-+        stream->playback_bytes = 0;
-+        substream->runtime->dma_area = NULL;
-+        substream->runtime->dma_bytes = 0;
-+    }
-+
 +    pr_debug("t2bce_audio: pcm hw_free dev=%s direction=%s substream=%u\n",
 +            sdev->uid,
 +            substream->stream == SNDRV_PCM_STREAM_PLAYBACK ? "playback" : "capture",
 +            substream->number);
++    flush_work(&stream->io_work);
 +    return 0;
 +}
 +
-+static int t2audio_pcm_start(struct snd_pcm_substream *substream)
++static int t2audio_pcm_start_sync(struct snd_pcm_substream *substream)
 +{
 +    struct t2audio_subdevice *sdev = snd_pcm_substream_chip(substream);
 +    struct t2audio_stream *stream = t2audio_pcm_stream(substream);
@@ -1756,46 +1641,26 @@ index 000000000..c339d9bf6
 +    time_start = ktime_get();
 +    smp_store_release(&stream->started, 0);
 +
-+    if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-+        struct t2audio_dma_buf *bridge = t2audio_pcm_dma_buf(stream);
++    if (!substream->runtime->buffer_size || !t2audio_pcm_dma_buf(stream))
++        return -EINVAL;
 +
-+        if (!stream->playback_timer_initialized || !stream->playback_area ||
-+                !substream->runtime->buffer_size || !bridge ||
-+                bridge->size < frames_to_bytes(substream->runtime,
-+                                               substream->runtime->buffer_size))
-+            return -EINVAL;
-+    }
++    t2audio_pcm_reset_timing(stream);
++    /* Accept notifications received during START_IO, including sample zero. */
++    stream->timestamp_accept_after = ktime_get();
 +
++    /* Publish userspace's prefill before starting the remote consumer. */
++    wmb();
++
++    /*
++     * START_IO can emit the reset timestamp before its response.  Publish the
++     * stream first so deferred command handling cannot discard that anchor.
++     */
++    smp_store_release(&stream->started, 1);
 +    status = t2audio_cmd_start_io(sdev->a, sdev->dev_id);
-+    if (status)
++    if (status) {
++        smp_store_release(&stream->started, 0);
 +        return status;
-+
-+    if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-+        unsigned long flags;
-+        snd_pcm_uframes_t lead_frames;
-+
-+        spin_lock_irqsave(&stream->playback_lock, flags);
-+        stream->playback_frames = 0;
-+        stream->bridge_pos = 0;
-+        stream->period_pos = 0;
-+        stream->playback_remainder = 0;
-+        stream->playback_last = ktime_get();
-+        lead_frames = min_t(snd_pcm_uframes_t, stream->latency,
-+                            substream->runtime->buffer_size - 1);
-+        t2audio_playback_copy(substream, lead_frames);
-+        spin_unlock_irqrestore(&stream->playback_lock, flags);
-+        smp_store_release(&stream->started, 1);
-+        hrtimer_start(&stream->playback_timer,
-+                ns_to_ktime(T2AUDIO_PLAYBACK_TICK_NS),
-+                HRTIMER_MODE_REL_PINNED);
-+    } else {
-+        smp_store_release(&stream->started, 1);
 +    }
-+
-+    stream->remote_timestamp = 0;
-+    stream->waiting_for_first_ts = true;
-+    stream->timestamp_accept_after = ktime_get_boottime();
-+    stream->frame_min = stream->latency;
 +
 +    time_end = ktime_get();
 +    pr_debug("t2bce_audio: start_io %s %lld us\n",
@@ -1803,11 +1668,79 @@ index 000000000..c339d9bf6
 +    return 0;
 +}
 +
++static int t2audio_pcm_stop_sync(struct snd_pcm_substream *substream)
++{
++    struct t2audio_subdevice *sdev = snd_pcm_substream_chip(substream);
++    struct t2audio_stream *stream = t2audio_pcm_stream(substream);
++    int status;
++
++    t2audio_pcm_quiesce_stream(stream);
++    status = t2audio_cmd_stop_io(sdev->a, sdev->dev_id);
++    stream->remote_timestamp = 0;
++    stream->waiting_for_first_ts = true;
++    stream->timestamp_accept_after = 0;
++    return status;
++}
++
++static void t2audio_pcm_io_work(struct work_struct *work)
++{
++    struct t2audio_stream *stream = container_of(work, struct t2audio_stream,
++                                                  io_work);
++    struct t2audio_subdevice *sdev = stream->sdev;
++    unsigned long flags;
++
++    for (;;) {
++        unsigned int generation;
++        bool requested;
++        int target_state;
++        int status;
++
++        spin_lock_irqsave(&stream->io_lock, flags);
++        generation = stream->io_generation;
++        requested = stream->io_requested;
++        target_state = requested ? T2AUDIO_REMOTE_IO_STARTED :
++                                   T2AUDIO_REMOTE_IO_STOPPED;
++        if (stream->remote_io_state == target_state) {
++            spin_unlock_irqrestore(&stream->io_lock, flags);
++            return;
++        }
++        spin_unlock_irqrestore(&stream->io_lock, flags);
++
++        status = requested ? t2audio_pcm_start_sync(stream->substream) :
++                             t2audio_pcm_stop_sync(stream->substream);
++
++        spin_lock_irqsave(&stream->io_lock, flags);
++        stream->remote_io_state = status ? T2AUDIO_REMOTE_IO_UNKNOWN :
++                                           target_state;
++        if (status || generation == stream->io_generation) {
++            spin_unlock_irqrestore(&stream->io_lock, flags);
++            if (status)
++                dev_err(sdev->a->dev, "%s_IO failed for %s: %d\n",
++                        requested ? "START" : "STOP", sdev->uid, status);
++            return;
++        }
++        spin_unlock_irqrestore(&stream->io_lock, flags);
++    }
++}
++
++static void t2audio_pcm_request_io(struct t2audio_stream *stream, bool start)
++{
++    unsigned long flags;
++
++    if (!start)
++        t2audio_pcm_quiesce_stream(stream);
++
++    spin_lock_irqsave(&stream->io_lock, flags);
++    stream->io_requested = start;
++    stream->io_generation++;
++    spin_unlock_irqrestore(&stream->io_lock, flags);
++    queue_work(stream->sdev->a->pcm_io_wq, &stream->io_work);
++}
++
 +static int t2audio_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 +{
 +    struct t2audio_subdevice *sdev = snd_pcm_substream_chip(substream);
 +    struct t2audio_stream *stream = t2audio_pcm_stream(substream);
-+    int err;
 +
 +    /* bridgeOS exposes one ALSA substream per remote stream. */
 +    if (substream->number != 0)
@@ -1815,19 +1748,13 @@ index 000000000..c339d9bf6
 +    switch (cmd) {
 +        case SNDRV_PCM_TRIGGER_START:
 +            pr_debug("t2bce_audio: TRIGGER START %s\n", sdev->uid);
-+            err = t2audio_pcm_start(substream);
-+            if (err)
-+                return err;
++            if (!substream->runtime->buffer_size || !t2audio_pcm_dma_buf(stream))
++                return -EINVAL;
++            t2audio_pcm_request_io(stream, true);
 +            break;
 +        case SNDRV_PCM_TRIGGER_STOP:
 +            pr_debug("t2bce_audio: TRIGGER STOP %s\n", sdev->uid);
-+            t2audio_pcm_quiesce_stream(stream);
-+            err = t2audio_cmd_stop_io(sdev->a, sdev->dev_id);
-+            stream->remote_timestamp = 0;
-+            stream->waiting_for_first_ts = true;
-+            stream->timestamp_accept_after = 0;
-+            if (err)
-+                return err;
++            t2audio_pcm_request_io(stream, false);
 +            break;
 +        default:
 +            return -EINVAL;
@@ -1835,50 +1762,50 @@ index 000000000..c339d9bf6
 +    return 0;
 +}
 +
++static void t2audio_pcm_init_stream_work(struct t2audio_subdevice *sdev,
++        struct t2audio_stream *stream, struct snd_pcm_substream *substream)
++{
++    stream->sdev = sdev;
++    stream->substream = substream;
++    spin_lock_init(&stream->io_lock);
++    INIT_WORK(&stream->io_work, t2audio_pcm_io_work);
++    stream->remote_io_state = T2AUDIO_REMOTE_IO_STOPPED;
++}
++
 +static snd_pcm_uframes_t t2audio_pcm_pointer(struct snd_pcm_substream *substream)
 +{
 +    struct t2audio_stream *stream = t2audio_pcm_stream(substream);
-+    ktime_t time_from_start;
-+    snd_pcm_sframes_t frames;
-+    snd_pcm_sframes_t buffer_time_length;
++    s64 elapsed_ns;
++    u64 elapsed_frames;
++    u64 latency = substream->stream == SNDRV_PCM_STREAM_CAPTURE ?
++            stream->latency : 0;
 +
 +    if (!smp_load_acquire(&stream->started))
 +        return 0;
 +
-+    if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-+        unsigned long flags;
-+
-+        spin_lock_irqsave(&stream->playback_lock, flags);
-+        frames = stream->playback_frames % substream->runtime->buffer_size;
-+        spin_unlock_irqrestore(&stream->playback_lock, flags);
-+        return frames;
-+    }
-+
++    if (stream->timeline_fault)
++        return SNDRV_PCM_POS_XRUN;
 +    if (stream->waiting_for_first_ts)
 +        return 0;
 +
-+    /* Advance continuously in the host time domain from the first timestamp. */
-+    time_from_start = ktime_get_boottime() - stream->remote_timestamp;
-+    if (ktime_to_ns(time_from_start) < 0)
-+        return 0;
-+    buffer_time_length = NSEC_PER_SEC * substream->runtime->buffer_size / substream->runtime->rate;
-+    frames = (ktime_to_ns(time_from_start) % buffer_time_length) * substream->runtime->buffer_size / buffer_time_length;
-+    if (ktime_to_ns(time_from_start) < buffer_time_length) {
-+        if (frames < stream->frame_min)
-+            frames = stream->frame_min;
-+        else
-+            stream->frame_min = 0;
-+    } else {
-+        if (ktime_to_ns(time_from_start) < 2 * buffer_time_length)
-+            stream->frame_min = frames;
-+        else
-+            stream->frame_min = 0;
-+    }
-+    frames -= stream->latency;
-+    if (frames < 0)
-+        frames += ((-frames - 1) / substream->runtime->buffer_size + 1) * substream->runtime->buffer_size;
-+    frames %= substream->runtime->buffer_size;
-+    return (snd_pcm_uframes_t) frames;
++    /*
++     * bridgeOS converts the hardware timestamp with mach_bridge_remote_time(),
++     * using the host clock supplied through BCE. It is therefore already in
++     * Linux monotonic nanoseconds. sampleTime advances by bridgeaudiod's fixed
++     * timestampPeriod, so callback spacing must not be used as a sample-rate
++     * estimate: interpolate between anchors at the negotiated stream rate.
++     */
++    elapsed_ns = ktime_to_ns(ktime_sub(ktime_get(), stream->remote_timestamp));
++    if (elapsed_ns <= 0)
++        elapsed_frames = 0;
++    else
++        elapsed_frames = mul_u64_u32_div(elapsed_ns,
++                substream->runtime->rate, NSEC_PER_SEC);
++    stream->reported_frames = t2audio_position_frames(stream->sample_frames,
++            elapsed_frames, latency, stream->reported_frames);
++    substream->runtime->delay = substream->stream == SNDRV_PCM_STREAM_PLAYBACK ?
++            stream->latency : 0;
++    return stream->reported_frames % substream->runtime->buffer_size;
 +}
 +
 +static int t2audio_pcm_mmap(struct snd_pcm_substream *substream, struct vm_area_struct *area)
@@ -1886,12 +1813,6 @@ index 000000000..c339d9bf6
 +    struct t2audio_subdevice *sdev = snd_pcm_substream_chip(substream);
 +    struct t2audio_stream *stream = t2audio_pcm_stream(substream);
 +    struct t2audio_dma_buf *buf;
-+
-+    if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-+        if (!stream->playback_area)
-+            return -EINVAL;
-+        return remap_vmalloc_range(area, stream->playback_area, 0);
-+    }
 +
 +    if (!stream->buffer_cnt || !stream->buffers)
 +        return -EINVAL;
@@ -1947,61 +1868,153 @@ index 000000000..c339d9bf6
 +    strcpy(pcm->name, sdev->uid);
 +    snd_pcm_set_ops(pcm, SNDRV_PCM_STREAM_PLAYBACK, &t2audio_pcm_ops);
 +    snd_pcm_set_ops(pcm, SNDRV_PCM_STREAM_CAPTURE, &t2audio_pcm_ops);
++    if (sdev->out_stream_cnt)
++        t2audio_pcm_init_stream_work(sdev, &sdev->out_streams[0],
++                pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream);
++    if (sdev->in_stream_cnt)
++        t2audio_pcm_init_stream_work(sdev, &sdev->in_streams[0],
++                pcm->streams[SNDRV_PCM_STREAM_CAPTURE].substream);
 +    return 0;
 +}
 +
++int t2audio_pcm_quiesce_subdevice(struct t2audio_subdevice *sdev)
++{
++    struct t2audio_stream *streams[2];
++    unsigned long flags;
++    bool need_stop = false;
++    size_t count = 0;
++    size_t i;
++    int status = 0;
++
++    if (sdev->out_stream_cnt && sdev->out_streams[0].substream)
++        streams[count++] = &sdev->out_streams[0];
++    if (sdev->in_stream_cnt && sdev->in_streams[0].substream)
++        streams[count++] = &sdev->in_streams[0];
++
++    for (i = 0; i < count; i++)
++        t2audio_pcm_request_io(streams[i], false);
++    for (i = 0; i < count; i++)
++        flush_work(&streams[i]->io_work);
++
++    for (i = 0; i < count; i++) {
++        spin_lock_irqsave(&streams[i]->io_lock, flags);
++        if (streams[i]->remote_io_state != T2AUDIO_REMOTE_IO_STOPPED)
++            need_stop = true;
++        spin_unlock_irqrestore(&streams[i]->io_lock, flags);
++    }
++
++    if (need_stop)
++        status = t2audio_cmd_stop_io(sdev->a, sdev->dev_id);
++
++    for (i = 0; i < count; i++) {
++        spin_lock_irqsave(&streams[i]->io_lock, flags);
++        streams[i]->remote_io_state = status ? T2AUDIO_REMOTE_IO_UNKNOWN :
++                                               T2AUDIO_REMOTE_IO_STOPPED;
++        spin_unlock_irqrestore(&streams[i]->io_lock, flags);
++    }
++    return status;
++}
++
++void t2audio_pcm_cleanup_subdevice(struct t2audio_subdevice *sdev)
++{
++    if (sdev->out_stream_cnt && sdev->out_streams[0].substream)
++        cancel_work_sync(&sdev->out_streams[0].io_work);
++    if (sdev->in_stream_cnt && sdev->in_streams[0].substream)
++        cancel_work_sync(&sdev->in_streams[0].io_work);
++}
++
 +static void t2audio_handle_stream_timestamp(struct snd_pcm_substream *substream,
-+                                            ktime_t host_timestamp)
++        u64 device_timestamp, u64 update_seed, u64 sample_frames)
 +{
 +    unsigned long flags;
-+    struct t2audio_stream *stream;
++    struct t2audio_stream *stream = t2audio_pcm_stream(substream);
 +    struct t2audio_subdevice *sdev = snd_pcm_substream_chip(substream);
++    u64 anchor_frames = sample_frames;
++    u64 elapsed_frames;
++    u64 elapsed_ns;
 +
-+    if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
-+        return;
-+
-+    stream = t2audio_pcm_stream(substream);
 +    snd_pcm_stream_lock_irqsave(substream, flags);
-+    if (!smp_load_acquire(&stream->started)) {
-+        snd_pcm_stream_unlock_irqrestore(substream, flags);
-+        return;
++    if (!smp_load_acquire(&stream->started) || !substream->runtime ||
++            device_timestamp < ktime_to_ns(stream->timestamp_accept_after))
++        goto out;
++
++    /* Deferred work can run out of order. Never apply an older anchor. */
++    if (!stream->waiting_for_first_ts &&
++            device_timestamp <= stream->last_device_timestamp)
++        goto out;
++
++    /*
++     * bridgeaudiod sends seed=1 with sampleTime=0 at a reset, seed=0 for
++     * continuation. A running timeline cannot silently change ring origin.
++     */
++    if ((update_seed && sample_frames) ||
++            (!stream->waiting_for_first_ts &&
++             ((update_seed && (stream->reported_frames || stream->sample_frames)) ||
++              sample_frames < stream->last_sample_frames ||
++              device_timestamp < stream->last_device_timestamp))) {
++        stream->timeline_fault = true;
++        pr_warn_ratelimited("t2bce_audio: timeline reset dev=%s sample=%llu previous=%llu seed=%llu\n",
++                sdev->uid, sample_frames, stream->last_sample_frames, update_seed);
++        snd_pcm_period_elapsed_under_stream_lock(substream);
++        goto out;
 +    }
-+    if (ktime_before(host_timestamp, stream->timestamp_accept_after)) {
-+        pr_debug("t2bce_audio: ignoring pre-start timestamp dev=%s event=%lld accept_after=%lld\n",
-+                sdev->uid, ktime_to_ns(host_timestamp),
-+                ktime_to_ns(stream->timestamp_accept_after));
-+        snd_pcm_stream_unlock_irqrestore(substream, flags);
-+        return;
++
++    /*
++     * bridgeaudiod increments sampleTime by one fixed timestampPeriod per
++     * callback. A delayed or missed callback therefore leaves sampleTime
++     * behind the continuously running DMA clock. Do not replace the current
++     * interpolation anchor with that older position: doing so freezes the
++     * monotonic ALSA pointer until sampleTime catches up and triggers XRUN
++     * recovery. Carry forward the frames elapsed from the previous hardware
++     * timestamp instead. A genuine reset is handled above and START_IO clears
++     * the timing state before the first new anchor.
++     */
++    if (!stream->waiting_for_first_ts &&
++            device_timestamp > stream->last_device_timestamp) {
++        elapsed_ns = device_timestamp - stream->last_device_timestamp;
++        elapsed_frames = mul_u64_u32_div(elapsed_ns,
++                substream->runtime->rate, NSEC_PER_SEC);
++        anchor_frames = t2audio_reanchor_frames(anchor_frames,
++                stream->sample_frames, elapsed_frames);
 +    }
-+    if (stream->waiting_for_first_ts) {
-+        stream->remote_timestamp = host_timestamp;
-+        stream->waiting_for_first_ts = false;
-+        snd_pcm_stream_unlock_irqrestore(substream, flags);
-+        return;
-+    }
-+    snd_pcm_stream_unlock_irqrestore(substream, flags);
++
++    stream->last_sample_frames = sample_frames;
++    stream->sample_frames = anchor_frames;
++    stream->last_device_timestamp = device_timestamp;
++    stream->remote_timestamp = ns_to_ktime(device_timestamp);
++    stream->waiting_for_first_ts = false;
++    pr_debug("t2bce_audio: anchor dev=%s direction=%d sample=%llu reported=%llu host=%llu seed=%llu\n",
++            sdev->uid, substream->stream, anchor_frames, stream->reported_frames,
++            device_timestamp, update_seed);
++
 +    if (!substream->runtime->no_period_wakeup)
-+        snd_pcm_period_elapsed(substream);
++        snd_pcm_period_elapsed_under_stream_lock(substream);
++out:
++    snd_pcm_stream_unlock_irqrestore(substream, flags);
 +}
 +
 +void t2audio_handle_timestamp(struct t2audio_subdevice *sdev,
-+        ktime_t host_timestamp)
++        u64 device_timestamp, u64 update_seed, u64 sample_frames)
 +{
 +    struct snd_pcm_substream *substream;
 +
++    if (!sdev->pcm)
++        return;
 +    substream = sdev->pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream;
 +    if (substream)
-+        t2audio_handle_stream_timestamp(substream, host_timestamp);
++        t2audio_handle_stream_timestamp(substream, device_timestamp,
++                update_seed, sample_frames);
 +    substream = sdev->pcm->streams[SNDRV_PCM_STREAM_CAPTURE].substream;
 +    if (substream)
-+        t2audio_handle_stream_timestamp(substream, host_timestamp);
++        t2audio_handle_stream_timestamp(substream, device_timestamp,
++                update_seed, sample_frames);
 +}
 diff --git a/drivers/staging/t2bce/t2bce_audio/pcm.h b/drivers/staging/t2bce/t2bce_audio/pcm.h
 new file mode 100644
-index 000000000..70aa9202b
+index 000000000..8195cd7f3
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_audio/pcm.h
-@@ -0,0 +1,19 @@
+@@ -0,0 +1,22 @@
 +#ifndef T2AUDIO_PCM_H
 +#define T2AUDIO_PCM_H
 +
@@ -2016,20 +2029,24 @@ index 000000000..70aa9202b
 +int t2audio_create_hw_info(struct t2audio_apple_description *desc, struct snd_pcm_hardware *alsa_hw, size_t buf_size);
 +int t2audio_create_pcm(struct t2audio_subdevice *sdev);
 +void t2audio_pcm_quiesce_stream(struct t2audio_stream *stream);
++void t2audio_pcm_reset_timing(struct t2audio_stream *stream);
++int t2audio_pcm_quiesce_subdevice(struct t2audio_subdevice *sdev);
++void t2audio_pcm_cleanup_subdevice(struct t2audio_subdevice *sdev);
 +
 +void t2audio_handle_timestamp(struct t2audio_subdevice *sdev,
-+        ktime_t host_timestamp);
++        u64 device_timestamp, u64 update_seed, u64 sample_frames);
 +
 +#endif //T2AUDIO_PCM_H
 diff --git a/drivers/staging/t2bce/t2bce_audio/protocol.c b/drivers/staging/t2bce/t2bce_audio/protocol.c
 new file mode 100644
-index 000000000..7441bbb9c
+index 000000000..8ea161244
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_audio/protocol.c
-@@ -0,0 +1,347 @@
+@@ -0,0 +1,356 @@
 +#include "protocol.h"
 +#include "protocol_bce.h"
 +#include "audio.h"
++#include <linux/unaligned.h>
 +
 +int t2audio_msg_read_base(struct t2audio_msg *msg, struct t2audio_msg_base *base)
 +{
@@ -2060,12 +2077,20 @@ index 000000000..7441bbb9c
 +}
 +
 +int t2audio_msg_read_update_timestamp(struct t2audio_msg *msg, t2audio_device_id_t *devid,
-+        u64 *timestamp, u64 *update_seed)
++        u64 *timestamp, u64 *update_seed, u64 *sample_time)
 +{
-+    READ_START(T2AUDIO_MSG_UPDATE_TIMESTAMP);
-+    READ_DEVID_VAR(devid);
-+    READ_VAR(u64, timestamp);
-+    READ_VAR(u64, update_seed);
++    size_t offset = sizeof(struct t2audio_msg_header) + sizeof(struct t2audio_msg_base);
++    const u8 *data = msg->data;
++
++    /* bridgeaudiod serializes timestamp, updateSeed, then Float64 sampleTime. */
++    if (msg->size < offset + 3 * sizeof(u64) ||
++            get_unaligned_le32(data + sizeof(struct t2audio_msg_header)) !=
++            T2AUDIO_MSG_UPDATE_TIMESTAMP)
++        return -EINVAL;
++    *devid = get_unaligned_le64(data + offsetof(struct t2audio_msg_header, device_id));
++    *timestamp = get_unaligned_le64(data + offset);
++    *update_seed = get_unaligned_le64(data + offset + 8);
++    *sample_time = get_unaligned_le64(data + offset + 16);
 +    return 0;
 +}
 +
@@ -2374,13 +2399,12 @@ index 000000000..7441bbb9c
 +    CMD_DEF_SHARED_NO_REPLY_AND_SEND(t2audio_msg_write_get_device_list);
 +    CMD_HNDL_REPLY_NO_FREE(t2audio_msg_read_get_device_list_response, dev_l, dev_cnt);
 +}
-\ No newline at end of file
 diff --git a/drivers/staging/t2bce/t2bce_audio/protocol.h b/drivers/staging/t2bce/t2bce_audio/protocol.h
 new file mode 100644
-index 000000000..650d49793
+index 000000000..1ca4b0afa
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_audio/protocol.h
-@@ -0,0 +1,147 @@
+@@ -0,0 +1,149 @@
 +#ifndef T2AUDIO_PROTOCOL_H
 +#define T2AUDIO_PROTOCOL_H
 +
@@ -2394,6 +2418,8 @@ index 000000000..650d49793
 +struct t2audio_msg {
 +    void *data;
 +    size_t size;
++    /* Host monotonic time at transport reception, before deferred processing. */
++    u64 received_ns;
 +};
 +
 +struct __attribute__((packed)) t2audio_msg_header {
@@ -2473,7 +2499,7 @@ index 000000000..650d49793
 +int t2audio_msg_read_start_io_response(struct t2audio_msg *msg);
 +int t2audio_msg_read_stop_io_response(struct t2audio_msg *msg);
 +int t2audio_msg_read_update_timestamp(struct t2audio_msg *msg, t2audio_device_id_t *devid,
-+        u64 *timestamp, u64 *update_seed);
++        u64 *timestamp, u64 *update_seed, u64 *sample_time);
 +int t2audio_msg_read_get_property_response(struct t2audio_msg *msg, t2audio_object_id_t *obj,
 +        struct t2audio_prop_addr *prop, void **data, u64 *data_size);
 +int t2audio_msg_read_set_property_response(struct t2audio_msg *msg, t2audio_object_id_t *obj);
@@ -2530,14 +2556,15 @@ index 000000000..650d49793
 +#endif //T2AUDIO_PROTOCOL_H
 diff --git a/drivers/staging/t2bce/t2bce_audio/protocol_bce.c b/drivers/staging/t2bce/t2bce_audio/protocol_bce.c
 new file mode 100644
-index 000000000..a6f3de971
+index 000000000..c090bda92
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_audio/protocol_bce.c
-@@ -0,0 +1,260 @@
+@@ -0,0 +1,263 @@
 +#include "protocol_bce.h"
 +
 +#include "audio.h"
 +#include <linux/dma-mapping.h>
++#include <linux/ktime.h>
 +
 +static void t2audio_bce_out_queue_completion(struct t2bce_core_queue_sq *sq);
 +static void t2audio_bce_in_queue_completion(struct t2bce_core_queue_sq *sq);
@@ -2721,6 +2748,7 @@ index 000000000..a6f3de971
 +    while ((c = t2bce_core_next_completion(sq))) {
 +        msg.data = (u8 *) q->data + q->data_head * q->el_size;
 +        msg.size = c->data_size;
++        msg.received_ns = ktime_get_ns();
 +#ifdef DEBUG
 +        pr_debug("t2bce_audio: Received command data %llx\n", c->data_size);
 +        print_hex_dump(KERN_DEBUG, "t2bce_audio:IN ", DUMP_PREFIX_NONE, 32, 1, msg.data, min(msg.size, 128UL), true);
@@ -2764,6 +2792,7 @@ index 000000000..a6f3de971
 +
 +    work->a = a;
 +    work->msg.size = msg->size;
++    work->msg.received_ns = msg->received_ns;
 +    INIT_WORK(&work->ws, t2audio_deferred_msg_work);
 +    schedule_work(&work->ws);
 +}
@@ -2872,6 +2901,70 @@ index 000000000..8e474d2f7
 +void t2audio_reply_free(struct t2audio_msg *reply);
 +
 +#endif //T2AUDIO_PROTOCOL_BCE_H
+diff --git a/drivers/staging/t2bce/t2bce_audio/timing.h b/drivers/staging/t2bce/t2bce_audio/timing.h
+new file mode 100644
+index 000000000..9379033af
+--- /dev/null
++++ b/drivers/staging/t2bce/t2bce_audio/timing.h
+@@ -0,0 +1,58 @@
++#ifndef T2AUDIO_TIMING_H
++#define T2AUDIO_TIMING_H
++
++#ifdef __KERNEL__
++#include <linux/types.h>
++#else
++#include <stdbool.h>
++#include <stdint.h>
++typedef uint64_t u64;
++#endif
++
++/* Decode the nonnegative, integral IEEE-754 sampleTime without kernel FP. */
++static inline bool t2audio_decode_sample_time(u64 bits, u64 *frames)
++{
++    unsigned int exponent = (bits >> 52) & 0x7ff;
++    u64 fraction = bits & ((1ULL << 52) - 1);
++    unsigned int shift;
++
++    if (!bits) {
++        *frames = 0;
++        return true;
++    }
++    /* Up to 2^53 frames: doubles still represent every integer exactly. */
++    if ((bits >> 63) || exponent < 1023 || exponent > 1076 ||
++            (exponent == 1076 && fraction))
++        return false;
++    fraction |= 1ULL << 52;
++    if (exponent == 1076) {
++        *frames = fraction << 1;
++        return true;
++    }
++    shift = 1075 - exponent;
++    if (fraction & ((1ULL << shift) - 1))
++        return false;
++    *frames = fraction >> shift;
++    return true;
++}
++
++/* Clamp before wrapping: a small correction must not look like a full ring. */
++static inline u64 t2audio_position_frames(u64 sample, u64 elapsed_frames,
++        u64 latency, u64 previous)
++{
++    u64 frames = sample + elapsed_frames;
++
++    frames = frames > latency ? frames - latency : 0;
++    return frames > previous ? frames : previous;
++}
++
++/* Preserve continuous DMA progress when callback-counted sampleTime lags. */
++static inline u64 t2audio_reanchor_frames(u64 sample, u64 previous_anchor,
++        u64 elapsed_frames)
++{
++    u64 projected = previous_anchor + elapsed_frames;
++
++    return sample > projected ? sample : projected;
++}
++
++#endif
 diff --git a/drivers/staging/t2bce/t2bce_ave/Makefile b/drivers/staging/t2bce/t2bce_ave/Makefile
 new file mode 100644
 index 000000000..3097093cf
@@ -6369,7 +6462,7 @@ index 000000000..5ee2110b8
 +ccflags-y += -I$(src)/../t2bce_dma/include
 diff --git a/drivers/staging/t2bce/t2bce_core/include/t2bce_core_transport.h b/drivers/staging/t2bce/t2bce_core/include/t2bce_core_transport.h
 new file mode 100644
-index 000000000..22e201f09
+index 000000000..76ce47721
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_core/include/t2bce_core_transport.h
 @@ -0,0 +1,97 @@
@@ -6394,7 +6487,7 @@ index 000000000..22e201f09
 +    void (*shutdown)(void *userdata);
 +    void (*pm_reset)(void *userdata);
 +    int (*pm_prepare)(void *userdata);
-+    void (*pm_prepare_no_state)(void *userdata);
++    int (*pm_prepare_no_state)(void *userdata);
 +    void (*pm_mark_no_state_resume)(void *userdata);
 +    bool (*pm_is_no_state_resume)(void *userdata);
 +    void (*pm_complete)(void *userdata);
@@ -6472,10 +6565,10 @@ index 000000000..22e201f09
 +#endif
 diff --git a/drivers/staging/t2bce/t2bce_core/mailbox.c b/drivers/staging/t2bce/t2bce_core/mailbox.c
 new file mode 100644
-index 000000000..45aa999f7
+index 000000000..2c0a0334a
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_core/mailbox.c
-@@ -0,0 +1,234 @@
+@@ -0,0 +1,249 @@
 +#include "mailbox.h"
 +#include <linux/atomic.h>
 +#include "t2bce.h"
@@ -6633,7 +6726,17 @@ index 000000000..45aa999f7
 +    return status;
 +}
 +
-+static void bce_xhci_pm_tick(struct timer_list *tl);
++#define BCE_TIMESTAMP_INTERVAL_NS 125000000ULL
++#define BCE_TIMESTAMP_LEEWAY_NS   200000000ULL
++
++static enum hrtimer_restart bce_xhci_pm_tick(struct hrtimer *timer);
++
++static void bce_xhci_pm_schedule(struct bce_xhci_pm *pm)
++{
++    hrtimer_start_range_ns(&pm->timer,
++            ns_to_ktime(BCE_TIMESTAMP_INTERVAL_NS),
++            BCE_TIMESTAMP_LEEWAY_NS, HRTIMER_MODE_REL);
++}
 +
 +void bce_xhci_pm_init(struct bce_xhci_pm *pm, void __iomem *reg)
 +{
@@ -6649,7 +6752,13 @@ index 000000000..45aa999f7
 +    ioread32(regb);
 +    mb();
 +
-+    timer_setup(&pm->timer, bce_xhci_pm_tick, 0);
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6,15,0)
++    hrtimer_init(&pm->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
++    pm->timer.function = bce_xhci_pm_tick;
++#else
++    hrtimer_setup(&pm->timer, bce_xhci_pm_tick, CLOCK_MONOTONIC,
++            HRTIMER_MODE_REL);
++#endif
 +}
 +
 +void bce_xhci_pm_start(struct bce_xhci_pm *pm, bool is_initial)
@@ -6668,7 +6777,7 @@ index 000000000..45aa999f7
 +    spin_lock_irqsave(&pm->stop_sl, flags);
 +    pm->stopped = false;
 +    spin_unlock_irqrestore(&pm->stop_sl, flags);
-+    mod_timer(&pm->timer, jiffies + msecs_to_jiffies(150));
++    bce_xhci_pm_schedule(pm);
 +}
 +
 +void bce_xhci_pm_stop(struct bce_xhci_pm *pm)
@@ -6679,40 +6788,39 @@ index 000000000..45aa999f7
 +    spin_lock_irqsave(&pm->stop_sl, flags);
 +    pm->stopped = true;
 +    spin_unlock_irqrestore(&pm->stop_sl, flags);
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,15,0)
-+    del_timer_sync(&pm->timer);
-+#else
-+    timer_delete_sync(&pm->timer);
-+#endif
++    hrtimer_cancel(&pm->timer);
 +    iowrite32((u32) -2, regb + 2);
 +    iowrite32((u32) -1, regb);
 +}
 +
-+static void bce_xhci_pm_tick(struct timer_list *tl)
++static enum hrtimer_restart bce_xhci_pm_tick(struct hrtimer *timer)
 +{
 +    struct bce_xhci_pm *pm;
 +    unsigned long flags;
 +    u32 __iomem *regb;
-+    ktime_t bt;
++    ktime_t host_time;
 +
-+    pm = container_of(tl, struct bce_xhci_pm, timer);
++    pm = container_of(timer, struct bce_xhci_pm, timer);
 +    regb = (u32*) ((u8*) pm->reg + REG_TIMESTAMP_BASE);
 +    local_irq_save(flags);
 +    ioread32(regb + 2);
 +    mb();
-+    bt = ktime_get_boottime();
-+    iowrite32((u32) bt, regb + 2);
-+    iowrite32((u32) (bt >> 32), regb);
++    /* Match macOS mach_absolute_time(), which does not advance in suspend. */
++    host_time = ktime_get();
++    iowrite32((u32) host_time, regb + 2);
++    iowrite32((u32) (host_time >> 32), regb);
 +
 +    spin_lock(&pm->stop_sl);
 +    if (!pm->stopped)
-+        mod_timer(&pm->timer, jiffies + msecs_to_jiffies(150));
++        bce_xhci_pm_schedule(pm);
 +    spin_unlock(&pm->stop_sl);
 +    local_irq_restore(flags);
++
++    return HRTIMER_NORESTART;
 +}
 diff --git a/drivers/staging/t2bce/t2bce_core/mailbox.h b/drivers/staging/t2bce/t2bce_core/mailbox.h
 new file mode 100644
-index 000000000..8a16bd36a
+index 000000000..07038938f
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_core/mailbox.h
 @@ -0,0 +1,64 @@
@@ -6722,7 +6830,7 @@ index 000000000..8a16bd36a
 +#include <linux/completion.h>
 +#include <linux/mutex.h>
 +#include <linux/pci.h>
-+#include <linux/timer.h>
++#include <linux/hrtimer.h>
 +
 +struct bce_mailbox {
 +    void __iomem *reg_mb;
@@ -6742,8 +6850,8 @@ index 000000000..8a16bd36a
 +    BCE_MB_RESTORE_NO_STATE = 0x15,              // to-device
 +    BCE_MB_SLEEP_LIGHT = 0x16,                   // to-device, unused; reserved for future runtime-PM work
 +    BCE_MB_SAVE_STATE_AND_SLEEP = 0x17,          // to-device
-+    BCE_MB_RESTORE_STATE_AND_WAKE = 0x18,        // to-device
-+    BCE_MB_SAVE_STATE_AND_SLEEP_REJECTED = 0x19, // from-device, stateful suspend payload rejected
++    BCE_MB_RESTORE_STATE_AND_WAKE = 0x1B,        // to-device (Tahoe/macOS)
++    BCE_MB_SAVE_STATE_AND_SLEEP_GROW = 0x19,     // from-device, value is required buffer size
 +    BCE_MB_SAVE_RESTORE_STATE_COMPLETE = 0x1A,   // from-device
 +};
 +
@@ -6768,7 +6876,7 @@ index 000000000..8a16bd36a
 +
 +struct bce_xhci_pm {
 +    void __iomem *reg;
-+    struct timer_list timer;
++    struct hrtimer timer;
 +    struct spinlock stop_sl;
 +    bool stopped;
 +};
@@ -6782,10 +6890,10 @@ index 000000000..8a16bd36a
 +#endif //BCEDRIVER_MAILBOX_H
 diff --git a/drivers/staging/t2bce/t2bce_core/t2bce.h b/drivers/staging/t2bce/t2bce_core/t2bce.h
 new file mode 100644
-index 000000000..b32896191
+index 000000000..838ec633b
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_core/t2bce.h
-@@ -0,0 +1,51 @@
+@@ -0,0 +1,53 @@
 +#ifndef APPLE_BCE_H
 +#define APPLE_BCE_H
 +
@@ -6818,7 +6926,9 @@ index 000000000..b32896191
 +    bool no_state_fallback;
 +    bool no_state_resume;
 +    bool mailbox_channel_active;
++    bool dma_irq_disabled;
 +    struct mutex pm_lock;
++    struct mutex dma_completion_lock;
 +    struct mutex clients_lock;
 +    struct list_head clients;
 +    struct srcu_struct clients_srcu;
@@ -6831,7 +6941,7 @@ index 000000000..b32896191
 +void t2bce_core_clients_shutdown(struct t2bce_device *bce);
 +void t2bce_core_clients_pm_reset(struct t2bce_device *bce);
 +int t2bce_core_clients_pm_prepare(struct t2bce_device *bce);
-+void t2bce_core_clients_pm_prepare_no_state(struct t2bce_device *bce);
++int t2bce_core_clients_pm_prepare_no_state(struct t2bce_device *bce);
 +void t2bce_core_clients_pm_mark_no_state_resume(struct t2bce_device *bce);
 +bool t2bce_core_clients_pm_has_no_state_resume(struct t2bce_device *bce);
 +void t2bce_core_clients_pm_complete(struct t2bce_device *bce);
@@ -6839,10 +6949,10 @@ index 000000000..b32896191
 +#endif //APPLE_BCE_H
 diff --git a/drivers/staging/t2bce/t2bce_core/t2bce_main.c b/drivers/staging/t2bce/t2bce_core/t2bce_main.c
 new file mode 100644
-index 000000000..e1bb6c9ac
+index 000000000..84bfe82c5
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_core/t2bce_main.c
-@@ -0,0 +1,774 @@
+@@ -0,0 +1,932 @@
 +#include "t2bce.h"
 +#include <linux/module.h>
 +#include <linux/crc32.h>
@@ -6881,17 +6991,18 @@ index 000000000..e1bb6c9ac
 +static void bce_free_command_queues(struct t2bce_device *bce);
 +static irqreturn_t bce_handle_mb_irq(int irq, void *dev);
 +static irqreturn_t bce_handle_dma_irq(int irq, void *dev);
++static void bce_process_dma_completions(struct t2bce_device *bce);
 +static int bce_fw_version_handshake(struct t2bce_device *bce);
 +static int bce_register_command_queue(struct t2bce_device *bce, struct bce_queue_memcfg *cfg, int is_sq);
 +static int t2bce_dma_register_queue(void *userdata, struct bce_queue_memcfg *cfg,
 +        const char *name, bool isdirout);
 +static int t2bce_dma_unregister_queue(void *userdata, u16 qid);
 +static int t2bce_dma_flush_queue(void *userdata, u16 qid);
-+static int bce_alloc_state_buffer(struct t2bce_device *bce);
++static int bce_alloc_state_buffer(struct t2bce_device *bce, size_t size);
 +static void bce_free_state_buffer(struct t2bce_device *bce);
 +static int bce_pm_suspend_prepare(struct t2bce_device *bce);
 +static void bce_pm_suspend_abort(struct t2bce_device *bce);
-+static void bce_pm_resume_finish(struct t2bce_device *bce);
++static void bce_pm_resume_finish_locked(struct t2bce_device *bce);
 +
 +static const struct t2bce_dma_engine_ops t2bce_dma_ops = {
 +    .register_queue = t2bce_dma_register_queue,
@@ -6899,17 +7010,21 @@ index 000000000..e1bb6c9ac
 +    .flush_queue = t2bce_dma_flush_queue,
 +};
 +
-+static int bce_alloc_state_buffer(struct t2bce_device *bce)
++#define BCE_STATE_INITIAL_SIZE 0x1000
++#define BCE_STATE_MAX_SIZE     0x100000
++#define BCE_STATE_ADDR_MASK    0xffffffff000ULL
++
++static int bce_alloc_state_buffer(struct t2bce_device *bce, size_t size)
 +{
-+    /* bridgeOS stateful sleep stores BCE state in a persistent 0x2000 buffer. */
-+    bce->saved_data_dma_size = 0x2000;
-+    bce->saved_data_dma_ptr = dma_alloc_coherent(&bce->pci->dev, bce->saved_data_dma_size,
-+            &bce->saved_data_dma_addr, GFP_KERNEL);
++    bce->saved_data_dma_ptr = kzalloc(size, GFP_KERNEL);
 +    if (!bce->saved_data_dma_ptr) {
 +        bce->saved_data_dma_size = 0;
 +        bce->saved_data_dma_addr = 0;
 +        return -ENOMEM;
 +    }
++
++    bce->saved_data_dma_size = size;
++    bce->saved_data_dma_addr = 0;
 +
 +    return 0;
 +}
@@ -6919,8 +7034,7 @@ index 000000000..e1bb6c9ac
 +    if (!bce->saved_data_dma_ptr)
 +        return;
 +
-+    dma_free_coherent(&bce->pci->dev, bce->saved_data_dma_size,
-+            bce->saved_data_dma_ptr, bce->saved_data_dma_addr);
++    kfree(bce->saved_data_dma_ptr);
 +    bce->saved_data_dma_ptr = NULL;
 +    bce->saved_data_dma_addr = 0;
 +    bce->saved_data_dma_size = 0;
@@ -6979,8 +7093,10 @@ index 000000000..e1bb6c9ac
 +    bce->dma.reg_mem_dma = bce->reg_mem_dma;
 +
 +    spin_lock_init(&bce->dma.queues_lock);
++    atomic_set(&bce->dma.available, 1);
 +    ida_init(&bce->dma.queue_ida);
 +    mutex_init(&bce->pm_lock);
++    mutex_init(&bce->dma_completion_lock);
 +    mutex_init(&bce->clients_lock);
 +    INIT_LIST_HEAD(&bce->clients);
 +    status = init_srcu_struct(&bce->clients_srcu);
@@ -7001,9 +7117,6 @@ index 000000000..e1bb6c9ac
 +
 +    if ((status = t2bce_dma_init_segment_list_pool(&bce->dma)))
 +        goto fail_interrupt;
-+
-+    if ((status = bce_alloc_state_buffer(bce)))
-+        goto fail_segment_list_pool;
 +
 +    /*
 +     * DMA on the BCE function depends on function 0 also being bus master.
@@ -7044,7 +7157,6 @@ index 000000000..e1bb6c9ac
 +fail_dev0:
 +#endif
 +    pci_dev_put(bce->pci0);
-+fail_segment_list_pool:
 +    t2bce_dma_destroy_segment_list_pool(&bce->dma);
 +fail_interrupt:
 +    pci_free_irq(dev, 4, dev);
@@ -7129,11 +7241,10 @@ index 000000000..e1bb6c9ac
 +    return IRQ_HANDLED;
 +}
 +
-+static irqreturn_t bce_handle_dma_irq(int irq, void *dev)
++static void bce_process_dma_completions_locked(struct t2bce_device *bce)
 +{
 +    int i;
 +    size_t ce = 0;
-+    struct t2bce_device *bce = pci_get_drvdata(dev);
 +    struct t2bce_dma_engine *dma = &bce->dma;
 +
 +    spin_lock(&dma->queues_lock);
@@ -7142,7 +7253,60 @@ index 000000000..e1bb6c9ac
 +            t2bce_dma_handle_cq_completions_locked(dma, (struct bce_queue_cq *) dma->queues[i], &ce);
 +    spin_unlock(&dma->queues_lock);
 +    t2bce_dma_dispatch_pending_sq_completions(dma, ce);
++}
++
++static void bce_process_dma_completions(struct t2bce_device *bce)
++{
++    mutex_lock(&bce->dma_completion_lock);
++    bce_process_dma_completions_locked(bce);
++    mutex_unlock(&bce->dma_completion_lock);
++}
++
++static irqreturn_t bce_handle_dma_irq(int irq, void *dev)
++{
++    struct t2bce_device *bce = pci_get_drvdata(dev);
++
++    mutex_lock(&bce->dma_completion_lock);
++    bce_process_dma_completions_locked(bce);
++    mutex_unlock(&bce->dma_completion_lock);
 +    return IRQ_HANDLED;
++}
++
++static void bce_dma_engine_disable(struct t2bce_device *bce)
++{
++    /*
++     * Tahoe closes the submission gate and sleeps until its command queue's
++     * pending-element count reaches zero.  Process anything already visible
++     * before waiting; MSI0 remains enabled to deliver later completions.
++     */
++    mutex_lock(&bce->dma_completion_lock);
++    t2bce_dma_disable(&bce->dma);
++    bce_process_dma_completions_locked(bce);
++    mutex_unlock(&bce->dma_completion_lock);
++    t2bce_dma_wait_command_queue_idle(&bce->dma);
++}
++
++static void bce_dma_engine_enable(struct t2bce_device *bce)
++{
++    t2bce_dma_enable(&bce->dma);
++}
++
++static void bce_dma_irq_disable(struct t2bce_device *bce)
++{
++    if (bce->dma_irq_disabled)
++        return;
++
++    disable_irq(pci_irq_vector(bce->pci, 4));
++    bce->dma_irq_disabled = true;
++}
++
++static void bce_dma_irq_enable(struct t2bce_device *bce)
++{
++    if (!bce->dma_irq_disabled)
++        return;
++
++    enable_irq(pci_irq_vector(bce->pci, 4));
++    bce->dma_irq_disabled = false;
 +}
 +
 +static int bce_fw_version_handshake(struct t2bce_device *bce)
@@ -7216,9 +7380,12 @@ index 000000000..e1bb6c9ac
 +{
 +    int status;
 +
++    bce_dma_engine_disable(bce);
 +    status = bce_pm_channel_pause(bce);
-+    if (status)
++    if (status) {
++        bce_dma_engine_enable(bce);
 +        return status;
++    }
 +
 +    /* The XHCI PM doorbell is part of the bridgeOS sleep ordering. */
 +    bce_xhci_pm_stop(&bce->xhci_pm);
@@ -7228,15 +7395,22 @@ index 000000000..e1bb6c9ac
 +static void bce_pm_suspend_abort(struct t2bce_device *bce)
 +{
 +    /* Failed suspend must unwind the wrapper order back to the running state. */
++    bce_dma_irq_enable(bce);
 +    bce_xhci_pm_start(&bce->xhci_pm, false);
 +    bce_pm_channel_resume(bce);
++    bce_dma_engine_enable(bce);
++    bce_process_dma_completions(bce);
 +}
 +
-+static void bce_pm_resume_finish(struct t2bce_device *bce)
++/* dma_completion_lock serializes this sequence against the threaded MSI0 handler. */
++static void bce_pm_resume_finish_locked(struct t2bce_device *bce)
 +{
 +    /* Match the bridgeOS wake ordering before clients observe resume complete. */
 +    bce_xhci_pm_start(&bce->xhci_pm, false);
 +    bce_pm_channel_resume(bce);
++    bce_dma_engine_enable(bce);
++    /* Tahoe explicitly services completion vector 0 after enabling the engine. */
++    bce_process_dma_completions_locked(bce);
 +}
 +
 +static int bce_register_command_queue(struct t2bce_device *bce, struct bce_queue_memcfg *cfg, int is_sq)
@@ -7350,40 +7524,114 @@ index 000000000..e1bb6c9ac
 +    return 0;
 +}
 +
-+static int bce_pm_suspend_try_state(struct t2bce_device *bce)
++static int bce_pm_suspend_no_state_fallback(struct t2bce_device *bce)
 +{
 +    int status;
-+    u64 resp;
 +
-+    /* Try the stateful bridgeOS path first; a reject falls back to no-state. */
-+    bce->stateful_suspend_valid = false;
++    /* Client teardown sends firmware commands, so restore transport first. */
++    bce_pm_suspend_abort(bce);
 +
-+    if (!bce->saved_data_dma_ptr || !bce->saved_data_dma_addr || !bce->saved_data_dma_size) {
-+        pr_err("t2bce_core: suspend failed (persistent state buffer missing)\n");
-+        return -ENOMEM;
-+    }
++    /* Let ->complete rebuild clients if teardown or the sleep request fails. */
++    bce->no_state_fallback = true;
++    bce->no_state_resume = true;
++    t2bce_core_clients_pm_mark_no_state_resume(bce);
 +
-+    BUG_ON((bce->saved_data_dma_addr % 4096) != 0);
-+    status = bce_mailbox_send_locked(&bce->mbox,
-+            BCE_MB_MSG(BCE_MB_SAVE_STATE_AND_SLEEP,
-+                    (bce->saved_data_dma_addr & ~(4096LLU - 1)) | (bce->saved_data_dma_size / 4096)),
-+            &resp);
++    status = t2bce_core_clients_pm_prepare_no_state(bce);
 +    if (status) {
-+        pr_err("t2bce_core: suspend failed (mailbox send)\n");
++        pr_err("t2bce_core: no-state client preparation failed: %d\n", status);
++        bce_pm_suspend_abort(bce);
 +        return status;
 +    }
 +
-+    if (BCE_MB_TYPE(resp) == BCE_MB_SAVE_RESTORE_STATE_COMPLETE) {
-+        pr_debug("t2bce_core: suspend: remote response: restore state saved\n");
-+        bce->stateful_suspend_valid = true;
-+        return 0;
++    /* Client teardown is complete; quiesce transport before no-state sleep. */
++    status = bce_pm_suspend_prepare(bce);
++    if (!status)
++        status = bce_pm_suspend_fallback_no_state(bce);
++    if (status)
++        bce_pm_suspend_abort(bce);
++    return status;
++}
++
++static int bce_pm_suspend_try_state(struct t2bce_device *bce)
++{
++    int status;
++    size_t requested_size;
++    u64 resp;
++
++    /* macOS creates a fresh 4 KiB state buffer for every suspend attempt. */
++    bce->stateful_suspend_valid = false;
++    bce_free_state_buffer(bce);
++    status = bce_alloc_state_buffer(bce, BCE_STATE_INITIAL_SIZE);
++    if (status)
++        return status;
++
++    for (;;) {
++        bce->saved_data_dma_addr = dma_map_single(&bce->pci->dev,
++                bce->saved_data_dma_ptr, bce->saved_data_dma_size,
++                DMA_FROM_DEVICE);
++        if (dma_mapping_error(&bce->pci->dev,
++                bce->saved_data_dma_addr)) {
++            bce->saved_data_dma_addr = 0;
++            status = -ENOMEM;
++            goto fail;
++        }
++        if (bce->saved_data_dma_addr & (BCE_STATE_INITIAL_SIZE - 1)) {
++            pr_err("t2bce_core: suspend state DMA address is not page aligned\n");
++            status = -EINVAL;
++            goto unmap_fail;
++        }
++
++        status = bce_mailbox_send_locked(&bce->mbox,
++                BCE_MB_MSG(BCE_MB_SAVE_STATE_AND_SLEEP,
++                        (bce->saved_data_dma_addr & BCE_STATE_ADDR_MASK) |
++                        (bce->saved_data_dma_size / BCE_STATE_INITIAL_SIZE)),
++                &resp);
++        dma_unmap_single(&bce->pci->dev, bce->saved_data_dma_addr,
++                bce->saved_data_dma_size, DMA_FROM_DEVICE);
++        bce->saved_data_dma_addr = 0;
++        if (status) {
++            pr_err("t2bce_core: suspend failed (mailbox send)\n");
++            goto fail;
++        }
++
++        if (BCE_MB_TYPE(resp) == BCE_MB_SAVE_RESTORE_STATE_COMPLETE) {
++            pr_debug("t2bce_core: suspend: remote response: restore state saved\n");
++            bce->stateful_suspend_valid = true;
++            return 0;
++        }
++
++        if (BCE_MB_TYPE(resp) != BCE_MB_SAVE_STATE_AND_SLEEP_GROW) {
++            pr_err("t2bce_core: unexpected state-save response type %#x\n",
++                    BCE_MB_TYPE(resp));
++            status = -EINVAL;
++            goto fail;
++        }
++
++        requested_size = BCE_MB_VALUE(resp);
++        if (requested_size <= bce->saved_data_dma_size ||
++                requested_size > BCE_STATE_MAX_SIZE) {
++            pr_err("t2bce_core: invalid state buffer size request %zu\n",
++                    requested_size);
++            status = -EINVAL;
++            goto fail;
++        }
++
++        requested_size = ALIGN(requested_size, BCE_STATE_INITIAL_SIZE);
++        pr_debug("t2bce_core: growing suspend state buffer to %zu bytes\n",
++                requested_size);
++        bce_free_state_buffer(bce);
++        status = bce_alloc_state_buffer(bce, requested_size);
++        if (status)
++            return status;
 +    }
 +
-+    if (BCE_MB_TYPE(resp) == BCE_MB_SAVE_STATE_AND_SLEEP_REJECTED) {
-+        pr_err("t2bce_core: remote rejected stateful suspend payload\n");
-+        return -EAGAIN;
-+    }
-+    return -EINVAL;
++unmap_fail:
++    dma_unmap_single(&bce->pci->dev, bce->saved_data_dma_addr,
++            bce->saved_data_dma_size, DMA_FROM_DEVICE);
++    bce->saved_data_dma_addr = 0;
++fail:
++    bce_free_state_buffer(bce);
++    return status;
 +}
 +
 +static int bce_pm_resume_no_state(struct t2bce_device *bce)
@@ -7407,17 +7655,44 @@ index 000000000..e1bb6c9ac
 +    int status;
 +    u64 resp;
 +
-+    if ((status = bce_mailbox_send_locked(&bce->mbox, BCE_MB_MSG(BCE_MB_RESTORE_STATE_AND_WAKE,
-+            (bce->saved_data_dma_addr & ~(4096LLU - 1)) | (bce->saved_data_dma_size / 4096)), &resp))) {
++    if (!bce->saved_data_dma_ptr || !bce->saved_data_dma_size)
++        return -EINVAL;
++
++    /* macOS prepares a new DMA mapping for the retained state on wake. */
++    bce->saved_data_dma_addr = dma_map_single(&bce->pci->dev,
++            bce->saved_data_dma_ptr, bce->saved_data_dma_size,
++            DMA_TO_DEVICE);
++    if (dma_mapping_error(&bce->pci->dev, bce->saved_data_dma_addr)) {
++        bce->saved_data_dma_addr = 0;
++        bce_free_state_buffer(bce);
++        return -ENOMEM;
++    }
++    if (bce->saved_data_dma_addr & (BCE_STATE_INITIAL_SIZE - 1)) {
++        pr_err("t2bce_core: resume state DMA address is not page aligned\n");
++        status = -EINVAL;
++        goto out_unmap;
++    }
++
++    status = bce_mailbox_send_locked(&bce->mbox,
++            BCE_MB_MSG(BCE_MB_RESTORE_STATE_AND_WAKE,
++                    (bce->saved_data_dma_addr & BCE_STATE_ADDR_MASK) |
++                    (bce->saved_data_dma_size / BCE_STATE_INITIAL_SIZE)),
++            &resp);
++    if (status) {
 +        pr_err("t2bce_core: resume with state failed (mailbox send)\n");
-+        return status;
++        goto out_unmap;
 +    }
 +    if (BCE_MB_TYPE(resp) != BCE_MB_SAVE_RESTORE_STATE_COMPLETE) {
 +        pr_err("t2bce_core: resume with state failed (invalid device response)\n");
-+        return -EINVAL;
++        status = -EINVAL;
 +    }
 +
-+    return 0;
++out_unmap:
++    dma_unmap_single(&bce->pci->dev, bce->saved_data_dma_addr,
++            bce->saved_data_dma_size, DMA_TO_DEVICE);
++    bce->saved_data_dma_addr = 0;
++    bce_free_state_buffer(bce);
++    return status;
 +}
 +
 +static int t2bce_suspend(struct device *dev)
@@ -7442,15 +7717,7 @@ index 000000000..e1bb6c9ac
 +
 +    if (!bce_stateful_supported(bce)) {
 +        /* No-state resume tears down and rebuilds clients that cannot preserve firmware state. */
-+        t2bce_core_clients_pm_prepare_no_state(bce);
-+        status = bce_pm_suspend_fallback_no_state(bce);
-+        if (!status) {
-+            bce->no_state_fallback = true;
-+            bce->no_state_resume = true;
-+            t2bce_core_clients_pm_mark_no_state_resume(bce);
-+        } else {
-+            bce_pm_suspend_abort(bce);
-+        }
++        status = bce_pm_suspend_no_state_fallback(bce);
 +        goto out_unlock;
 +    }
 +
@@ -7464,18 +7731,12 @@ index 000000000..e1bb6c9ac
 +    }
 +
 +    /* bridgeOS can reject state save; fall back to the no-state path then. */
-+    pr_debug("t2bce_core: suspend: stateful path not ready, falling back to no-state\n");
-+    t2bce_core_clients_pm_prepare_no_state(bce);
-+    status = bce_pm_suspend_fallback_no_state(bce);
-+    if (!status) {
-+        bce->no_state_fallback = true;
-+        bce->no_state_resume = true;
-+        t2bce_core_clients_pm_mark_no_state_resume(bce);
-+    } else {
-+        bce_pm_suspend_abort(bce);
-+    }
++    pr_info("t2bce_core: suspend: stateful path not ready, falling back to no-state\n");
++    status = bce_pm_suspend_no_state_fallback(bce);
 +
 +out_unlock:
++    if (!status)
++        bce_dma_irq_disable(bce);
 +    mutex_unlock(&bce->pm_lock);
 +    pr_info("t2bce_core: suspend: exit status=%d stateful_valid=%d no_state_resume=%d no_state_fallback=%d\n",
 +            status, bce->stateful_suspend_valid, bce->no_state_resume, bce->no_state_fallback);
@@ -7490,9 +7751,13 @@ index 000000000..e1bb6c9ac
 +
 +    pr_info("t2bce_core: resume: entry\n");
 +    mutex_lock(&bce->pm_lock);
++    /* Serialize MSI0 delivery across RESTORE, engine enable and the CQ0 poll. */
++    mutex_lock(&bce->dma_completion_lock);
 +
 +    pci_set_master(bce->pci);
 +    pci_set_master(bce->pci0);
++    /* Tahoe enables MSI0 before issuing the RESTORE/WAKE mailbox command. */
++    bce_dma_irq_enable(bce);
 +
 +    /* Resume follows the suspend result, not a preselected policy. */
 +    used_stateful = bce_stateful_supported(bce) && bce->stateful_suspend_valid;
@@ -7501,15 +7766,18 @@ index 000000000..e1bb6c9ac
 +        status = bce_pm_resume_stateful(bce);
 +    else
 +        status = bce_pm_resume_no_state(bce);
-+    if (status)
++    if (status) {
++        bce_pm_resume_finish_locked(bce);
 +        goto out_unlock;
++    }
 +
 +    if (used_stateful)
 +        bce->stateful_suspend_valid = false;
 +
-+    bce_pm_resume_finish(bce);
++    bce_pm_resume_finish_locked(bce);
 +
 +out_unlock:
++    mutex_unlock(&bce->dma_completion_lock);
 +    mutex_unlock(&bce->pm_lock);
 +    pr_info("t2bce_core: resume: exit status=%d path=%s stateful_valid=%d no_state_resume=%d no_state_fallback=%d\n",
 +            status, used_stateful ? "stateful" : "no-state",
@@ -7613,16 +7881,16 @@ index 000000000..e1bb6c9ac
 +MODULE_LICENSE("GPL");
 +MODULE_AUTHOR("André Eikmeyer <andre.eikmeyer@kait2en.org>");
 +MODULE_DESCRIPTION("T2 BCE core driver");
-+MODULE_VERSION("0.07");
++MODULE_VERSION("0.09");
 +MODULE_SOFTDEP("post: t2bce_vhci");
 +module_init(t2bce_module_init);
 +module_exit(t2bce_module_exit);
 diff --git a/drivers/staging/t2bce/t2bce_core/transport.c b/drivers/staging/t2bce/t2bce_core/transport.c
 new file mode 100644
-index 000000000..ab78e2147
+index 000000000..100516ec1
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_core/transport.c
-@@ -0,0 +1,477 @@
+@@ -0,0 +1,482 @@
 +#include "t2bce_core_transport.h"
 +#include "t2bce.h"
 +
@@ -7837,18 +8105,23 @@ index 000000000..ab78e2147
 +    return ret;
 +}
 +
-+void t2bce_core_clients_pm_prepare_no_state(struct t2bce_device *bce)
++int t2bce_core_clients_pm_prepare_no_state(struct t2bce_device *bce)
 +{
 +    struct t2bce_core_client *client;
++    int ret = 0;
 +    int srcu_idx;
 +
 +    srcu_idx = srcu_read_lock(&bce->clients_srcu);
 +    list_for_each_entry_srcu(client, &bce->clients, list,
 +            srcu_read_lock_held(&bce->clients_srcu)) {
-+        if (client->pm_ops.pm_prepare_no_state)
-+            client->pm_ops.pm_prepare_no_state(READ_ONCE(client->pm_userdata));
++        if (client->pm_ops.pm_prepare_no_state) {
++            ret = client->pm_ops.pm_prepare_no_state(READ_ONCE(client->pm_userdata));
++            if (ret)
++                break;
++        }
 +    }
 +    srcu_read_unlock(&bce->clients_srcu, srcu_idx);
++    return ret;
 +}
 +
 +void t2bce_core_clients_pm_mark_no_state_resume(struct t2bce_device *bce)
@@ -8114,10 +8387,10 @@ index 000000000..d8bb26e69
 +ccflags-y += -I$(src)/include
 diff --git a/drivers/staging/t2bce/t2bce_dma/include/t2bce_dma_queue.h b/drivers/staging/t2bce/t2bce_dma/include/t2bce_dma_queue.h
 new file mode 100644
-index 000000000..0fb690b04
+index 000000000..60519154e
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_dma/include/t2bce_dma_queue.h
-@@ -0,0 +1,201 @@
+@@ -0,0 +1,208 @@
 +#ifndef T2BCE_DMA_QUEUE_H
 +#define T2BCE_DMA_QUEUE_H
 +
@@ -8125,6 +8398,7 @@ index 000000000..0fb690b04
 +#include <linux/gfp_types.h>
 +#include <linux/pci.h>
 +#include <linux/scatterlist.h>
++#include <linux/wait.h>
 +
 +#define BCE_CMD_SIZE 0x40
 +#define BCE_MAX_QUEUE_COUNT 0x100
@@ -8182,10 +8456,12 @@ index 000000000..0fb690b04
 +    void *data;
 +    void *userdata;
 +    void __iomem *reg_mem_dma;
++    struct t2bce_dma_engine *dma;
 +
 +    atomic_t available_commands;
 +    struct completion available_command_completion;
 +    atomic_t available_command_completion_waiting_count;
++    wait_queue_head_t idle_wait;
 +    u32 head, tail;
 +
 +    u32 completion_cidx, completion_tail;
@@ -8220,6 +8496,7 @@ index 000000000..0fb690b04
 +    struct bce_queue_cmdq *cmd_cmdq;
 +    struct dma_pool *segment_list_pool;
 +    struct bce_queue_sq *int_sq_list[BCE_MAX_QUEUE_COUNT];
++    atomic_t available;
 +    bool is_being_removed;
 +};
 +
@@ -8282,6 +8559,9 @@ index 000000000..0fb690b04
 +void t2bce_dma_cancel_submission_reservation(struct bce_queue_sq *sq);
 +void t2bce_dma_submit_to_device(struct bce_queue_sq *sq);
 +void t2bce_dma_notify_submission_complete(struct bce_queue_sq *sq);
++void t2bce_dma_disable(struct t2bce_dma_engine *dma);
++void t2bce_dma_enable(struct t2bce_dma_engine *dma);
++void t2bce_dma_wait_command_queue_idle(struct t2bce_dma_engine *dma);
 +
 +void t2bce_dma_set_next_submission_single(struct bce_queue_sq *sq, dma_addr_t addr, size_t size);
 +int t2bce_dma_init_segment_list_pool(struct t2bce_dma_engine *dma);
@@ -8321,10 +8601,10 @@ index 000000000..0fb690b04
 +#endif
 diff --git a/drivers/staging/t2bce/t2bce_dma/queue.c b/drivers/staging/t2bce/t2bce_dma/queue.c
 new file mode 100644
-index 000000000..97d97d72e
+index 000000000..1eeae7f97
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_dma/queue.c
-@@ -0,0 +1,815 @@
+@@ -0,0 +1,852 @@
 +#include "t2bce_dma_queue.h"
 +#include <linux/dmapool.h>
 +#include <linux/export.h>
@@ -8550,11 +8830,13 @@ index 000000000..97d97d72e
 +                                 &q->dma_handle, GFP_KERNEL);
 +    q->completion = compl;
 +    q->userdata = userdata;
++    q->dma = dma;
 +    q->completion_data = kzalloc(sizeof(struct bce_sq_completion_data) * el_count, GFP_KERNEL);
 +    q->reg_mem_dma = dma->reg_mem_dma;
 +    atomic_set(&q->available_commands, el_count - 1);
 +    init_completion(&q->available_command_completion);
 +    atomic_set(&q->available_command_completion_waiting_count, 0);
++    init_waitqueue_head(&q->idle_wait);
 +    if (!q->data || !q->completion_data) {
 +        pr_err("DMA queue memory alloc failed\n");
 +        if (q->data)
@@ -8588,7 +8870,12 @@ index 000000000..97d97d72e
 +
 +int t2bce_dma_reserve_submission(struct bce_queue_sq *sq, unsigned long *timeout)
 +{
++    if (!atomic_read(&sq->dma->available))
++        return -ESHUTDOWN;
++
 +    while (atomic_dec_if_positive(&sq->available_commands) < 0) {
++        if (!atomic_read(&sq->dma->available))
++            return -ESHUTDOWN;
 +        if (!timeout || !*timeout)
 +            return -EAGAIN;
 +        atomic_inc(&sq->available_command_completion_waiting_count);
@@ -8597,10 +8884,39 @@ index 000000000..97d97d72e
 +            if (atomic_dec_if_positive(&sq->available_command_completion_waiting_count) < 0)
 +                try_wait_for_completion(&sq->available_command_completion); /* consume the pending completion */
 +        }
++        if (!atomic_read(&sq->dma->available))
++            return -ESHUTDOWN;
++    }
++    if (!atomic_read(&sq->dma->available)) {
++        atomic_inc(&sq->available_commands);
++        return -ESHUTDOWN;
 +    }
 +    return 0;
 +}
 +EXPORT_SYMBOL_GPL(t2bce_dma_reserve_submission);
++
++void t2bce_dma_disable(struct t2bce_dma_engine *dma)
++{
++    atomic_set(&dma->available, 0);
++    smp_mb__after_atomic();
++}
++EXPORT_SYMBOL_GPL(t2bce_dma_disable);
++
++void t2bce_dma_enable(struct t2bce_dma_engine *dma)
++{
++    atomic_set(&dma->available, 1);
++    smp_mb__after_atomic();
++}
++EXPORT_SYMBOL_GPL(t2bce_dma_enable);
++
++void t2bce_dma_wait_command_queue_idle(struct t2bce_dma_engine *dma)
++{
++    struct bce_queue_sq *sq = dma->cmd_cmdq->sq;
++
++    wait_event(sq->idle_wait,
++            atomic_read(&sq->available_commands) == sq->el_count - 1);
++}
++EXPORT_SYMBOL_GPL(t2bce_dma_wait_command_queue_idle);
 +
 +void t2bce_dma_cancel_submission_reservation(struct bce_queue_sq *sq)
 +{
@@ -8626,6 +8942,7 @@ index 000000000..97d97d72e
 +{
 +    sq->head = (sq->head + 1) % sq->el_count;
 +    atomic_inc(&sq->available_commands);
++    wake_up_all(&sq->idle_wait);
 +    if (atomic_dec_if_positive(&sq->available_command_completion_waiting_count) >= 0) {
 +        complete(&sq->available_command_completion);
 +    }
@@ -11070,10 +11387,10 @@ index 000000000..0ae979040
 +#endif //BCEDRIVER_TRANSFER_H
 diff --git a/drivers/staging/t2bce/t2bce_vhci/vhci.c b/drivers/staging/t2bce/t2bce_vhci/vhci.c
 new file mode 100644
-index 000000000..17f781f42
+index 000000000..9c6f2047f
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_vhci/vhci.c
-@@ -0,0 +1,1154 @@
+@@ -0,0 +1,1218 @@
 +#include "vhci.h"
 +#include "command.h"
 +#include <linux/usb.h>
@@ -11118,7 +11435,7 @@ index 000000000..17f781f42
 +static void bce_vhci_shutdown_client(void *userdata);
 +static void bce_vhci_pm_reset_client(void *userdata);
 +static int bce_vhci_pm_prepare_client(void *userdata);
-+static void bce_vhci_pm_prepare_no_state_client(void *userdata);
++static int bce_vhci_pm_prepare_no_state_client(void *userdata);
 +static void bce_vhci_pm_mark_no_state_resume_client(void *userdata);
 +static bool bce_vhci_pm_is_no_state_resume_client(void *userdata);
 +static void bce_vhci_pm_complete_client(void *userdata);
@@ -11316,9 +11633,12 @@ index 000000000..17f781f42
 +    return status;
 +}
 +
-+void bce_vhci_pm_prepare_no_state(struct bce_vhci *vhci)
++int bce_vhci_pm_prepare_no_state(struct bce_vhci *vhci)
 +{
++    /* HCD removal needs firmware replies delivered through event queues. */
++    bce_vhci_resume_event_queues(vhci);
 +    bce_vhci_remove_hcd(vhci);
++    return bce_vhci_pause_event_queues(vhci);
 +}
 +
 +void bce_vhci_pm_mark_no_state_resume(struct bce_vhci *vhci)
@@ -11358,9 +11678,9 @@ index 000000000..17f781f42
 +    bce_vhci_shutdown(userdata);
 +}
 +
-+static void bce_vhci_pm_prepare_no_state_client(void *userdata)
++static int bce_vhci_pm_prepare_no_state_client(void *userdata)
 +{
-+    bce_vhci_pm_prepare_no_state(userdata);
++    return bce_vhci_pm_prepare_no_state(userdata);
 +}
 +
 +static void bce_vhci_pm_mark_no_state_resume_client(void *userdata)
@@ -11456,6 +11776,7 @@ index 000000000..17f781f42
 +    struct usb_hub_status *hs;
 +    struct usb_port_status *ps;
 +    u32 port_status;
++    bool reset_resume;
 +    if (typeReq == GetHubDescriptor && wLength >= sizeof(struct usb_hub_descriptor)) {
 +        hd = (struct usb_hub_descriptor *) buf;
 +        memset(hd, 0, sizeof(*hd));
@@ -11492,7 +11813,20 @@ index 000000000..17f781f42
 +
 +        if ((status = bce_vhci_cmd_port_status(&vhci->cq, (u8) wIndex, 0, &port_status)))
 +            return status;
-+        if (port_status & BCE_VHCI_PORT_STATUS_ENABLED)
++
++        /*
++         * bridgeOS does not re-arm a preserved device's bulk OUT read credits
++         * across a stateful sleep; only the device's own SET_INTERFACE does.
++         * Report such a port as connected but not enabled until usbcore has
++         * reset it, which makes usbcore reset-resume the device (restore its
++         * configuration and interfaces) instead of resuming it in place.
++         * Devices with only IN endpoints keep resuming in place: their EP0
++         * credits do survive sleep.
++         */
++        reset_resume = wIndex <= BITS_PER_LONG &&
++                       test_bit(wIndex - 1, &vhci->stateful_reset_ports);
++
++        if ((port_status & BCE_VHCI_PORT_STATUS_ENABLED) && !reset_resume)
 +            ps->wPortStatus |= USB_PORT_STAT_ENABLE;
 +        if (port_status & BCE_VHCI_PORT_STATUS_CONNECTED)
 +            ps->wPortStatus |= USB_PORT_STAT_CONNECTION;
@@ -11502,11 +11836,14 @@ index 000000000..17f781f42
 +            ps->wPortStatus |= USB_PORT_STAT_RESET;
 +        if (port_status & BCE_VHCI_PORT_STATUS_HIGH_SPEED)
 +            ps->wPortStatus |= USB_PORT_STAT_HIGH_SPEED;
-+        if (port_status & (BCE_VHCI_PORT_STATUS_SUSPENDED |
-+                           BCE_VHCI_PORT_STATUS_SUSPENDED_LEGACY))
++        if ((port_status & (BCE_VHCI_PORT_STATUS_SUSPENDED |
++                            BCE_VHCI_PORT_STATUS_SUSPENDED_LEGACY)) && !reset_resume)
 +            ps->wPortStatus |= USB_PORT_STAT_SUSPEND;
 +        if (port_status & BCE_VHCI_PORT_STATUS_C_CONNECTION)
 +            ps->wPortChange |= USB_PORT_STAT_C_CONNECTION;
++        if (reset_resume)
++            pr_debug("t2bce_vhci: hub reporting port=%u for reset-resume raw=%x status=%x\n",
++                    wIndex, port_status, ps->wPortStatus);
 +        /* pr_debug("t2bce_vhci: hub GetPortStatus port=%u raw=%x status=%x change=%x\n",
 +                wIndex, port_status, ps->wPortStatus, ps->wPortChange); */
 +        return 0;
@@ -11520,6 +11857,8 @@ index 000000000..17f781f42
 +        }
 +        if (wValue == USB_PORT_FEAT_RESET) {
 +            pr_debug("t2bce_vhci: hub SetPortFeature RESET port=%u\n", wIndex);
++            if (wIndex <= BITS_PER_LONG)
++                clear_bit(wIndex - 1, &vhci->stateful_reset_ports);
 +            return bce_vhci_reset_device(vhci, wIndex, wValue);
 +        }
 +        if (wValue == USB_PORT_FEAT_SUSPEND) {
@@ -11575,13 +11914,18 @@ index 000000000..17f781f42
 +    if (vhci->port_to_device[udev->portnum])
 +        return 0;
 +
++    vdev = kzalloc(sizeof(struct bce_vhci_device), GFP_KERNEL);
++    if (!vdev)
++        return -ENOMEM;
++
 +    /* bridgeOS requires a firmware device id before endpoints are created. */
-+    if (bce_vhci_cmd_device_create(&vhci->cq, udev->portnum, &devid))
++    if (bce_vhci_cmd_device_create(&vhci->cq, udev->portnum, &devid)) {
++        kfree(vdev);
 +        return -EIO;
++    }
 +
 +    pr_debug("t2bce_vhci: device_create port=%u dev=%u\n", udev->portnum, devid);
 +
-+    vdev = kzalloc(sizeof(struct bce_vhci_device), GFP_KERNEL);
 +    vhci->port_to_device[udev->portnum] = devid;
 +    vhci->devices[devid] = vdev;
 +
@@ -11620,8 +11964,11 @@ index 000000000..17f781f42
 +    dev = vhci->devices[devid];
 +    for (i = 0; i < 32; i++) {
 +        if (dev->tq_mask & BIT(i)) {
-+            bce_vhci_transfer_queue_pause(&dev->tq[i], BCE_VHCI_PAUSE_SHUTDOWN);
-+            bce_vhci_cmd_endpoint_destroy(&vhci->cq, devid, dev->tq[i].endp_addr);
++            if (!bce_vhci_transfer_queue_pause(&dev->tq[i], BCE_VHCI_PAUSE_SHUTDOWN))
++                bce_vhci_cmd_endpoint_destroy(&vhci->cq, devid, dev->tq[i].endp_addr);
++            else
++                pr_warn("t2bce_vhci: [%02x] pause not confirmed, skipping endpoint destroy\n",
++                        dev->tq[i].endp_addr);
 +            if (dev->tq[i].endp)
 +                dev->tq[i].endp->hcpriv = NULL;
 +            bce_vhci_destroy_transfer_queue(vhci, &dev->tq[i]);
@@ -11629,6 +11976,8 @@ index 000000000..17f781f42
 +    }
 +    vhci->devices[devid] = NULL;
 +    vhci->port_to_device[udev->portnum] = 0;
++    if (udev->portnum <= BITS_PER_LONG)
++        clear_bit(udev->portnum - 1, &vhci->stateful_reset_ports);
 +    bce_vhci_cmd_device_destroy(&vhci->cq, devid);
 +    kfree(dev);
 +}
@@ -11648,8 +11997,11 @@ index 000000000..17f781f42
 +
 +        for (i = 0; i < 32; i++) {
 +            if (dev->tq_mask & BIT(i)) {
-+                bce_vhci_transfer_queue_pause(&dev->tq[i], BCE_VHCI_PAUSE_SHUTDOWN);
-+                bce_vhci_cmd_endpoint_destroy(&vhci->cq, devid, dev->tq[i].endp_addr);
++                if (!bce_vhci_transfer_queue_pause(&dev->tq[i], BCE_VHCI_PAUSE_SHUTDOWN))
++                    bce_vhci_cmd_endpoint_destroy(&vhci->cq, devid, dev->tq[i].endp_addr);
++                else
++                    pr_warn("t2bce_vhci: [%02x] pause not confirmed, skipping endpoint destroy\n",
++                            dev->tq[i].endp_addr);
 +                if (dev->tq[i].endp)
 +                    dev->tq[i].endp->hcpriv = NULL;
 +                bce_vhci_destroy_transfer_queue(vhci, &dev->tq[i]);
@@ -11781,6 +12133,30 @@ index 000000000..17f781f42
 +    return status;
 +}
 +
++/*
++ * Devices with bulk OUT endpoints lose the T2's queued reads across a
++ * stateful sleep and need a reset-resume (see the hub GetPortStatus
++ * handling). OUT endpoints other than EP0 use transfer queue indices 1
++ * to 15.
++ */
++static void bce_vhci_mark_stateful_reset_ports(struct bce_vhci *vhci)
++{
++    int port;
++    bce_vhci_device_t devid;
++
++    vhci->stateful_reset_ports = 0;
++    for (port = 1; port < ARRAY_SIZE(vhci->port_to_device) && port <= BITS_PER_LONG; port++) {
++        devid = vhci->port_to_device[port];
++        if (!devid || !vhci->devices[devid])
++            continue;
++        if (vhci->devices[devid]->tq_mask & GENMASK(15, 1)) {
++            set_bit(port - 1, &vhci->stateful_reset_ports);
++            pr_debug("t2bce_vhci: stateful resume will reset-resume port=%d dev=%u tq_mask=%x\n",
++                    port, devid, vhci->devices[devid]->tq_mask);
++        }
++    }
++}
++
 +static int bce_vhci_bus_resume(struct usb_hcd *hcd)
 +{
 +    struct bce_vhci *vhci = bce_vhci_from_hcd(hcd);
@@ -11788,6 +12164,7 @@ index 000000000..17f781f42
 +
 +    pr_info("t2bce_vhci: bus_resume entry\n");
 +    vhci->port_change_pending = 0;
++    bce_vhci_mark_stateful_reset_ports(vhci);
 +    bce_vhci_resume_event_queues(vhci);
 +    status = bce_vhci_resume_suspended(vhci);
 +    WRITE_ONCE(vhci->system_suspending, false);
@@ -11882,7 +12259,11 @@ index 000000000..17f781f42
 +        }
 +    }
 +
-+    bce_vhci_cmd_endpoint_destroy(&vhci->cq, devid, (u8) (endp->desc.bEndpointAddress & 0x8Fu));
++    if (!bce_vhci_transfer_queue_pause(q, BCE_VHCI_PAUSE_SHUTDOWN))
++        bce_vhci_cmd_endpoint_destroy(&vhci->cq, devid, (u8) (endp->desc.bEndpointAddress & 0x8Fu));
++    else
++        pr_warn("t2bce_vhci: [%02x] pause not confirmed, skipping endpoint destroy\n",
++                (u8) (endp->desc.bEndpointAddress & 0x8Fu));
 +    vdev->tq_mask &= ~BIT(endp_index);
 +    bce_vhci_destroy_transfer_queue(vhci, q);
 +    endp->hcpriv = NULL;
@@ -12230,10 +12611,10 @@ index 000000000..17f781f42
 +module_exit(bce_vhci_module_exit);
 diff --git a/drivers/staging/t2bce/t2bce_vhci/vhci.h b/drivers/staging/t2bce/t2bce_vhci/vhci.h
 new file mode 100644
-index 000000000..2f8f19e9f
+index 000000000..c2d0d1b60
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_vhci/vhci.h
-@@ -0,0 +1,67 @@
+@@ -0,0 +1,69 @@
 +#ifndef BCE_VHCI_H
 +#define BCE_VHCI_H
 +
@@ -12276,6 +12657,8 @@ index 000000000..2f8f19e9f
 +    struct work_struct w_fw_events;
 +    struct work_struct w_add_hcd;
 +    unsigned long port_change_pending;
++    /* Ports whose device must be reset-resumed after a stateful resume. */
++    unsigned long stateful_reset_ports;
 +    bool no_state_resume;
 +    bool hcd_registered;
 +    bool system_suspending;
@@ -12293,7 +12676,7 @@ index 000000000..2f8f19e9f
 +void bce_vhci_shutdown(struct bce_vhci *vhci);
 +void bce_vhci_pm_reset(struct bce_vhci *vhci);
 +int bce_vhci_pm_prepare(struct bce_vhci *vhci);
-+void bce_vhci_pm_prepare_no_state(struct bce_vhci *vhci);
++int bce_vhci_pm_prepare_no_state(struct bce_vhci *vhci);
 +void bce_vhci_pm_mark_no_state_resume(struct bce_vhci *vhci);
 +bool bce_vhci_pm_is_no_state_resume(struct bce_vhci *vhci);
 +void bce_vhci_pm_complete(struct bce_vhci *vhci);
