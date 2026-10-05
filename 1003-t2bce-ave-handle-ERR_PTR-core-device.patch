@@ -1,0 +1,44 @@
+From: Jason Perlow <jperlow@gmail.com>
+Subject: [PATCH] staging: t2bce: handle an ERR_PTR from t2bce_core_device_get()
+
+t2bce_core_device_get() does not return NULL when the T2 BCE core is
+absent: with no core registered it returns ERR_PTR(-EPROBE_DEFER), and
+while the core is being removed it returns ERR_PTR(-ENODEV). The only
+non-error return is get_device(bce->dev), which is never NULL.
+
+t2bce_ave_init() nevertheless tested the result with "if (!core_dev)"
+and so accepted the error pointer as a valid parent for device_create().
+device_add()/kobject_get() then dereferences the poisoned pointer and
+oopses on any machine or VM that loads t2bce_ave without a bound T2:
+
+  BUG: unable to handle page fault for address: fffffffffffffe37
+  Oops: 0000 [#1] SMP NOPTI
+  RIP: 0010:kobject_get+0xd/0x70
+  ...
+   device_add+0x8f/0x850
+   t2bce_ave_init+0xb2/0xff0 [t2bce_ave]
+
+The sibling t2bce_vhci driver already handles this with IS_ERR() and
+PTR_ERR(); do the same here. Use IS_ERR_OR_NULL() so a NULL return is
+also rejected, clear the field before the error cleanup path (which
+deliberately does not call t2bce_core_device_put(), since that must not
+be invoked on an ERR_PTR), and preserve PTR_ERR() so a load that races
+the core probe fails cleanly with -EPROBE_DEFER instead of crashing.
+
+Signed-off-by: Jason Perlow <jperlow@gmail.com>
+---
+--- a/drivers/staging/t2bce/t2bce_ave/ave.c
++++ b/drivers/staging/t2bce/t2bce_ave/ave.c
+@@ -65,8 +65,10 @@
+ 		goto err_class;
+ 	}
+ 	t2bce_ave->core_dev = t2bce_core_device_get();
+-	if (!t2bce_ave->core_dev) {
+-		ret = -EPROBE_DEFER;
++	if (IS_ERR_OR_NULL(t2bce_ave->core_dev)) {
++		ret = t2bce_ave->core_dev ?
++			PTR_ERR(t2bce_ave->core_dev) : -ENODEV;
++		t2bce_ave->core_dev = NULL;
+ 		goto err_state;
+ 	}
+ 	t2bce_ave->dev = device_create(t2bce_ave_class, t2bce_ave->core_dev,
