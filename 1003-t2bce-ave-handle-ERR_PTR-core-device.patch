@@ -37,7 +37,7 @@ Signed-off-by: Jason Perlow <jperlow@gmail.com>
 -		ret = -EPROBE_DEFER;
 +	if (IS_ERR_OR_NULL(t2bce_ave->core_dev)) {
 +		ret = t2bce_ave->core_dev ?
-+			PTR_ERR(t2bce_ave->core_dev) : -ENODEV;
++			PTR_ERR(t2bce_ave->core_dev) : -EPROBE_DEFER;
 +		t2bce_ave->core_dev = NULL;
  		goto err_state;
  	}
