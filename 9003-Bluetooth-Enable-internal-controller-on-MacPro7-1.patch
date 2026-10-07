@@ -55,10 +55,10 @@ index 463d59890..5a86141f5 100644
  };
  
 diff --git a/drivers/bluetooth/hci_bcm.c b/drivers/bluetooth/hci_bcm.c
-index cc419e196..3b84967f5 100644
+index cc419e196..8e50dc53e 100644
 --- a/drivers/bluetooth/hci_bcm.c
 +++ b/drivers/bluetooth/hci_bcm.c
-@@ -1014,14 +1014,30 @@ static int bcm_apple_set_shutdown(struct bcm_device *dev, bool powered)
+@@ -1014,12 +1014,24 @@ static int bcm_apple_set_shutdown(struct bcm_device *dev, bool powered)
  static int bcm_apple_get_resources(struct bcm_device *dev)
  {
  	struct acpi_device *adev = ACPI_COMPANION(dev->dev);
@@ -70,31 +70,25 @@ index cc419e196..3b84967f5 100644
 -	    ACPI_FAILURE(acpi_get_handle(adev->handle, "BTPU", &dev->btpu)) ||
 -	    ACPI_FAILURE(acpi_get_handle(adev->handle, "BTPD", &dev->btpd)))
 +	if (!adev)
- 		return -ENODEV;
- 
-+	control = adev->handle;
++		return -ENODEV;
++
++	if (dmi_match(DMI_PRODUCT_NAME, "MacPro7,1")) {
++		if (ACPI_FAILURE(acpi_get_handle(NULL,
++						 "\\_SB.PCI0.XHC1.BLTH",
++						 &control)))
++			return -ENODEV;
++	} else {
++		control = adev->handle;
++	}
 +
 +	if (ACPI_FAILURE(acpi_get_handle(control, "BTLP", &dev->btlp)) ||
 +	    ACPI_FAILURE(acpi_get_handle(control, "BTPU", &dev->btpu)) ||
-+	    ACPI_FAILURE(acpi_get_handle(control, "BTPD", &dev->btpd))) {
-+		if (!dmi_match(DMI_PRODUCT_NAME, "MacPro7,1"))
-+			return -ENODEV;
-+
-+		if (ACPI_FAILURE(acpi_get_handle(NULL, "\\_SB.PCI0.XHC1.BLTH",
-+						 &control)))
-+			return -ENODEV;
-+
-+		if (ACPI_FAILURE(acpi_get_handle(control, "BTLP", &dev->btlp)) ||
-+		    ACPI_FAILURE(acpi_get_handle(control, "BTPU", &dev->btpu)) ||
-+		    ACPI_FAILURE(acpi_get_handle(control, "BTPD", &dev->btpd)))
-+			return -ENODEV;
-+	}
-+
++	    ACPI_FAILURE(acpi_get_handle(control, "BTPD", &dev->btpd)))
+ 		return -ENODEV;
+ 
  	if (!acpi_dev_get_property(adev, "baud", ACPI_TYPE_BUFFER, &obj) &&
- 	    obj->buffer.length == 8)
- 		dev->init_speed = *(u64 *)obj->buffer.pointer;
 diff --git a/drivers/usb/class/cdc-acm.c b/drivers/usb/class/cdc-acm.c
-index 7bc5329fa..91a25d143 100644
+index 7bc5329fa..2ac19bd20 100644
 --- a/drivers/usb/class/cdc-acm.c
 +++ b/drivers/usb/class/cdc-acm.c
 @@ -34,6 +34,8 @@
@@ -184,7 +178,7 @@ index 7bc5329fa..91a25d143 100644
  static DEFINE_IDR(acm_minors);
  static DEFINE_MUTEX(acm_minors_lock);
  
-@@ -1553,10 +1626,47 @@ static int acm_probe(struct usb_interface *intf,
+@@ -1553,10 +1626,45 @@ static int acm_probe(struct usb_interface *intf,
  		usb_clear_halt(usb_dev, acm->out);
  	}
  
@@ -197,7 +191,6 @@ index 7bc5329fa..91a25d143 100644
 +		uart = acm_apple_bt_acpi_uart();
 +		if (uart) {
 +			struct device *host_dev;
-+			struct device *control_dev;
 +
 +			acm->apple_bt_host =
 +				acm_apple_bt_host_create(control_interface, uart,
@@ -209,13 +202,12 @@ index 7bc5329fa..91a25d143 100644
 +			}
 +
 +			host_dev = &acm->apple_bt_host->auxdev.dev;
-+			control_dev = &control_interface->dev;
 +
 +			tty_dev = tty_port_register_device_attr_serdev(&acm->port,
 +								       acm_tty_driver,
 +								       minor,
 +								       host_dev,
-+								       control_dev,
++								       &control_interface->dev,
 +								       NULL, NULL);
 +		} else {
 +			tty_dev = tty_port_register_device(&acm->port,
@@ -234,7 +226,7 @@ index 7bc5329fa..91a25d143 100644
  		goto err_release_data_interface;
  	}
  
-@@ -1639,7 +1749,13 @@ static void acm_disconnect(struct usb_interface *intf)
+@@ -1639,7 +1747,13 @@ static void acm_disconnect(struct usb_interface *intf)
  
  	cancel_delayed_work_sync(&acm->dwork);
  
