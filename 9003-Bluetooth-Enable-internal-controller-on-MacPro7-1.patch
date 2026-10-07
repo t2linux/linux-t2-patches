@@ -1,0 +1,268 @@
+From: Rodrigo Queiroz <670685+queiroz@users.noreply.github.com>
+Subject: [PATCH] Bluetooth: enable internal controller on MacPro7,1
+
+The internal Bluetooth controller on the 2019 Mac Pro (MacPro7,1)
+does not initialize under Linux with the t2linux kernel and Apple
+firmware.
+
+Apple exposes the controller through a split device topology. The UART
+transport appears as USB CDC ACM device 05ac:8297, while ACPI describes
+the Bluetooth function as BCM2E7C beneath URT0. The firmware also
+exposes Bluetooth power control through XHC1.BLTH.
+
+Add the required ACPI presence handling, CDC ACM serdev bridge, and
+MacPro7,1-specific Broadcom handling required for the controller to
+enumerate correctly.
+
+Signed-off-by: Rodrigo Queiroz <670685+queiroz@users.noreply.github.com>
+
+---
+diff --git a/drivers/acpi/x86/utils.c b/drivers/acpi/x86/utils.c
+index 418951639..4dabd20cf 100644
+--- a/drivers/acpi/x86/utils.c
++++ b/drivers/acpi/x86/utils.c
+@@ -68,6 +68,15 @@ struct override_status_id {
+ 	ENTRY(0, "", NULL, path, cpu_vfm, dmi)
+ 
+ static const struct override_status_id override_status_ids[] = {
++	/*
++	 * The MacPro7,1 firmware reports the BCM2E7C Bluetooth UART as
++	 * not present when running with the Darwin OSI.
++	 */
++	PRESENT_ENTRY_HID("BCM2E7C", "1", INTEL_SKYLAKE_X, {
++		DMI_MATCH(DMI_SYS_VENDOR, "Apple Inc."),
++		DMI_MATCH(DMI_PRODUCT_NAME, "MacPro7,1"),
++	      }),
++
+ 	/*
+ 	 * Bay / Cherry Trail PWM directly poked by GPU driver in win10,
+ 	 * but Linux uses a separate PWM driver, harmless if not used.
+diff --git a/drivers/bluetooth/btbcm.c b/drivers/bluetooth/btbcm.c
+index 463d59890..5a86141f5 100644
+--- a/drivers/bluetooth/btbcm.c
++++ b/drivers/bluetooth/btbcm.c
+@@ -433,6 +433,12 @@ static const struct dmi_system_id disable_broken_read_transmit_power[] = {
+ 			DMI_MATCH(DMI_PRODUCT_NAME, "iMac20,2"),
+ 		},
+ 	},
++	{
++		 .matches = {
++			DMI_MATCH(DMI_BOARD_VENDOR, "Apple Inc."),
++			DMI_MATCH(DMI_PRODUCT_NAME, "MacPro7,1"),
++		},
++	},
+ 	{ }
+ };
+ 
+diff --git a/drivers/bluetooth/hci_bcm.c b/drivers/bluetooth/hci_bcm.c
+index cc419e196..3b84967f5 100644
+--- a/drivers/bluetooth/hci_bcm.c
++++ b/drivers/bluetooth/hci_bcm.c
+@@ -1014,14 +1014,30 @@ static int bcm_apple_set_shutdown(struct bcm_device *dev, bool powered)
+ static int bcm_apple_get_resources(struct bcm_device *dev)
+ {
+ 	struct acpi_device *adev = ACPI_COMPANION(dev->dev);
++	acpi_handle control;
+ 	const union acpi_object *obj;
+ 
+-	if (!adev ||
+-	    ACPI_FAILURE(acpi_get_handle(adev->handle, "BTLP", &dev->btlp)) ||
+-	    ACPI_FAILURE(acpi_get_handle(adev->handle, "BTPU", &dev->btpu)) ||
+-	    ACPI_FAILURE(acpi_get_handle(adev->handle, "BTPD", &dev->btpd)))
++	if (!adev)
+ 		return -ENODEV;
+ 
++	control = adev->handle;
++
++	if (ACPI_FAILURE(acpi_get_handle(control, "BTLP", &dev->btlp)) ||
++	    ACPI_FAILURE(acpi_get_handle(control, "BTPU", &dev->btpu)) ||
++	    ACPI_FAILURE(acpi_get_handle(control, "BTPD", &dev->btpd))) {
++		if (!dmi_match(DMI_PRODUCT_NAME, "MacPro7,1"))
++			return -ENODEV;
++
++		if (ACPI_FAILURE(acpi_get_handle(NULL, "\\_SB.PCI0.XHC1.BLTH",
++						 &control)))
++			return -ENODEV;
++
++		if (ACPI_FAILURE(acpi_get_handle(control, "BTLP", &dev->btlp)) ||
++		    ACPI_FAILURE(acpi_get_handle(control, "BTPU", &dev->btpu)) ||
++		    ACPI_FAILURE(acpi_get_handle(control, "BTPD", &dev->btpd)))
++			return -ENODEV;
++	}
++
+ 	if (!acpi_dev_get_property(adev, "baud", ACPI_TYPE_BUFFER, &obj) &&
+ 	    obj->buffer.length == 8)
+ 		dev->init_speed = *(u64 *)obj->buffer.pointer;
+diff --git a/drivers/usb/class/cdc-acm.c b/drivers/usb/class/cdc-acm.c
+index 7bc5329fa..91a25d143 100644
+--- a/drivers/usb/class/cdc-acm.c
++++ b/drivers/usb/class/cdc-acm.c
+@@ -34,6 +34,8 @@
+ #include <linux/uaccess.h>
+ #include <linux/usb.h>
+ #include <linux/usb/cdc.h>
++#include <linux/acpi.h>
++#include <linux/auxiliary_bus.h>
+ #include <asm/byteorder.h>
+ #include <linux/unaligned.h>
+ #include <linux/idr.h>
+@@ -48,6 +50,77 @@
+ static struct usb_driver acm_driver;
+ static struct tty_driver *acm_tty_driver;
+ 
++struct acm_apple_bt_host {
++	struct auxiliary_device auxdev;
++};
++
++static void acm_apple_bt_host_release(struct device *dev)
++{
++	struct auxiliary_device *auxdev = to_auxiliary_dev(dev);
++	struct acm_apple_bt_host *host;
++
++	host = container_of(auxdev, struct acm_apple_bt_host, auxdev);
++	kfree(host);
++}
++
++static struct acpi_device *acm_apple_bt_acpi_uart(void)
++{
++	struct acpi_device *bluetooth;
++	struct acpi_device *uart;
++
++	bluetooth = acpi_dev_get_first_match_dev("BCM2E7C", "1", -1);
++	if (!bluetooth)
++		return NULL;
++
++	uart = acpi_dev_parent(bluetooth);
++	acpi_dev_put(bluetooth);
++
++	return uart;
++}
++
++static struct acm_apple_bt_host *
++acm_apple_bt_host_create(struct usb_interface *intf,
++			 struct acpi_device *uart, int id)
++{
++	struct acm_apple_bt_host *host;
++	int ret;
++
++	host = kzalloc_obj(*host);
++	if (!host)
++		return ERR_PTR(-ENOMEM);
++
++	host->auxdev.name = "apple-bt-uart";
++	host->auxdev.id = id;
++	host->auxdev.dev.parent = &intf->dev;
++	host->auxdev.dev.release = acm_apple_bt_host_release;
++
++	ret = auxiliary_device_init(&host->auxdev);
++	if (ret) {
++		kfree(host);
++		return ERR_PTR(ret);
++	}
++
++	ACPI_COMPANION_SET(&host->auxdev.dev, uart);
++
++	ret = auxiliary_device_add(&host->auxdev);
++	if (ret) {
++		auxiliary_device_uninit(&host->auxdev);
++		return ERR_PTR(ret);
++	}
++
++	return host;
++}
++
++static void acm_apple_bt_host_destroy(struct acm *acm)
++{
++	if (!acm->apple_bt_host)
++		return;
++
++	auxiliary_device_delete(&acm->apple_bt_host->auxdev);
++	auxiliary_device_uninit(&acm->apple_bt_host->auxdev);
++	acm->apple_bt_host = NULL;
++}
++
+ static DEFINE_IDR(acm_minors);
+ static DEFINE_MUTEX(acm_minors_lock);
+ 
+@@ -1553,10 +1626,47 @@ static int acm_probe(struct usb_interface *intf,
+ 		usb_clear_halt(usb_dev, acm->out);
+ 	}
+ 
+-	tty_dev = tty_port_register_device(&acm->port, acm_tty_driver, minor,
+-			&control_interface->dev);
++	if (usb_dev->descriptor.idVendor == cpu_to_le16(0x05ac) &&
++	    usb_dev->descriptor.idProduct == cpu_to_le16(0x8297)) {
++		struct acpi_device *uart;
++
++		uart = acm_apple_bt_acpi_uart();
++		if (uart) {
++			struct device *host_dev;
++			struct device *control_dev;
++
++			acm->apple_bt_host =
++				acm_apple_bt_host_create(control_interface, uart,
++							 minor);
++			if (IS_ERR(acm->apple_bt_host)) {
++				rv = PTR_ERR(acm->apple_bt_host);
++				acm->apple_bt_host = NULL;
++				goto err_release_data_interface;
++			}
++
++			host_dev = &acm->apple_bt_host->auxdev.dev;
++			control_dev = &control_interface->dev;
++
++			tty_dev = tty_port_register_device_attr_serdev(&acm->port,
++								       acm_tty_driver,
++								       minor,
++								       host_dev,
++								       control_dev,
++								       NULL, NULL);
++		} else {
++			tty_dev = tty_port_register_device(&acm->port,
++							   acm_tty_driver,
++							  minor,
++							  &control_interface->dev);
++		}
++	} else {
++		tty_dev = tty_port_register_device(&acm->port,
++						   acm_tty_driver, minor,
++					  &control_interface->dev);
++	}
+ 	if (IS_ERR(tty_dev)) {
+ 		rv = PTR_ERR(tty_dev);
++		acm_apple_bt_host_destroy(acm);
+ 		goto err_release_data_interface;
+ 	}
+ 
+@@ -1639,7 +1749,13 @@ static void acm_disconnect(struct usb_interface *intf)
+ 
+ 	cancel_delayed_work_sync(&acm->dwork);
+ 
+-	tty_unregister_device(acm_tty_driver, acm->minor);
++	if (acm->apple_bt_host) {
++		tty_port_unregister_device(&acm->port, acm_tty_driver,
++					   acm->minor);
++		acm_apple_bt_host_destroy(acm);
++	} else {
++		tty_unregister_device(acm_tty_driver, acm->minor);
++	}
+ 
+ 	usb_free_urb(acm->ctrlurb);
+ 	for (i = 0; i < ACM_NW; i++)
+diff --git a/drivers/usb/class/cdc-acm.h b/drivers/usb/class/cdc-acm.h
+index 01f448a78..7abee37b7 100644
+--- a/drivers/usb/class/cdc-acm.h
++++ b/drivers/usb/class/cdc-acm.h
+@@ -54,9 +54,12 @@ struct acm_rb {
+ 	struct acm		*instance;
+ };
+ 
++struct acm_apple_bt_host;
++
+ struct acm {
+ 	struct usb_device *dev;				/* the corresponding usb device */
+ 	struct usb_interface *control;			/* control interface */
++	struct acm_apple_bt_host *apple_bt_host;	/* Apple Bluetooth serdev host */
+ 	struct usb_interface *data;			/* data interface */
+ 	unsigned in, out;				/* i/o pipes */
+ 	struct tty_port port;			 	/* our tty port data */
