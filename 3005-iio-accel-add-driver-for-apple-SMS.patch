@@ -1,32 +1,19 @@
-From 01e20cd5c09aa316734b0a322e7d4635ae93ea93 Mon Sep 17 00:00:00 2001
+From 6d577400cd63123048c8cb278f5a7251477b5588 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
-Date: Fri, 24 Apr 2026 18:19:04 +0530
-Subject: [PATCH 04/12] accel
+Date: Sat, 3 Oct 2026 21:15:47 -0400
+Subject: [PATCH 05/13] iio/accel: add driver for apple SMS
 
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---
- MAINTAINERS                      |   1 +
  drivers/iio/accel/Kconfig        |  10 ++
  drivers/iio/accel/Makefile       |   1 +
- drivers/iio/accel/macsmc-accel.c | 266 +++++++++++++++++++++++++++++++
- drivers/mfd/macsmc-core.c        |   1 +
- 5 files changed, 279 insertions(+)
+ drivers/iio/accel/macsmc-accel.c | 248 +++++++++++++++++++++++++++++++
+ drivers/mfd/macsmc-core.c        |  10 ++
+ 4 files changed, 269 insertions(+)
  create mode 100644 drivers/iio/accel/macsmc-accel.c
 
-diff --git a/MAINTAINERS b/MAINTAINERS
-index 03917e410dd5..25c8146b17a4 100644
---- a/MAINTAINERS
-+++ b/MAINTAINERS
-@@ -1940,6 +1940,7 @@ F:	drivers/hwmon/applesmc.c
- MACSMC SUPPORT FOR INTEL MACS
- M:	Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
- S:	Odd fixes
-+F:	drivers/iio/accel/macsmc-accel.c
- F:	drivers/iio/light/macsmc-light.c
- F:	drivers/platform/x86/macsmc-acpi.c
- 
 diff --git a/drivers/iio/accel/Kconfig b/drivers/iio/accel/Kconfig
-index 3d3f8d8673dd..7ac4f265d186 100644
+index 4094299e2..17d3bb49e 100644
 --- a/drivers/iio/accel/Kconfig
 +++ b/drivers/iio/accel/Kconfig
 @@ -531,6 +531,16 @@ config KXCJK1013
@@ -47,7 +34,7 @@ index 3d3f8d8673dd..7ac4f265d186 100644
  	tristate "mCube MC3230 Digital Accelerometer Driver"
  	depends on I2C
 diff --git a/drivers/iio/accel/Makefile b/drivers/iio/accel/Makefile
-index fa440a859283..52fe661dec66 100644
+index fa440a859..52fe661de 100644
 --- a/drivers/iio/accel/Makefile
 +++ b/drivers/iio/accel/Makefile
 @@ -54,6 +54,7 @@ obj-$(CONFIG_KXSD9)	+= kxsd9.o
@@ -60,37 +47,39 @@ index fa440a859283..52fe661dec66 100644
  obj-$(CONFIG_MMA7455_I2C)	+= mma7455_i2c.o
 diff --git a/drivers/iio/accel/macsmc-accel.c b/drivers/iio/accel/macsmc-accel.c
 new file mode 100644
-index 000000000000..48bb7c4d9a8c
+index 000000000..7d4b08ece
 --- /dev/null
 +++ b/drivers/iio/accel/macsmc-accel.c
-@@ -0,0 +1,266 @@
+@@ -0,0 +1,248 @@
 +// SPDX-License-Identifier: GPL-2.0-only OR MIT
 +/*
-+ * Apple SMC Motion Sensor Driver
++ * Apple SMC sudden motion sensor (SMS) driver
 + *
 + * Copyright (C) 2026 Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
++ *
++ * Based on drivers/hwmon/applesmc.c:
++ * Copyright (C) 2007 Nicolas Boichat <nicolas@boichat.ch>
++ * Copyright (C) 2010 Henrik Rydberg <rydberg@euromail.se>
 + */
 +
 +#include <linux/delay.h>
++#include <linux/byteorder/generic.h>
++#include <linux/iio/events.h>
 +#include <linux/iio/iio.h>
-+#include <linux/input.h>
 +#include <linux/mfd/macsmc.h>
 +#include <linux/platform_device.h>
 +#include <linux/pm.h>
-+#include <linux/byteorder/generic.h>
-+
-+#define INIT_KEY SMC_KEY(MOCN)
-+#define X_KEY	SMC_KEY(MO_X)
-+#define Y_KEY	SMC_KEY(MO_Y)
-+#define Z_KEY	SMC_KEY(MO_Z)
-+
-+enum {
-+	CALIBRATE = 1,
-+};
 +
 +struct macsmc_accel {
 +	struct apple_smc *smc;
-+	s16 rest_x, rest_y;
++	struct iio_dev *indio_dev;
++	struct notifier_block nb;
++};
++
++enum {
++	SMS_DROP = 0,
++	SMS_ORIENTATION,
++	SMS_SHOCK,
 +};
 +
 +static int macsmc_accel_read(struct macsmc_accel *drv, smc_key key, s16 *p)
@@ -101,7 +90,7 @@ index 000000000000..48bb7c4d9a8c
 +	if (ret < 0)
 +		return ret;
 +
-+	*p = cpu_to_be16(*p);
++	*p = (s16)be16_to_cpu(*p);
 +	return 0;
 +}
 +
@@ -110,54 +99,17 @@ index 000000000000..48bb7c4d9a8c
 +	int ret, total;
 +	u16 buf;
 +
-+
-+	for (total = 5000; total > 0; total -= 50) {
-+		ret = apple_smc_read_u16(drv->smc, INIT_KEY, &buf);
++	for (total = 0; total < 100; total++) {
++		ret = apple_smc_read_u16(drv->smc, SMC_KEY(MOCN), &buf);
 +		if (!ret && buf)
 +			return 0;
 +
 +		buf = 0xE0;
-+		apple_smc_write_u16(drv->smc, INIT_KEY, buf);
++		apple_smc_write_u16(drv->smc, SMC_KEY(MOCN), buf);
 +		msleep(50);
 +	}
 +
 +	return -ENODEV;
-+}
-+
-+static int macsmc_accel_calibrate(struct macsmc_accel *drv)
-+{
-+	int ret;
-+
-+	ret = macsmc_accel_read(drv, X_KEY, &drv->rest_x);
-+	if (ret < 0)
-+		return ret;
-+
-+	ret = macsmc_accel_read(drv, Y_KEY, &drv->rest_y);
-+	if (ret < 0)
-+		return ret;
-+
-+	drv->rest_x = -drv->rest_x;
-+	return 0;
-+}
-+
-+static void macsmc_accel_poll(struct input_dev *idev)
-+{
-+	struct macsmc_accel *drv = input_get_drvdata(idev);
-+	int ret;
-+	s16 x, y;
-+
-+	ret = macsmc_accel_read(drv, X_KEY, &x);
-+	if (ret < 0)
-+		return;
-+
-+	ret = macsmc_accel_read(drv, Y_KEY, &y);
-+	if (ret < 0)
-+		return;
-+
-+	x = -x;
-+	input_report_abs(idev, ABS_X, x - drv->rest_x);
-+	input_report_abs(idev, ABS_Y, y - drv->rest_y);
-+	input_sync(idev);
 +}
 +
 +static int macsmc_accel_read_raw(struct iio_dev *indio_dev, struct iio_chan_spec const *chan,
@@ -170,48 +122,77 @@ index 000000000000..48bb7c4d9a8c
 +	if (mask != IIO_CHAN_INFO_RAW)
 +		return -EINVAL;
 +
-+	if (chan->channel == CALIBRATE) {
-+		*val = drv->rest_x;
-+		*val2 = drv->rest_y;
-+		return IIO_VAL_INT_MULTIPLE;
-+	}
-+
 +	switch (chan->channel2) {
 +	case IIO_MOD_X:
-+		ret = macsmc_accel_read(drv, X_KEY, &buf);
++		ret = macsmc_accel_read(drv, SMC_KEY(MO_X), &buf);
 +		if (ret < 0)
 +			return ret;
 +
 +		*val = buf;
 +		return IIO_VAL_INT;
 +	case IIO_MOD_Y:
-+		ret = macsmc_accel_read(drv, Y_KEY, &buf);
++		ret = macsmc_accel_read(drv, SMC_KEY(MO_Y), &buf);
 +		if (ret < 0)
 +			return ret;
 +
 +		*val = buf;
 +		return IIO_VAL_INT;
 +	case IIO_MOD_Z:
-+		ret = macsmc_accel_read(drv, Z_KEY, &buf);
++		ret = macsmc_accel_read(drv, SMC_KEY(MO_Z), &buf);
 +		if (ret < 0)
 +			return ret;
 +
 +		*val = buf;
 +		return IIO_VAL_INT;
 +	}
++
 +	return -EINVAL;
 +}
 +
-+static int macsmc_accel_write_raw(struct iio_dev *indio_dev, struct iio_chan_spec const *chan,
-+		int val, int val2, long mask)
++static int macsmc_accel_event(struct notifier_block *nb, unsigned long event, void *data)
 +{
-+	struct macsmc_accel *drv = iio_priv(indio_dev);
++	struct macsmc_accel *drv = container_of(nb, struct macsmc_accel, nb);
++	u64 code;
 +
-+	if (mask != IIO_CHAN_INFO_RAW || chan->channel != CALIBRATE)
-+		return -EINVAL;
++	/* check if event is for us */
++	if (event < 0x60 || event > 0x6F)
++		return NOTIFY_DONE;
 +
-+	return macsmc_accel_calibrate(drv);
++	switch (event) {
++	case 0x60:
++		code = IIO_UNMOD_EVENT_CODE(IIO_ACCEL, SMS_DROP,
++					    IIO_EV_TYPE_CHANGE,
++					    IIO_EV_DIR_NONE);
++		break;
++	case 0x69:
++		code = IIO_UNMOD_EVENT_CODE(IIO_ACCEL, SMS_ORIENTATION,
++					    IIO_EV_TYPE_CHANGE,
++					    IIO_EV_DIR_NONE);
++		break;
++	case 0x6F:
++		code = IIO_UNMOD_EVENT_CODE(IIO_ACCEL, SMS_SHOCK,
++					    IIO_EV_TYPE_CHANGE,
++					    IIO_EV_DIR_NONE);
++		break;
++	}
++
++	iio_push_event(drv->indio_dev, code, iio_get_time_ns(drv->indio_dev));
++	return NOTIFY_OK;
 +}
++
++static void macsmc_accel_unregister_notifier(void *data)
++{
++	struct macsmc_accel *drv = data;
++
++	blocking_notifier_chain_unregister(drv->smc->event_handlers,
++					&drv->nb);
++}
++
++static const struct iio_event_spec macsmc_accel_event_spec = {
++	.type = IIO_EV_TYPE_CHANGE,
++	.dir = IIO_EV_DIR_NONE,
++	.mask_separate = BIT(IIO_EV_INFO_ENABLE),
++};
 +
 +static const struct iio_chan_spec macsmc_accel_channels[] = {
 +	{
@@ -234,16 +215,26 @@ index 000000000000..48bb7c4d9a8c
 +	},
 +	{
 +		.type = IIO_ACCEL,
-+		.channel = CALIBRATE,
-+		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
-+		.output = 1,
-+		.indexed = 1,
-+	}
++		.channel = SMS_DROP,
++		.event_spec = &macsmc_accel_event_spec,
++		.num_event_specs = 1,
++	},
++	{
++		.type = IIO_ACCEL,
++		.channel = SMS_ORIENTATION,
++		.event_spec = &macsmc_accel_event_spec,
++		.num_event_specs = 1,
++	},
++	{
++		.type = IIO_ACCEL,
++		.channel = SMS_SHOCK,
++		.event_spec = &macsmc_accel_event_spec,
++		.num_event_specs = 1,
++	},
 +};
 +
 +static const struct iio_info macsmc_accel_info = {
-+	.read_raw = macsmc_accel_read_raw,
-+	.write_raw = macsmc_accel_write_raw,
++	.read_raw = macsmc_accel_read_raw
 +};
 +
 +static int macsmc_accel_restore(struct device *dev)
@@ -260,61 +251,39 @@ index 000000000000..48bb7c4d9a8c
 +static int macsmc_accel_probe(struct platform_device *pdev)
 +{
 +	struct macsmc_accel *drv;
-+	struct input_dev *idev;
-+	struct iio_dev *indio;
++	struct iio_dev *indio_dev;
 +	int ret;
 +
-+	indio = devm_iio_device_alloc(&pdev->dev, sizeof(*drv));
-+	if (!indio)
++	indio_dev = devm_iio_device_alloc(&pdev->dev, sizeof(*drv));
++	if (!indio_dev)
 +		return -ENOMEM;
 +
-+	drv = iio_priv(indio);
++	drv = iio_priv(indio_dev);
 +	drv->smc = dev_get_drvdata(pdev->dev.parent);
-+	if (!drv->smc)
-+		return -ENODEV;
-+
-+	if (!apple_smc_key_exists(drv->smc, INIT_KEY))
-+		return -ENODEV;
 +
 +	ret = macsmc_accel_dev_init(drv);
-+	if (ret < 0)
-+		return ret;
-+
-+	ret = macsmc_accel_calibrate(drv);
-+	if (ret < 0)
-+		return ret;
-+
-+	indio->info = &macsmc_accel_info;
-+	indio->channels = macsmc_accel_channels;
-+	indio->num_channels = ARRAY_SIZE(macsmc_accel_channels);
-+	indio->name = "macsmc-accel";
-+	ret = iio_device_register(indio);
 +	if (ret)
 +		return ret;
 +
-+	idev = devm_input_allocate_device(&pdev->dev);
-+	if (!idev)
-+		return -ENOMEM;
-+
-+	idev->name = "macsmc-accel";
-+	idev->id.bustype = BUS_HOST;
-+	input_set_abs_params(idev, ABS_X, -256, 256, 4, 4);
-+	input_set_abs_params(idev, ABS_Y, -256, 256, 4, 4);
-+	input_set_drvdata(idev, drv);
-+
-+	ret = input_setup_polling(idev, macsmc_accel_poll);
++	drv->indio_dev = indio_dev;
++	drv->nb.notifier_call = macsmc_accel_event;
++	ret = blocking_notifier_chain_register(drv->smc->event_handlers, &drv->nb);
 +	if (ret)
 +		return ret;
 +
-+	input_set_poll_interval(idev, 50);
-+
-+	ret = input_register_device(idev);
++	ret = devm_add_action_or_reset(&pdev->dev, macsmc_accel_unregister_notifier, drv);
 +	if (ret)
 +		return ret;
 +
 +	platform_set_drvdata(pdev, drv);
 +
-+	return 0;
++	indio_dev->name = "macsmc-accel";
++	indio_dev->modes = INDIO_DIRECT_MODE;
++	indio_dev->info = &macsmc_accel_info;
++	indio_dev->channels = macsmc_accel_channels;
++	indio_dev->num_channels = ARRAY_SIZE(macsmc_accel_channels);
++
++	return devm_iio_device_register(&pdev->dev, indio_dev);
 +}
 +
 +static struct platform_driver macsmc_accel_driver = {
@@ -331,17 +300,33 @@ index 000000000000..48bb7c4d9a8c
 +MODULE_LICENSE("Dual MIT/GPL");
 +MODULE_ALIAS("platform:macsmc-accel");
 diff --git a/drivers/mfd/macsmc-core.c b/drivers/mfd/macsmc-core.c
-index 814bfb3ae0ec..bcfa77dd8146 100644
+index 8bc9405cf..689e9e2ce 100644
 --- a/drivers/mfd/macsmc-core.c
 +++ b/drivers/mfd/macsmc-core.c
-@@ -21,6 +21,7 @@ static const struct mfd_cell apple_smc_devs[] = {
- };
- 
- static const struct mfd_cell apple_smc_acpi_devs[] = {
+@@ -24,6 +24,10 @@ static const struct mfd_cell apple_smc_rtkit_devs[] = {
+  * There isn't device tree on acpi backend, so we need to use
+  * apple_smc_key_exists to register mfd devs
+  */
++static const struct mfd_cell apple_smc_acpi_accel[] = {
 +	MFD_CELL_NAME("macsmc-accel"),
++};
++
+ static const struct mfd_cell apple_smc_acpi_common[] = {
  	MFD_CELL_NAME("macsmc-hwmon"),
- 	MFD_CELL_NAME("macsmc-light"),
  	MFD_CELL_NAME("macsmc-power"),
+@@ -169,6 +173,12 @@ int apple_smc_probe(struct device *dev, const struct apple_smc_backend_ops *ops,
+ 				return ret;
+ 		}
+ 
++		if (apple_smc_key_exists(smc, SMC_KEY(MOCN))) {
++			ret = devm_mfd_add_devices(dev, -1, apple_smc_acpi_accel,
++				ARRAY_SIZE(apple_smc_acpi_accel), NULL, 0, NULL);
++			if (ret < 0)
++				return ret;
++		}
+ 	} else
+ 		ret = devm_mfd_add_devices(dev, -1, apple_smc_rtkit_devs,
+ 			ARRAY_SIZE(apple_smc_rtkit_devs), NULL, 0, NULL);
 -- 
-2.43.0
+2.55.0
 

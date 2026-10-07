@@ -1,7 +1,7 @@
-From 495f3b000520474bb5e3f04eec582096a19ea3af Mon Sep 17 00:00:00 2001
+From 637099f974dabf6d5602b62da2d8fed8e648e1aa Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Fri, 24 Apr 2026 21:56:06 +0530
-Subject: [PATCH 07/12] hwmon/macsmc: add more types
+Subject: [PATCH 12/13] hwmon/macsmc: add more types
 
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---
@@ -9,7 +9,7 @@ Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
  1 file changed, 310 insertions(+)
 
 diff --git a/drivers/hwmon/macsmc-hwmon.c b/drivers/hwmon/macsmc-hwmon.c
-index 1500ec2cc9f8..4e9b14f455ae 100644
+index 1500ec2cc..4e9b14f45 100644
 --- a/drivers/hwmon/macsmc-hwmon.c
 +++ b/drivers/hwmon/macsmc-hwmon.c
 @@ -221,6 +221,313 @@ static int macsmc_hwmon_read_key(struct apple_smc *smc,
@@ -337,5 +337,5 @@ index 1500ec2cc9f8..4e9b14f455ae 100644
  		return -EOPNOTSUPP;
  	}
 -- 
-2.43.0
+2.55.0
 
