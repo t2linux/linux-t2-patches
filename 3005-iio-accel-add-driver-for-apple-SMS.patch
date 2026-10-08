@@ -1,4 +1,4 @@
-From 6d577400cd63123048c8cb278f5a7251477b5588 Mon Sep 17 00:00:00 2001
+From 12d9f1dadf2995161bf0bce14760bc0c1e0af06f Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sat, 3 Oct 2026 21:15:47 -0400
 Subject: [PATCH 05/13] iio/accel: add driver for apple SMS
@@ -47,7 +47,7 @@ index fa440a859..52fe661de 100644
  obj-$(CONFIG_MMA7455_I2C)	+= mma7455_i2c.o
 diff --git a/drivers/iio/accel/macsmc-accel.c b/drivers/iio/accel/macsmc-accel.c
 new file mode 100644
-index 000000000..7d4b08ece
+index 000000000..0abf81e7b
 --- /dev/null
 +++ b/drivers/iio/accel/macsmc-accel.c
 @@ -0,0 +1,248 @@
@@ -155,7 +155,7 @@ index 000000000..7d4b08ece
 +	u64 code;
 +
 +	/* check if event is for us */
-+	if (event < 0x60 || event > 0x6F)
++	if (event != 0x60 && event != 0x69 && event != 0x6F)
 +		return NOTIFY_DONE;
 +
 +	switch (event) {

@@ -1,4 +1,4 @@
-From fbd8f30904318110d5c5000bf34515d18a1a3def Mon Sep 17 00:00:00 2001
+From 5b0c266d527fa8b7ae804e4d0af720b98377af80 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Fri, 11 Sep 2026 16:01:25 -0400
 Subject: [PATCH 01/13] treewide: add backend for macsmc

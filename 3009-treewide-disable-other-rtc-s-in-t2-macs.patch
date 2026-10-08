@@ -1,4 +1,4 @@
-From ce200642957c439155e7ee77f5a96bc8b740b638 Mon Sep 17 00:00:00 2001
+From d7dd7563d3ea0552bb8a31904f38fe8b4c22e240 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sun, 4 Oct 2026 16:54:53 -0400
 Subject: [PATCH 09/13] treewide: disable other rtc's in t2 macs

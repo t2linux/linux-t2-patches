@@ -1,4 +1,4 @@
-From b5e765f8b1cc8e0206cac961f95e6703a63ee298 Mon Sep 17 00:00:00 2001
+From 6b6dc6131fa7904d8bc606d4296cd3927acffb31 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sat, 12 Sep 2026 16:24:11 -0400
 Subject: [PATCH 03/13] watchdog: add driver for apple smc
@@ -8,8 +8,8 @@ Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
  drivers/mfd/macsmc-core.c     |  11 +++
  drivers/watchdog/Kconfig      |  11 +++
  drivers/watchdog/Makefile     |   2 +-
- drivers/watchdog/macsmc_wdt.c | 139 ++++++++++++++++++++++++++++++++++
- 4 files changed, 162 insertions(+), 1 deletion(-)
+ drivers/watchdog/macsmc_wdt.c | 140 ++++++++++++++++++++++++++++++++++
+ 4 files changed, 163 insertions(+), 1 deletion(-)
  create mode 100644 drivers/watchdog/macsmc_wdt.c
 
 diff --git a/drivers/mfd/macsmc-core.c b/drivers/mfd/macsmc-core.c
@@ -78,10 +78,10 @@ index bc1d52220..7792db125 100644
  
 diff --git a/drivers/watchdog/macsmc_wdt.c b/drivers/watchdog/macsmc_wdt.c
 new file mode 100644
-index 000000000..83841dea1
+index 000000000..38f68d0d8
 --- /dev/null
 +++ b/drivers/watchdog/macsmc_wdt.c
-@@ -0,0 +1,139 @@
+@@ -0,0 +1,140 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
 + * Apple SMC Watchdog Driver
@@ -117,10 +117,11 @@ index 000000000..83841dea1
 +	struct macsmc_wdt *drv = watchdog_get_drvdata(wdd);
 +	int ret;
 +
-+	wdd->timeout = timeout;
++	if (timeout)
++		wdd->timeout = timeout;
 +
 +	if (drv->has_oswd) {
-+		ret = apple_smc_write_u16(drv->smc, SMC_KEY(OSWD), (u16)(wdd->timeout << 8));
++		ret = apple_smc_write_u16(drv->smc, SMC_KEY(OSWD), (u16)(timeout << 8));
 +		if (ret < 0)
 +			return ret;
 +	} else {
@@ -128,16 +129,16 @@ index 000000000..83841dea1
 +		 * NATJ = 2, makes the watchdog do force restart if NATi == 0
 +		 * NATJ = 0, makes the watchdog do nothing if NATi == 0
 +		 */
-+		if (wdd->timeout == 0) {
++		if (timeout == 0) {
 +			ret = apple_smc_write_u16(drv->smc, SMC_KEY(NATJ), 0);
 +			if (ret < 0)
 +				return ret;
 +		}
-+		ret = apple_smc_write_u16(drv->smc, SMC_KEY(NATi), (u16)(wdd->timeout << 8));
++		ret = apple_smc_write_u16(drv->smc, SMC_KEY(NATi), (u16)(timeout << 8));
 +		if (ret < 0)
 +			return ret;
 +
-+		if (wdd->timeout != 0) {
++		if (timeout != 0) {
 +			ret = apple_smc_write_u16(drv->smc, SMC_KEY(NATJ), 2);
 +			if (ret < 0)
 +				return ret;

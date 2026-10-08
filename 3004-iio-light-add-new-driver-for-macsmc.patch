@@ -1,4 +1,4 @@
-From b31804b78f7ff829010915af1f6229039a1b719c Mon Sep 17 00:00:00 2001
+From 9c84d2c8d19a8b21596b8f280d26313bbdfc9b2a Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Fri, 25 Sep 2026 15:42:28 -0400
 Subject: [PATCH 04/13] iio/light: add new driver for macsmc
@@ -7,9 +7,9 @@ Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---
  drivers/iio/light/Kconfig        |  11 ++
  drivers/iio/light/Makefile       |   1 +
- drivers/iio/light/macsmc-light.c | 189 +++++++++++++++++++++++++++++++
+ drivers/iio/light/macsmc-light.c | 187 +++++++++++++++++++++++++++++++
  drivers/mfd/macsmc-core.c        |  11 ++
- 4 files changed, 212 insertions(+)
+ 4 files changed, 210 insertions(+)
  create mode 100644 drivers/iio/light/macsmc-light.c
 
 diff --git a/drivers/iio/light/Kconfig b/drivers/iio/light/Kconfig
@@ -48,10 +48,10 @@ index 64e354c49..fe5848e55 100644
  obj-$(CONFIG_NOA1305)		+= noa1305.o
 diff --git a/drivers/iio/light/macsmc-light.c b/drivers/iio/light/macsmc-light.c
 new file mode 100644
-index 000000000..9d4532b34
+index 000000000..eee2b2a1b
 --- /dev/null
 +++ b/drivers/iio/light/macsmc-light.c
-@@ -0,0 +1,189 @@
+@@ -0,0 +1,187 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
 + * Apple SMC Light Sensor Driver
@@ -65,10 +65,8 @@ index 000000000..9d4532b34
 +
 +#include <linux/iio/events.h>
 +#include <linux/iio/iio.h>
-+#include <linux/byteorder/generic.h>
 +#include <linux/mfd/macsmc.h>
 +#include <linux/platform_device.h>
-+#include <linux/unaligned.h>
 +
 +enum {
 +	LEFT_LIGHT = 0,
@@ -101,7 +99,7 @@ index 000000000..9d4532b34
 +			return ret;
 +
 +		if (drv->size == 10)
-+			*val = be16_to_cpu(get_unaligned_be16(buffer + 6)) >> 10;
++			*val = buffer[6] >> 2;
 +		else
 +			*val = buffer[2];
 +

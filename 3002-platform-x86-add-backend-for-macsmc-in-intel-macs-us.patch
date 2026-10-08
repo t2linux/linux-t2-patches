@@ -1,4 +1,4 @@
-From 185c637880bee6773e71cc1371b7158306423748 Mon Sep 17 00:00:00 2001
+From c4a317102f2e4436da2b1059440c95419f7956ff Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Fri, 11 Sep 2026 16:34:42 -0400
 Subject: [PATCH 02/13] platform/x86: add backend for macsmc in intel macs
@@ -8,8 +8,8 @@ Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---
  drivers/platform/x86/Kconfig       |  10 +
  drivers/platform/x86/Makefile      |   1 +
- drivers/platform/x86/macsmc-acpi.c | 590 +++++++++++++++++++++++++++++
- 3 files changed, 601 insertions(+)
+ drivers/platform/x86/macsmc-acpi.c | 648 +++++++++++++++++++++++++++++
+ 3 files changed, 659 insertions(+)
  create mode 100644 drivers/platform/x86/macsmc-acpi.c
 
 diff --git a/drivers/platform/x86/Kconfig b/drivers/platform/x86/Kconfig
@@ -47,10 +47,10 @@ index 872ac3842..5124dad7b 100644
  # ASUS
 diff --git a/drivers/platform/x86/macsmc-acpi.c b/drivers/platform/x86/macsmc-acpi.c
 new file mode 100644
-index 000000000..44d48a9a2
+index 000000000..8dcf14209
 --- /dev/null
 +++ b/drivers/platform/x86/macsmc-acpi.c
-@@ -0,0 +1,590 @@
+@@ -0,0 +1,648 @@
 +// SPDX-License-Identifier: GPL-2.0-only OR MIT
 +/*
 + * Apple SMC ACPI backend
@@ -64,8 +64,10 @@ index 000000000..44d48a9a2
 +#include <linux/device.h>
 +#include <linux/interrupt.h>
 +#include <linux/io.h>
++#include <linux/kfifo.h>
 +#include <linux/mfd/macsmc.h>
 +#include <linux/reboot.h>
++#include <linux/spinlock.h>
 +#include <linux/unaligned.h>
 +#include <linux/workqueue.h>
 +
@@ -104,6 +106,10 @@ index 000000000..44d48a9a2
 +
 +	struct blocking_notifier_head event_handlers;
 +	struct work_struct shutdown_work;
++	struct work_struct notifier_work;
++
++	DECLARE_KFIFO(event_fifo, u8, 64);
++	spinlock_t event_lock;
 +};
 +
 +
@@ -115,7 +121,7 @@ index 000000000..44d48a9a2
 +		if ((inb(smc->port_base + SMC_IO_CMD_PORT) & mask) == val)
 +			return 0;
 +
-+		msleep(1);
++		fsleep(1000);
 +	}
 +	dev_dbg(smc->dev, "port/wait: timeout value:%u, mask:%u\n", val, mask);
 +	return -ETIMEDOUT;
@@ -274,7 +280,7 @@ index 000000000..44d48a9a2
 +			if (ioread8(smc->iomem_base + SMC_MMIO_KEY_STATUS) & 0x20)
 +				return 0;
 +
-+			msleep(1);
++			fsleep(1000);
 +		}
 +	}
 +err:
@@ -366,10 +372,32 @@ index 000000000..44d48a9a2
 +	orderly_poweroff(true);
 +}
 +
++static void apple_smc_acpi_notifier_work(struct work_struct *work)
++{
++	struct apple_smc_acpi *smc =
++		container_of(work, struct apple_smc_acpi, notifier_work);
++
++	unsigned long flags;
++	uint8_t event;
++
++	for (;;) {
++		spin_lock_irqsave(&smc->event_lock, flags);
++
++		if (!kfifo_get(&smc->event_fifo, &event)) {
++			spin_unlock_irqrestore(&smc->event_lock, flags);
++			break;
++		}
++		spin_unlock_irqrestore(&smc->event_lock, flags);
++
++		blocking_notifier_call_chain(&smc->event_handlers, event, NULL);
++	}
++}
++
 +static irqreturn_t apple_smc_acpi_irq(int irq, void *data)
 +{
 +	struct apple_smc_acpi *smc = data;
 +	uint8_t status = 0, int_id = 0;
++	unsigned long flags;
 +
 +	if (smc->is_mmio) {
 +		status = ioread8(smc->iomem_base + SMC_MMIO_KEY_INTERRUPT_STATUS);
@@ -389,14 +417,23 @@ index 000000000..44d48a9a2
 +	case 0x40: // Shutdown Imminet
 +		schedule_work(&smc->shutdown_work);
 +		break;
++	case 0x41: // bridgeOS Crash
++		dev_crit(smc->dev, "BridgeOS Crashed!!!\n");
++		break;
 +	case 0x2A: // ALS Change
 +	case 0x54: // Thermal Level Changed
-+	case 0x55: // Thermal Emergency
++	case 0x55: // PlatformFuntion
 +	case 0x60: // SMS Drop
 +	case 0x69: // SMS Orientation
 +	case 0x6F: // SMS Shock
 +	case 0x80: // PLimit Changed
-+		blocking_notifier_call_chain(&smc->event_handlers, int_id, NULL);
++		spin_lock_irqsave(&smc->event_lock, flags);
++		if (!kfifo_put(&smc->event_fifo, int_id))
++			dev_warn_ratelimited(smc->dev, "Notification lost: %u\n", int_id);
++
++		spin_unlock_irqrestore(&smc->event_lock, flags);
++
++		schedule_work(&smc->notifier_work);
 +		break;
 +	}
 +
@@ -602,16 +639,36 @@ index 000000000..44d48a9a2
 +	if (ACPI_FAILURE(status))
 +		return -ENODEV;
 +
-+	apple_smc_acpi_try_enable_mmio(smc);
-+	apple_smc_acpi_try_enable_interrupts(smc);
 +	BLOCKING_INIT_NOTIFIER_HEAD(&smc->event_handlers);
 +	INIT_WORK(&smc->shutdown_work, apple_smc_acpi_shutdown_work);
++	INIT_WORK(&smc->notifier_work, apple_smc_acpi_notifier_work);
++	spin_lock_init(&smc->event_lock);
++	INIT_KFIFO(smc->event_fifo);
++
++	apple_smc_acpi_try_enable_mmio(smc);
++	apple_smc_acpi_try_enable_interrupts(smc);
 +
 +	return apple_smc_probe(smc->dev, &apple_smc_acpi_be_ops, smc, &smc->event_handlers, true);
 +}
 +
++static int apple_smc_acpi_resume(struct device *dev)
++{
++	struct apple_smc *smc = dev_get_drvdata(dev);
++	struct apple_smc_acpi *smc_acpi = smc->be_cookie;
++
++	/* NTOK may be set to 0 on resume */
++	if (smc_acpi->interrupt_enabled)
++		apple_smc_acpi_try_enable_interrupts(smc_acpi);
++
++	return 0;
++}
++
 +static int apple_smc_acpi_poweroff_late(struct device *dev)
 +{
++	/*
++	 * NESN is used to inform bridgeOS that we're going
++	 * to shutdown
++	 */
 +	struct apple_smc *smc = dev_get_drvdata(dev);
 +	u32 val = 0x8C70;
 +
@@ -620,6 +677,7 @@ index 000000000..44d48a9a2
 +}
 +
 +static const struct dev_pm_ops apple_smc_acpi_ops = {
++	.resume = apple_smc_acpi_resume,
 +	.poweroff_late = apple_smc_acpi_poweroff_late,
 +};
 +
