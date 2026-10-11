@@ -1,4 +1,4 @@
-From 4d8d381195bbd2ed283492180c9948c98153cf80 Mon Sep 17 00:00:00 2001
+From d3ec27bb40b720a6f1b2a77c5ca86d6ad55b1e50 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Fri, 24 Apr 2026 21:56:06 +0530
 Subject: [PATCH 12/13] hwmon/macsmc: add more types
@@ -9,7 +9,7 @@ Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
  1 file changed, 310 insertions(+)
 
 diff --git a/drivers/hwmon/macsmc-hwmon.c b/drivers/hwmon/macsmc-hwmon.c
-index 1500ec2cc..4e9b14f45 100644
+index 1500ec2cc..2e74dcd66 100644
 --- a/drivers/hwmon/macsmc-hwmon.c
 +++ b/drivers/hwmon/macsmc-hwmon.c
 @@ -221,6 +221,313 @@ static int macsmc_hwmon_read_key(struct apple_smc *smc,
@@ -24,7 +24,7 @@ index 1500ec2cc..4e9b14f45 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = ui8;
++		*val = ui8 * scale;
 +		break;
 +	}
 +	/* signed 8-bit integer */
@@ -35,7 +35,7 @@ index 1500ec2cc..4e9b14f45 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = si8;
++		*val = si8 * scale;
 +		break;
 +	}
 +	/* unsigned 16-bit integer */
@@ -46,7 +46,7 @@ index 1500ec2cc..4e9b14f45 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = ui16;
++		*val = ui16 * scale;
 +		break;
 +	}
 +	/* signed 16-bit integer */
@@ -57,7 +57,7 @@ index 1500ec2cc..4e9b14f45 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = si16;
++		*val = si16 * scale;
 +		break;
 +	}
 +	/* unsigned 32-bit integer */
@@ -68,7 +68,7 @@ index 1500ec2cc..4e9b14f45 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = ui32;
++		*val = ui32 * scale;
 +		break;
 +	}
 +	/* signed 32-bit integer */
@@ -79,7 +79,7 @@ index 1500ec2cc..4e9b14f45 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = si32;
++		*val = si32 * scale;
 +		break;
 +	}
 +	/* 2.14 unsigned fixed point decimal */

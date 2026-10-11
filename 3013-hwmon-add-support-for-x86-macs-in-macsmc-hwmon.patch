@@ -1,4 +1,4 @@
-From 8f1d9f839731cb4d5926f314fe5f0b7204d95e79 Mon Sep 17 00:00:00 2001
+From 8e8ad9a6bb22918ac0e4abd6ec2ea94a5bbc2bf1 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Mon, 5 Oct 2026 03:39:02 -0400
 Subject: [PATCH 13/13] hwmon: add support for x86 macs in macsmc-hwmon
@@ -6,8 +6,8 @@ Subject: [PATCH 13/13] hwmon: add support for x86 macs in macsmc-hwmon
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---
  drivers/hwmon/Kconfig        |   5 +-
- drivers/hwmon/macsmc-hwmon.c | 825 ++++++++++++++++++++++++++++++++++-
- 2 files changed, 803 insertions(+), 27 deletions(-)
+ drivers/hwmon/macsmc-hwmon.c | 813 ++++++++++++++++++++++++++++++++++-
+ 2 files changed, 797 insertions(+), 21 deletions(-)
 
 diff --git a/drivers/hwmon/Kconfig b/drivers/hwmon/Kconfig
 index 6557790f3..5b329a69a 100644
@@ -30,7 +30,7 @@ index 6557790f3..5b329a69a 100644
  	  This driver can also be built as a module. If so, the module will
  	  be called macsmc-hwmon.
 diff --git a/drivers/hwmon/macsmc-hwmon.c b/drivers/hwmon/macsmc-hwmon.c
-index 4e9b14f45..c715b0e81 100644
+index 2e74dcd66..c715b0e81 100644
 --- a/drivers/hwmon/macsmc-hwmon.c
 +++ b/drivers/hwmon/macsmc-hwmon.c
 @@ -2,7 +2,7 @@
@@ -70,60 +70,6 @@ index 4e9b14f45..c715b0e81 100644
  };
  
  struct macsmc_hwmon {
-@@ -229,7 +232,7 @@ static int macsmc_hwmon_read_key(struct apple_smc *smc,
- 		if (ret)
- 			return ret;
- 
--		*val = ui8;
-+		*val = ui8 * scale;
- 		break;
- 	}
- 	/* signed 8-bit integer */
-@@ -240,7 +243,7 @@ static int macsmc_hwmon_read_key(struct apple_smc *smc,
- 		if (ret)
- 			return ret;
- 
--		*val = si8;
-+		*val = si8 * scale;
- 		break;
- 	}
- 	/* unsigned 16-bit integer */
-@@ -251,7 +254,7 @@ static int macsmc_hwmon_read_key(struct apple_smc *smc,
- 		if (ret)
- 			return ret;
- 
--		*val = ui16;
-+		*val = ui16 * scale;
- 		break;
- 	}
- 	/* signed 16-bit integer */
-@@ -262,7 +265,7 @@ static int macsmc_hwmon_read_key(struct apple_smc *smc,
- 		if (ret)
- 			return ret;
- 
--		*val = si16;
-+		*val = si16 * scale;
- 		break;
- 	}
- 	/* unsigned 32-bit integer */
-@@ -273,7 +276,7 @@ static int macsmc_hwmon_read_key(struct apple_smc *smc,
- 		if (ret)
- 			return ret;
- 
--		*val = ui32;
-+		*val = ui32 * scale;
- 		break;
- 	}
- 	/* signed 32-bit integer */
-@@ -284,7 +287,7 @@ static int macsmc_hwmon_read_key(struct apple_smc *smc,
- 		if (ret)
- 			return ret;
- 
--		*val = si32;
-+		*val = si32 * scale;
- 		break;
- 	}
- 	/* 2.14 unsigned fixed point decimal */
 @@ -553,8 +556,8 @@ static int macsmc_hwmon_write_f32(struct apple_smc *smc, smc_key key, long value
  			val <<= 23 - exp;
  
