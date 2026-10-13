@@ -1,7 +1,7 @@
-From ea20403f0e510fd0a9d23dee7b50903d42029896 Mon Sep 17 00:00:00 2001
+From ac92c528a7e85e76d92e6d820a44a5b909128605 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Sat, 19 Sep 2026 20:56:13 +0000
+Date: Tue, 13 Oct 2026 23:02:00 +0000
 Subject: [PATCH] Add APFS driver
 
 ---
@@ -13,7 +13,7 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/dir.c                     | 1513 ++++++++++++++
  fs/apfs/extents.c                 | 2372 ++++++++++++++++++++++
  fs/apfs/file.c                    |  400 ++++
- fs/apfs/inode.c                   | 2641 ++++++++++++++++++++++++
+ fs/apfs/inode.c                   | 2642 ++++++++++++++++++++++++
  fs/apfs/key.c                     |  337 +++
  fs/apfs/libzbitmap.c              |  442 ++++
  fs/apfs/libzbitmap.h              |   31 +
@@ -39,7 +39,7 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/version.h                 |    1 +
  fs/apfs/xattr.c                   |  914 +++++++++
  fs/apfs/xfield.c                  |  171 ++
- 34 files changed, 27385 insertions(+)
+ 34 files changed, 27386 insertions(+)
  create mode 100644 fs/apfs/Makefile
  create mode 100644 fs/apfs/apfs.h
  create mode 100644 fs/apfs/apfs_raw.h
@@ -9035,10 +9035,10 @@ index 000000000..46dfdcb69
 +};
 diff --git a/fs/apfs/inode.c b/fs/apfs/inode.c
 new file mode 100644
-index 000000000..af6f9f127
+index 000000000..d260c6a76
 --- /dev/null
 +++ b/fs/apfs/inode.c
-@@ -0,0 +1,2641 @@
+@@ -0,0 +1,2642 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -10275,6 +10275,7 @@ index 000000000..af6f9f127
 +	val->owner = cpu_to_le32(i_uid_read(inode));
 +	val->group = cpu_to_le32(i_gid_read(inode));
 +	val->mode = cpu_to_le16(inode->i_mode);
++	val->internal_flags = cpu_to_le64(APFS_I(inode)->i_int_flags);
 +
 +	/* The buffer was just allocated: none of these functions should fail */
 +	apfs_init_xfields(val->xfields, total_xlen);
