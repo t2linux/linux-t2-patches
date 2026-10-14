@@ -1,25 +1,25 @@
-From b626b19ca6ebb122822e1cc6e21033278b040aba Mon Sep 17 00:00:00 2001
+From 3153d56790f23c2d869c4daf9d3dd7f9e1d68597 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Mon, 28 Sep 2026 08:47:04 +0000
+Date: Wed, 14 Oct 2026 11:33:06 +0000
 Subject: [PATCH] Add t2bce driver stack
 
 ---
  drivers/staging/t2bce/Kconfig                 |   53 +
  drivers/staging/t2bce/Makefile                |    6 +
  drivers/staging/t2bce/t2bce_audio/Makefile    |    7 +
- drivers/staging/t2bce/t2bce_audio/audio.c     |  998 +++++++++++++
- drivers/staging/t2bce/t2bce_audio/audio.h     |  157 +++
+ drivers/staging/t2bce/t2bce_audio/audio.c     | 1008 +++++++++++++
+ drivers/staging/t2bce/t2bce_audio/audio.h     |  159 +++
  .../staging/t2bce/t2bce_audio/description.h   |   42 +
- drivers/staging/t2bce/t2bce_audio/pcm.c       |  619 ++++++++
+ drivers/staging/t2bce/t2bce_audio/pcm.c       |  624 +++++++++
  drivers/staging/t2bce/t2bce_audio/pcm.h       |   22 +
  drivers/staging/t2bce/t2bce_audio/protocol.c  |  356 +++++
  drivers/staging/t2bce/t2bce_audio/protocol.h  |  149 ++
- .../staging/t2bce/t2bce_audio/protocol_bce.c  |  263 ++++
- .../staging/t2bce/t2bce_audio/protocol_bce.h  |   72 +
+ .../staging/t2bce/t2bce_audio/protocol_bce.c  |  338 +++++
+ .../staging/t2bce/t2bce_audio/protocol_bce.h  |   79 ++
  drivers/staging/t2bce/t2bce_audio/timing.h    |   58 +
  drivers/staging/t2bce/t2bce_ave/Makefile      |    7 +
- drivers/staging/t2bce/t2bce_ave/ave.c         |  129 ++
+ drivers/staging/t2bce/t2bce_ave/ave.c         |  130 ++
  drivers/staging/t2bce/t2bce_ave/encoder.c     | 1019 ++++++++++++++
  drivers/staging/t2bce/t2bce_ave/encoder.h     |   75 +
  drivers/staging/t2bce/t2bce_ave/protocol.c    | 1015 ++++++++++++++
@@ -44,7 +44,7 @@ Subject: [PATCH] Add t2bce driver stack
  drivers/staging/t2bce/t2bce_vhci/transfer.h   |   81 ++
  drivers/staging/t2bce/t2bce_vhci/vhci.c       | 1218 ++++++++++++++++
  drivers/staging/t2bce/t2bce_vhci/vhci.h       |   69 +
- 39 files changed, 12365 insertions(+)
+ 39 files changed, 12465 insertions(+)
  create mode 100644 drivers/staging/t2bce/Kconfig
  create mode 100644 drivers/staging/t2bce/Makefile
  create mode 100644 drivers/staging/t2bce/t2bce_audio/Makefile
@@ -171,10 +171,10 @@ index 000000000..1fba36e10
 +ccflags-y += -I$(src)/../t2bce_core/include
 diff --git a/drivers/staging/t2bce/t2bce_audio/audio.c b/drivers/staging/t2bce/t2bce_audio/audio.c
 new file mode 100644
-index 000000000..47042983d
+index 000000000..f9a569ad2
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_audio/audio.c
-@@ -0,0 +1,998 @@
+@@ -0,0 +1,1008 @@
 +#include <linux/pci.h>
 +#include <linux/spinlock.h>
 +#include <linux/module.h>
@@ -266,6 +266,11 @@ index 000000000..47042983d
 +        status = -ENOMEM;
 +        goto fail;
 +    }
++    t2audio->msg_wq = alloc_workqueue("t2bce_audio_msg", WQ_PERCPU, 0);
++    if (!t2audio->msg_wq) {
++        status = -ENOMEM;
++        goto fail;
++    }
 +
 +    /* Init: set an unknown flag in the bitset */
 +    if (pci_read_config_dword(dev, 4, &cfg))
@@ -275,7 +280,8 @@ index 000000000..47042983d
 +
 +    pr_debug("t2bce_audio: bs len = %llx\n", pci_resource_len(dev, 0));
 +    t2audio->reg_mem_bs_dma = pci_resource_start(dev, 0);
-+    t2audio->reg_mem_bs = pci_iomap(dev, 0, 0);
++    t2audio->bs_wc = pci_resource_flags(dev, 0) & IORESOURCE_PREFETCH;
++    t2audio->reg_mem_bs = t2audio->bs_wc ? pci_iomap_wc(dev, 0, 0) : pci_iomap(dev, 0, 0);
 +    t2audio->reg_mem_cfg = pci_iomap(dev, 4, 0);
 +
 +    t2audio->reg_mem_gpr = (u32 __iomem *) ((u8 __iomem *) t2audio->reg_mem_cfg + 0xC000);
@@ -341,6 +347,7 @@ index 000000000..47042983d
 +    return 0;
 +
 +fail_snd:
++    t2audio_bce_exit(t2audio);
 +    debugfs_remove_recursive(t2audio->debugfs_dir);
 +    t2audio->debugfs_dir = NULL;
 +    snd_card_free(t2audio->card);
@@ -354,6 +361,7 @@ index 000000000..47042983d
 +    if (t2audio) {
 +        if (t2audio->dev)
 +            device_destroy(t2audio_class, t2audio->devt);
++        t2audio_bce_exit(t2audio);
 +        if (!IS_ERR_OR_NULL(t2audio->reg_mem_bs))
 +            pci_iounmap(dev, t2audio->reg_mem_bs);
 +        if (!IS_ERR_OR_NULL(t2audio->reg_mem_cfg))
@@ -384,6 +392,7 @@ index 000000000..47042983d
 +    cancel_work_sync(&t2audio->resume_work);
 +    list_for_each_entry(sdev, &t2audio->subdevice_list, list)
 +        t2audio_pcm_quiesce_subdevice(sdev);
++    t2audio_bce_stop_messages(t2audio);
 +    debugfs_remove_recursive(t2audio->debugfs_dir);
 +    t2audio->debugfs_dir = NULL;
 +    snd_card_free(t2audio->card);
@@ -393,6 +402,7 @@ index 000000000..47042983d
 +        t2audio_free_dev(sdev);
 +    }
 +    destroy_workqueue(t2audio->pcm_io_wq);
++    t2audio_bce_exit(t2audio);
 +    pci_iounmap(dev, t2audio->reg_mem_bs);
 +    pci_iounmap(dev, t2audio->reg_mem_cfg);
 +    device_destroy(t2audio_class, t2audio->devt);
@@ -1042,7 +1052,7 @@ index 000000000..47042983d
 +    work->a = a;
 +    INIT_WORK(&work->ws, t2audio_handle_prop_change_work);
 +    t2audio_msg_read_property_changed(msg, &work->dev, &work->obj, &work->prop);
-+    schedule_work(&work->ws);
++    queue_work(a->msg_wq, &work->ws);
 +}
 +
 +#define t2audio_send_cmd_response(a, sctx, msg, fn, ...) \
@@ -1175,10 +1185,10 @@ index 000000000..47042983d
 +module_exit(t2audio_module_exit);
 diff --git a/drivers/staging/t2bce/t2bce_audio/audio.h b/drivers/staging/t2bce/t2bce_audio/audio.h
 new file mode 100644
-index 000000000..81eeb86db
+index 000000000..9c073132d
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_audio/audio.h
-@@ -0,0 +1,157 @@
+@@ -0,0 +1,159 @@
 +#ifndef T2AUDIO_H
 +#define T2AUDIO_H
 +
@@ -1306,6 +1316,7 @@ index 000000000..81eeb86db
 +    void __iomem *reg_mem_bs;
 +    dma_addr_t reg_mem_bs_dma;
 +    void __iomem *reg_mem_cfg;
++    bool bs_wc;
 +
 +    u32 __iomem *reg_mem_gpr;
 +
@@ -1323,6 +1334,7 @@ index 000000000..81eeb86db
 +    struct completion remote_alive;
 +    struct work_struct resume_work;
 +    struct workqueue_struct *pcm_io_wq;
++    struct workqueue_struct *msg_wq;
 +    bool resume_deferred;
 +    bool pm_quiesced;
 +
@@ -1386,16 +1398,17 @@ index 000000000..011ebfd69
 +#endif //T2AUDIO_DESCRIPTION_H
 diff --git a/drivers/staging/t2bce/t2bce_audio/pcm.c b/drivers/staging/t2bce/t2bce_audio/pcm.c
 new file mode 100644
-index 000000000..6c15068e6
+index 000000000..72d0db7f0
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_audio/pcm.c
-@@ -0,0 +1,619 @@
+@@ -0,0 +1,624 @@
 +#include "pcm.h"
 +#include "audio.h"
 +#include "timing.h"
 +#include <linux/dma-mapping.h>
 +#include <linux/io.h>
 +#include <linux/ktime.h>
++#include <linux/mm.h>
 +
 +static u64 t2audio_get_alsa_fmtbit(struct t2audio_apple_description *desc)
 +{
@@ -1820,7 +1833,11 @@ index 000000000..6c15068e6
 +    buf = &stream->buffers[0];
 +    switch (buf->type) {
 +        case T2AUDIO_DMA_BUF_IOMEM:
-+            return snd_pcm_lib_mmap_iomem(substream, area);
++            if (sdev->a->bs_wc)
++                area->vm_page_prot = pgprot_writecombine(area->vm_page_prot);
++            else
++                area->vm_page_prot = pgprot_noncached(area->vm_page_prot);
++            return vm_iomap_memory(area, buf->dma_addr, buf->size);
 +        case T2AUDIO_DMA_BUF_COHERENT:
 +            return dma_mmap_coherent(sdev->a->dev, area, buf->ptr, buf->dma_addr, buf->size);
 +        default:
@@ -2556,14 +2573,15 @@ index 000000000..1ca4b0afa
 +#endif //T2AUDIO_PROTOCOL_H
 diff --git a/drivers/staging/t2bce/t2bce_audio/protocol_bce.c b/drivers/staging/t2bce/t2bce_audio/protocol_bce.c
 new file mode 100644
-index 000000000..c090bda92
+index 000000000..e10406ac4
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_audio/protocol_bce.c
-@@ -0,0 +1,263 @@
+@@ -0,0 +1,338 @@
 +#include "protocol_bce.h"
 +
 +#include "audio.h"
 +#include <linux/dma-mapping.h>
++#include <linux/err.h>
 +#include <linux/ktime.h>
 +
 +static void t2audio_bce_out_queue_completion(struct t2bce_core_queue_sq *sq);
@@ -2579,6 +2597,7 @@ index 000000000..c090bda92
 +    struct t2audio_bce *bce = &dev->bcem;
 +    bce->cq = t2bce_core_create_cq(dev->bce, 0x80);
 +    spin_lock_init(&bce->spinlock);
++    init_waitqueue_head(&bce->drain_wq);
 +    if (!bce->cq)
 +        return -EINVAL;
 +    if ((status = t2audio_bce_queue_init(dev, &bce->qout, "com.apple.BridgeAudio.IntelToARM", DMA_TO_DEVICE,
@@ -2591,6 +2610,71 @@ index 000000000..c090bda92
 +    }
 +    t2audio_bce_in_queue_submit_pending(&bce->qin, bce->qin.el_count);
 +    return 0;
++}
++
++static void t2audio_bce_flush_queue(struct t2audio_device *dev, struct t2audio_bce_queue *q,
++        const char *name)
++{
++    int status;
++
++    if (!q->sq)
++        return;
++    status = t2bce_core_flush_queue(dev->bce, q->sq);
++    if (!status && !wait_event_timeout(dev->bcem.drain_wq,
++            t2bce_core_queue_sq_available(q->sq) ==
++            t2bce_core_queue_sq_capacity(q->sq) - 1,
++            msecs_to_jiffies(T2AUDIO_BCE_DRAIN_TIMEOUT_MS)))
++        status = -ETIMEDOUT;
++    if (status)
++        pr_err("t2bce_audio: %s queue flush/completion wait failed (%d)\n", name, status);
++}
++
++void t2audio_bce_stop_messages(struct t2audio_device *dev)
++{
++    struct t2audio_bce *bce = &dev->bcem;
++
++    if (IS_ERR_OR_NULL(dev->bce))
++        return;
++
++    WRITE_ONCE(bce->teardown, true);
++    t2bce_core_synchronize_completions(dev->bce);
++    if (dev->msg_wq) {
++        destroy_workqueue(dev->msg_wq);
++        dev->msg_wq = NULL;
++    }
++}
++
++void t2audio_bce_exit(struct t2audio_device *dev)
++{
++    struct t2audio_bce *bce = &dev->bcem;
++
++    if (IS_ERR_OR_NULL(dev->bce))
++        return;
++
++    t2audio_bce_stop_messages(dev);
++    t2audio_bce_flush_queue(dev, &bce->qout, "out");
++    t2audio_bce_flush_queue(dev, &bce->qin, "in");
++    t2bce_core_synchronize_completions(dev->bce);
++
++    if (bce->qout.sq)
++        t2bce_core_destroy_sq(dev->bce, bce->qout.sq);
++    if (bce->qin.sq)
++        t2bce_core_destroy_sq(dev->bce, bce->qin.sq);
++    bce->qout.sq = NULL;
++    bce->qin.sq = NULL;
++    t2bce_core_synchronize_completions(dev->bce);
++    if (bce->cq)
++        t2bce_core_destroy_cq(dev->bce, bce->cq);
++    bce->cq = NULL;
++
++    if (bce->qout.data)
++        dma_free_coherent(t2bce_core_client_dma_dev(dev->bce),
++                bce->qout.el_size * bce->qout.el_count, bce->qout.data, bce->qout.dma_addr);
++    if (bce->qin.data)
++        dma_free_coherent(t2bce_core_client_dma_dev(dev->bce),
++                bce->qin.el_size * bce->qin.el_count, bce->qin.data, bce->qin.dma_addr);
++    bce->qout.data = NULL;
++    bce->qin.data = NULL;
 +}
 +
 +int t2audio_bce_queue_init(struct t2audio_device *dev, struct t2audio_bce_queue *q, const char *name,
@@ -2607,6 +2691,7 @@ index 000000000..c090bda92
 +    q->data = dma_alloc_coherent(t2bce_core_client_dma_dev(dev->bce), q->el_size * q->el_count, &q->dma_addr, GFP_KERNEL);
 +    if (!q->data) {
 +        t2bce_core_destroy_sq(dev->bce, q->sq);
++        q->sq = NULL;
 +        return -EINVAL;
 +    }
 +    return 0;
@@ -2715,9 +2800,12 @@ index 000000000..c090bda92
 +
 +static void t2audio_bce_out_queue_completion(struct t2bce_core_queue_sq *sq)
 +{
++    struct t2audio_device *dev = t2bce_core_queue_sq_userdata(sq);
++
 +    while (t2bce_core_next_completion(sq)) {
 +        t2bce_core_notify_submission_complete(sq);
 +    }
++    wake_up(&dev->bcem.drain_wq);
 +}
 +
 +static void t2audio_bce_in_queue_handle_msg(struct t2audio_device *a, struct t2audio_msg *msg);
@@ -2760,7 +2848,9 @@ index 000000000..c090bda92
 +        t2bce_core_notify_submission_complete(sq);
 +        ++cnt;
 +    }
-+    t2audio_bce_in_queue_submit_pending(q, cnt);
++    if (!READ_ONCE(dev->bcem.teardown))
++        t2audio_bce_in_queue_submit_pending(q, cnt);
++    wake_up(&dev->bcem.drain_wq);
 +}
 +
 +static void t2audio_bce_in_queue_handle_msg(struct t2audio_device *a, struct t2audio_msg *msg)
@@ -2768,6 +2858,8 @@ index 000000000..c090bda92
 +    struct t2audio_msg_header *header = (struct t2audio_msg_header *) msg->data;
 +    struct t2audio_deferred_msg *work;
 +
++    if (READ_ONCE(a->bcem.teardown))
++        return;
 +    if (msg->size < sizeof(struct t2audio_msg_header)) {
 +        pr_err("t2bce_audio: Msg size smaller than header (%lx)", msg->size);
 +        return;
@@ -2794,7 +2886,7 @@ index 000000000..c090bda92
 +    work->msg.size = msg->size;
 +    work->msg.received_ns = msg->received_ns;
 +    INIT_WORK(&work->ws, t2audio_deferred_msg_work);
-+    schedule_work(&work->ws);
++    queue_work(a->msg_wq, &work->ws);
 +}
 +
 +void t2audio_bce_in_queue_submit_pending(struct t2audio_bce_queue *q, size_t count)
@@ -2825,20 +2917,23 @@ index 000000000..c090bda92
 +}
 diff --git a/drivers/staging/t2bce/t2bce_audio/protocol_bce.h b/drivers/staging/t2bce/t2bce_audio/protocol_bce.h
 new file mode 100644
-index 000000000..8e474d2f7
+index 000000000..a8973f15e
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_audio/protocol_bce.h
-@@ -0,0 +1,72 @@
+@@ -0,0 +1,79 @@
 +#ifndef T2AUDIO_PROTOCOL_BCE_H
 +#define T2AUDIO_PROTOCOL_BCE_H
 +
 +#include "protocol.h"
 +#include "t2bce_core_transport.h"
++#include <linux/wait.h>
 +
 +#define T2AUDIO_BCE_QUEUE_ELEMENT_SIZE 0x1000
 +#define T2AUDIO_BCE_QUEUE_ELEMENT_COUNT 20
 +
 +#define T2AUDIO_BCE_QUEUE_TAG_COUNT 1000
++
++#define T2AUDIO_BCE_DRAIN_TIMEOUT_MS 5000
 +
 +struct t2audio_device;
 +
@@ -2859,6 +2954,8 @@ index 000000000..8e474d2f7
 +    struct t2audio_bce_queue qin;
 +    struct t2audio_bce_queue qout;
 +    int tag_num;
++    bool teardown;
++    wait_queue_head_t drain_wq;
 +    struct t2audio_bce_queue_entry *pending_entries[T2AUDIO_BCE_QUEUE_TAG_COUNT];
 +    struct spinlock spinlock;
 +};
@@ -2872,6 +2969,8 @@ index 000000000..8e474d2f7
 +};
 +
 +int t2audio_bce_init(struct t2audio_device *dev);
++void t2audio_bce_stop_messages(struct t2audio_device *dev);
++void t2audio_bce_exit(struct t2audio_device *dev);
 +int __t2audio_send_prepare(struct t2audio_bce *b, struct t2audio_send_ctx *ctx, char *tag);
 +void __t2audio_send(struct t2audio_bce *b, struct t2audio_send_ctx *ctx);
 +int __t2audio_send_cmd_sync(struct t2audio_bce *b, struct t2audio_send_ctx *ctx, struct t2audio_msg *reply);
@@ -2980,10 +3079,10 @@ index 000000000..3097093cf
 +ccflags-y += -I$(src)/../t2bce_core/include
 diff --git a/drivers/staging/t2bce/t2bce_ave/ave.c b/drivers/staging/t2bce/t2bce_ave/ave.c
 new file mode 100644
-index 000000000..0d7170dbc
+index 000000000..fb78e378d
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_ave/ave.c
-@@ -0,0 +1,129 @@
+@@ -0,0 +1,130 @@
 +#define pr_fmt(fmt) "t2bce_ave: " fmt
 +
 +#include <linux/device.h>
@@ -3051,8 +3150,9 @@ index 000000000..0d7170dbc
 +		goto err_class;
 +	}
 +	t2bce_ave->core_dev = t2bce_core_device_get();
-+	if (!t2bce_ave->core_dev) {
-+		ret = -EPROBE_DEFER;
++	if (IS_ERR(t2bce_ave->core_dev)) {
++		ret = PTR_ERR(t2bce_ave->core_dev);
++		t2bce_ave->core_dev = NULL;
 +		goto err_state;
 +	}
 +	t2bce_ave->dev = device_create(t2bce_ave_class, t2bce_ave->core_dev,
