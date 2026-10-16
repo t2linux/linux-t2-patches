@@ -1,4 +1,4 @@
-From 5aa6f47b9c3b330991a5a25b13352882832bbc16 Mon Sep 17 00:00:00 2001
+From 8c668b7b32d3686c0381c6ed44db22d3772e747f Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sun, 4 Oct 2026 22:39:31 -0400
 Subject: [PATCH 10/13] power/supply: add support for x86 macs in macsmc-power
@@ -9,7 +9,7 @@ Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
  1 file changed, 603 insertions(+), 145 deletions(-)
 
 diff --git a/drivers/power/supply/macsmc-power.c b/drivers/power/supply/macsmc-power.c
-index ced37a701..b232c5a78 100644
+index ced37a701..a23126dbf 100644
 --- a/drivers/power/supply/macsmc-power.c
 +++ b/drivers/power/supply/macsmc-power.c
 @@ -7,8 +7,11 @@
@@ -731,7 +731,7 @@ index ced37a701..b232c5a78 100644
 +
 +			if (apple_smc_key_exists(smc, SMC_KEY(CHLS)))
 +				power->has_chls = true;
-+			else if (power->has_chls || apple_smc_key_exists(smc, SMC_KEY(BCLM)))
++			if (power->has_chls || apple_smc_key_exists(smc, SMC_KEY(BCLM)))
 +				props[nprops++] = POWER_SUPPLY_PROP_CHARGE_CONTROL_END_THRESHOLD;
 +			if (apple_smc_key_exists(smc, SMC_KEY(B0AP)))
 +				props[nprops++] = POWER_SUPPLY_PROP_POWER_NOW;
