@@ -1,7 +1,7 @@
-From ac92c528a7e85e76d92e6d820a44a5b909128605 Mon Sep 17 00:00:00 2001
+From 354c16c7dece1935d6a5170277790fa54c902e47 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Tue, 13 Oct 2026 23:02:00 +0000
+Date: Fri, 16 Oct 2026 21:35:44 +0000
 Subject: [PATCH] Add APFS driver
 
 ---
@@ -111,7 +111,7 @@ index 000000000..2bafc31f1
 +	make -C $(KERNEL_DIR) M=$(PWD) clean
 diff --git a/fs/apfs/apfs.h b/fs/apfs/apfs.h
 new file mode 100644
-index 000000000..d96352ed4
+index 000000000..d36aabc6f
 --- /dev/null
 +++ b/fs/apfs/apfs.h
 @@ -0,0 +1,1375 @@
@@ -1473,7 +1473,7 @@ index 000000000..d96352ed4
 +#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 7, 0) && !RHEL_VERSION_GE(9, 8)
 +	return __getblk_gfp(info->blki_bdev, block, sb->s_blocksize, __GFP_MOVABLE);
 +#else
-+	return bdev_getblk(info->blki_bdev, block, sb->s_blocksize, __GFP_MOVABLE);
++	return __getblk(info->blki_bdev, block, sb->s_blocksize);
 +#endif
 +}
 +
@@ -6251,7 +6251,7 @@ index 000000000..9caba9f0c
 +}
 diff --git a/fs/apfs/extents.c b/fs/apfs/extents.c
 new file mode 100644
-index 000000000..1f594ee3d
+index 000000000..ea9f1412c
 --- /dev/null
 +++ b/fs/apfs/extents.c
 @@ -0,0 +1,2372 @@
@@ -7653,7 +7653,7 @@ index 000000000..1f594ee3d
 +	}
 +
 +	dstream_blks = apfs_size_to_blocks(sb, dstream->ds_size);
-+	if (dstream_blks < dsblock) {
++	if (dstream_blks <= dsblock) {
 +		/*
 +		 * This recurses into apfs_dstream_get_new_block() and dirties
 +		 * the extent cache, so it must happen before flushing it.
