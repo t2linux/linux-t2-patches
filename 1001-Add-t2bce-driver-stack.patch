@@ -1,15 +1,15 @@
-From 3153d56790f23c2d869c4daf9d3dd7f9e1d68597 Mon Sep 17 00:00:00 2001
+From 7026714f7345c00c95dd18fad50b11c5e5c3bfc4 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Wed, 14 Oct 2026 11:33:06 +0000
+Date: Fri, 16 Oct 2026 16:42:19 +0000
 Subject: [PATCH] Add t2bce driver stack
 
 ---
  drivers/staging/t2bce/Kconfig                 |   53 +
  drivers/staging/t2bce/Makefile                |    6 +
  drivers/staging/t2bce/t2bce_audio/Makefile    |    7 +
- drivers/staging/t2bce/t2bce_audio/audio.c     | 1008 +++++++++++++
- drivers/staging/t2bce/t2bce_audio/audio.h     |  159 +++
+ drivers/staging/t2bce/t2bce_audio/audio.c     | 1046 ++++++++++++++
+ drivers/staging/t2bce/t2bce_audio/audio.h     |  160 +++
  .../staging/t2bce/t2bce_audio/description.h   |   42 +
  drivers/staging/t2bce/t2bce_audio/pcm.c       |  624 +++++++++
  drivers/staging/t2bce/t2bce_audio/pcm.h       |   22 +
@@ -30,8 +30,8 @@ Subject: [PATCH] Add t2bce driver stack
  .../t2bce_core/include/t2bce_core_transport.h |   97 ++
  drivers/staging/t2bce/t2bce_core/mailbox.c    |  249 ++++
  drivers/staging/t2bce/t2bce_core/mailbox.h    |   64 +
- drivers/staging/t2bce/t2bce_core/t2bce.h      |   53 +
- drivers/staging/t2bce/t2bce_core/t2bce_main.c |  932 ++++++++++++
+ drivers/staging/t2bce/t2bce_core/t2bce.h      |   54 +
+ drivers/staging/t2bce/t2bce_core/t2bce_main.c |  947 +++++++++++++
  drivers/staging/t2bce/t2bce_core/transport.c  |  482 +++++++
  drivers/staging/t2bce/t2bce_dma/Makefile      |    6 +
  .../t2bce/t2bce_dma/include/t2bce_dma_queue.h |  208 +++
@@ -44,7 +44,7 @@ Subject: [PATCH] Add t2bce driver stack
  drivers/staging/t2bce/t2bce_vhci/transfer.h   |   81 ++
  drivers/staging/t2bce/t2bce_vhci/vhci.c       | 1218 ++++++++++++++++
  drivers/staging/t2bce/t2bce_vhci/vhci.h       |   69 +
- 39 files changed, 12465 insertions(+)
+ 39 files changed, 12520 insertions(+)
  create mode 100644 drivers/staging/t2bce/Kconfig
  create mode 100644 drivers/staging/t2bce/Makefile
  create mode 100644 drivers/staging/t2bce/t2bce_audio/Makefile
@@ -171,10 +171,10 @@ index 000000000..1fba36e10
 +ccflags-y += -I$(src)/../t2bce_core/include
 diff --git a/drivers/staging/t2bce/t2bce_audio/audio.c b/drivers/staging/t2bce/t2bce_audio/audio.c
 new file mode 100644
-index 000000000..f9a569ad2
+index 000000000..01af77c0d
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_audio/audio.c
-@@ -0,0 +1,1008 @@
+@@ -0,0 +1,1046 @@
 +#include <linux/pci.h>
 +#include <linux/spinlock.h>
 +#include <linux/module.h>
@@ -445,16 +445,52 @@ index 000000000..f9a569ad2
 +    return status;
 +}
 +
-+static int t2audio_suspend(struct device *dev)
++/*
++ * Quiesce in ->prepare. The prepare phase completes for every device before
++ * any ->suspend runs, so remote access is off before VHCI devices start their
++ * suspend traffic, with or without pm_async. bridgeOS stops answering when
++ * both run concurrently.
++ */
++static int t2audio_prepare(struct device *dev)
 +{
 +    struct t2audio_device *t2audio = pci_get_drvdata(to_pci_dev(dev));
 +    int status;
 +
-+    pr_info("t2bce_audio: suspend entry\n");
++    pr_info("t2bce_audio: prepare entry\n");
 +    status = t2audio_quiesce(t2audio, true);
-+    pci_disable_device(t2audio->pci);
-+    pr_info("t2bce_audio: suspend exit status=%d\n", status);
++    pr_info("t2bce_audio: prepare exit status=%d\n", status);
 +    return 0;
++}
++
++static int t2audio_suspend(struct device *dev)
++{
++    struct t2audio_device *t2audio = pci_get_drvdata(to_pci_dev(dev));
++
++    pci_disable_device(t2audio->pci);
++    t2audio->pm_suspended = true;
++    pr_info("t2bce_audio: suspend done quiesced=%d\n", t2audio->pm_quiesced);
++    return 0;
++}
++
++static void t2audio_complete(struct device *dev)
++{
++    struct t2audio_device *t2audio = pci_get_drvdata(to_pci_dev(dev));
++
++    /* ->resume restores a suspended device, an aborted suspend only prepared it. */
++    if (t2audio->pm_suspended) {
++        t2audio->pm_suspended = false;
++        return;
++    }
++    if (!t2audio->pm_quiesced)
++        return;
++
++    if (t2audio_cmd_set_remote_access(t2audio, T2AUDIO_REMOTE_ACCESS_ON)) {
++        dev_err(t2audio->dev, "Failed to restore remote access after aborted suspend\n");
++        return;
++    }
++    t2audio->pm_quiesced = false;
++    t2audio_reset_streams(t2audio);
++    pr_info("t2bce_audio: aborted suspend restored\n");
 +}
 +
 +static int t2audio_pm_prepare_client(void *userdata)
@@ -1107,8 +1143,10 @@ index 000000000..f9a569ad2
 +MODULE_DEVICE_TABLE(pci, t2audio_ids);
 +
 +struct dev_pm_ops t2audio_pci_driver_pm = {
++        .prepare = t2audio_prepare,
 +        .suspend = t2audio_suspend,
-+        .resume = t2audio_resume
++        .resume = t2audio_resume,
++        .complete = t2audio_complete
 +};
 +struct pci_driver t2audio_pci_driver = {
 +        .name = "t2bce_audio",
@@ -1185,10 +1223,10 @@ index 000000000..f9a569ad2
 +module_exit(t2audio_module_exit);
 diff --git a/drivers/staging/t2bce/t2bce_audio/audio.h b/drivers/staging/t2bce/t2bce_audio/audio.h
 new file mode 100644
-index 000000000..9c073132d
+index 000000000..bafe000fd
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_audio/audio.h
-@@ -0,0 +1,159 @@
+@@ -0,0 +1,160 @@
 +#ifndef T2AUDIO_H
 +#define T2AUDIO_H
 +
@@ -1337,6 +1375,7 @@ index 000000000..9c073132d
 +    struct workqueue_struct *msg_wq;
 +    bool resume_deferred;
 +    bool pm_quiesced;
++    bool pm_suspended;
 +
 +};
 +
@@ -6990,10 +7029,10 @@ index 000000000..07038938f
 +#endif //BCEDRIVER_MAILBOX_H
 diff --git a/drivers/staging/t2bce/t2bce_core/t2bce.h b/drivers/staging/t2bce/t2bce_core/t2bce.h
 new file mode 100644
-index 000000000..838ec633b
+index 000000000..f50042a39
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_core/t2bce.h
-@@ -0,0 +1,53 @@
+@@ -0,0 +1,54 @@
 +#ifndef APPLE_BCE_H
 +#define APPLE_BCE_H
 +
@@ -7009,6 +7048,7 @@ index 000000000..838ec633b
 +
 +struct t2bce_device {
 +    struct pci_dev *pci, *pci0;
++    struct device_link *pci0_link;
 +    dev_t devt;
 +    struct device *dev;
 +    void __iomem *reg_mem_mb;
@@ -7049,10 +7089,10 @@ index 000000000..838ec633b
 +#endif //APPLE_BCE_H
 diff --git a/drivers/staging/t2bce/t2bce_core/t2bce_main.c b/drivers/staging/t2bce/t2bce_core/t2bce_main.c
 new file mode 100644
-index 000000000..84bfe82c5
+index 000000000..b13505797
 --- /dev/null
 +++ b/drivers/staging/t2bce/t2bce_core/t2bce_main.c
-@@ -0,0 +1,932 @@
+@@ -0,0 +1,947 @@
 +#include "t2bce.h"
 +#include <linux/module.h>
 +#include <linux/crc32.h>
@@ -7232,6 +7272,17 @@ index 000000000..84bfe82c5
 +#endif
 +    pci_set_master(bce->pci0);
 +
++    /*
++     * Function 0 must stay bus master while bridgeOS saves state on
++     * SAVE_STATE_AND_SLEEP and must be bus master again before
++     * RESTORE_STATE_AND_WAKE. Its driver (nvme) disables the function on
++     * suspend. Order it as our PM supplier so it suspends after and resumes
++     * before this function, also with pm_async.
++     */
++    bce->pci0_link = device_link_add(&dev->dev, &bce->pci0->dev, DL_FLAG_STATELESS);
++    if (!bce->pci0_link)
++        dev_warn(&dev->dev, "t2bce_core: failed to link PM order to function 0\n");
++
 +    /* bridgeOS expects the XHCI PM doorbell before the controller becomes active. */
 +    bce_xhci_pm_start(&bce->xhci_pm, true);
 +
@@ -7252,6 +7303,8 @@ index 000000000..84bfe82c5
 +fail_ts:
 +    bce_free_state_buffer(bce);
 +    bce_xhci_pm_stop(&bce->xhci_pm);
++    if (bce->pci0_link)
++        device_link_del(bce->pci0_link);
 +#ifndef WITHOUT_NVME_PATCH
 +    pci_disable_device(bce->pci0);
 +fail_dev0:
@@ -7563,6 +7616,8 @@ index 000000000..84bfe82c5
 +
 +    bce_free_state_buffer(bce);
 +    bce_xhci_pm_stop(&bce->xhci_pm);
++    if (bce->pci0_link)
++        device_link_del(bce->pci0_link);
 +#ifndef WITHOUT_NVME_PATCH
 +    pci_disable_device(bce->pci0);
 +#endif
