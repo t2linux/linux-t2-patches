@@ -1,15 +1,15 @@
-From 8c668b7b32d3686c0381c6ed44db22d3772e747f Mon Sep 17 00:00:00 2001
+From 105032099dfda07b855e5d74fa799f1180d82fe9 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sun, 4 Oct 2026 22:39:31 -0400
 Subject: [PATCH 10/13] power/supply: add support for x86 macs in macsmc-power
 
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---
- drivers/power/supply/macsmc-power.c | 748 ++++++++++++++++++++++------
- 1 file changed, 603 insertions(+), 145 deletions(-)
+ drivers/power/supply/macsmc-power.c | 750 ++++++++++++++++++++++------
+ 1 file changed, 605 insertions(+), 145 deletions(-)
 
 diff --git a/drivers/power/supply/macsmc-power.c b/drivers/power/supply/macsmc-power.c
-index ced37a701..a23126dbf 100644
+index ced37a701..6f8460007 100644
 --- a/drivers/power/supply/macsmc-power.c
 +++ b/drivers/power/supply/macsmc-power.c
 @@ -7,8 +7,11 @@
@@ -301,7 +301,7 @@ index ced37a701..a23126dbf 100644
  		ret = val->intval < 0 ? val->intval : 0;
  		break;
  	case POWER_SUPPLY_PROP_PRESENT:
-@@ -359,36 +594,69 @@ static int macsmc_battery_get_property(struct power_supply *psy,
+@@ -359,36 +594,71 @@ static int macsmc_battery_get_property(struct power_supply *psy,
  		break;
  	case POWER_SUPPLY_PROP_TIME_TO_FULL_NOW:
  		ret = apple_smc_read_u16(power->smc, SMC_KEY(B0TF), &vu16);
@@ -341,20 +341,22 @@ index ced37a701..a23126dbf 100644
  	case POWER_SUPPLY_PROP_CURRENT_NOW:
  		ret = apple_smc_read_s16(power->smc, SMC_KEY(B0AC), &vs16);
 -		val->intval = vs16 * 1000;
-+		/*
-+		 * CURRENT_NOW and POWER_NOW signs are swapped, so we swap CURRENT_NOW
-+		 */
 +		if (power->smc->is_acpi)
-+			val->intval = -((s16)swab16(vs16)) * 1000;
++			val->intval = (s16)swab16(vs16) * 1000;
 +		else
 +			val->intval = vs16 * 1000;
  		break;
  	case POWER_SUPPLY_PROP_POWER_NOW:
 -		ret = apple_smc_read_s32(power->smc, SMC_KEY(B0AP), &vs32);
 -		val->intval = vs32 * 1000;
-+		if (power->smc->is_acpi)
++		if (power->smc->is_acpi) {
 +			ret = macsmc_battery_acpi_read(power->smc, SMC_KEY(B0AP),
 +					&val->intval, 1000000);
++			if (ret < 0)
++				return ret;
++
++			val->intval = -val->intval;
++			}
 +		else {
 +			ret = apple_smc_read_s32(power->smc, SMC_KEY(B0AP), &vs32);
 +			val->intval = vs32 * 1000;
@@ -382,7 +384,7 @@ index ced37a701..a23126dbf 100644
  		break;
  	case POWER_SUPPLY_PROP_VOLTAGE_MIN:
  		/* Lifetime min */
-@@ -400,17 +668,36 @@ static int macsmc_battery_get_property(struct power_supply *psy,
+@@ -400,17 +670,36 @@ static int macsmc_battery_get_property(struct power_supply *psy,
  		ret = apple_smc_read_s16(power->smc, SMC_KEY(BLPX), &vs16);
  		val->intval = vs16 * 1000;
  		break;
@@ -423,7 +425,7 @@ index ced37a701..a23126dbf 100644
  		break;
  	case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
  		ret = apple_smc_read_u16(power->smc, SMC_KEY(B0DC), &vu16);
-@@ -418,11 +705,17 @@ static int macsmc_battery_get_property(struct power_supply *psy,
+@@ -418,11 +707,17 @@ static int macsmc_battery_get_property(struct power_supply *psy,
  		break;
  	case POWER_SUPPLY_PROP_CHARGE_FULL:
  		ret = apple_smc_read_u16(power->smc, SMC_KEY(B0FC), &vu16);
@@ -443,7 +445,7 @@ index ced37a701..a23126dbf 100644
  		break;
  	case POWER_SUPPLY_PROP_ENERGY_FULL_DESIGN:
  		ret = apple_smc_read_u16(power->smc, SMC_KEY(B0DC), &vu16);
-@@ -430,15 +723,37 @@ static int macsmc_battery_get_property(struct power_supply *psy,
+@@ -430,15 +725,37 @@ static int macsmc_battery_get_property(struct power_supply *psy,
  		break;
  	case POWER_SUPPLY_PROP_ENERGY_FULL:
  		ret = apple_smc_read_u16(power->smc, SMC_KEY(B0FC), &vu16);
@@ -485,7 +487,7 @@ index ced37a701..a23126dbf 100644
  		break;
  	case POWER_SUPPLY_PROP_CHARGE_COUNTER:
  		ret = apple_smc_read_s64(power->smc, SMC_KEY(BAAC), &vs64);
-@@ -446,7 +761,10 @@ static int macsmc_battery_get_property(struct power_supply *psy,
+@@ -446,7 +763,10 @@ static int macsmc_battery_get_property(struct power_supply *psy,
  		break;
  	case POWER_SUPPLY_PROP_CYCLE_COUNT:
  		ret = apple_smc_read_u16(power->smc, SMC_KEY(B0CT), &vu16);
@@ -497,7 +499,7 @@ index ced37a701..a23126dbf 100644
  		break;
  	case POWER_SUPPLY_PROP_SCOPE:
  		val->intval = POWER_SUPPLY_SCOPE_SYSTEM;
-@@ -489,6 +807,14 @@ static int macsmc_battery_set_property(struct power_supply *psy,
+@@ -489,6 +809,14 @@ static int macsmc_battery_set_property(struct power_supply *psy,
  	switch (psp) {
  	case POWER_SUPPLY_PROP_CHARGE_BEHAVIOUR:
  		return macsmc_battery_set_charge_behaviour(power, val->intval);
@@ -512,7 +514,7 @@ index ced37a701..a23126dbf 100644
  	default:
  		return -EINVAL;
  	}
-@@ -500,6 +826,8 @@ static int macsmc_battery_property_is_writeable(struct power_supply *psy,
+@@ -500,6 +828,8 @@ static int macsmc_battery_property_is_writeable(struct power_supply *psy,
  	switch (psp) {
  	case POWER_SUPPLY_PROP_CHARGE_BEHAVIOUR:
  		return true;
@@ -521,7 +523,7 @@ index ced37a701..a23126dbf 100644
  	default:
  		return false;
  	}
-@@ -524,12 +852,47 @@ static int macsmc_ac_get_property(struct power_supply *psy,
+@@ -524,12 +854,47 @@ static int macsmc_ac_get_property(struct power_supply *psy,
  
  	switch (psp) {
  	case POWER_SUPPLY_PROP_ONLINE:
@@ -573,7 +575,7 @@ index ced37a701..a23126dbf 100644
  		break;
  	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT:
  		ret = apple_smc_read_u16(power->smc, SMC_KEY(AC-i), &vu16);
-@@ -537,7 +900,10 @@ static int macsmc_ac_get_property(struct power_supply *psy,
+@@ -537,7 +902,10 @@ static int macsmc_ac_get_property(struct power_supply *psy,
  		break;
  	case POWER_SUPPLY_PROP_INPUT_POWER_LIMIT:
  		ret = apple_smc_read_u32(power->smc, SMC_KEY(ACPW), &vu32);
@@ -585,7 +587,7 @@ index ced37a701..a23126dbf 100644
  		break;
  	default:
  		return -EINVAL;
-@@ -634,6 +1000,23 @@ static int macsmc_power_event(struct notifier_block *nb, unsigned long event, vo
+@@ -634,6 +1002,23 @@ static int macsmc_power_event(struct notifier_block *nb, unsigned long event, vo
  	return NOTIFY_DONE;
  }
  
@@ -609,7 +611,7 @@ index ced37a701..a23126dbf 100644
  static int macsmc_power_probe(struct platform_device *pdev)
  {
  	struct device *dev = &pdev->dev;
-@@ -670,15 +1053,19 @@ static int macsmc_power_probe(struct platform_device *pdev)
+@@ -670,15 +1055,19 @@ static int macsmc_power_probe(struct platform_device *pdev)
  	 * Check for battery presence.
  	 * B0AV is a fundamental key.
  	 */
@@ -630,7 +632,7 @@ index ced37a701..a23126dbf 100644
  		has_ac_adapter = true;
  
  	if (!has_battery && !has_ac_adapter)
-@@ -694,118 +1081,156 @@ static int macsmc_power_probe(struct platform_device *pdev)
+@@ -694,118 +1083,156 @@ static int macsmc_power_probe(struct platform_device *pdev)
  
  		nprops = 0;
  
@@ -890,7 +892,7 @@ index ced37a701..a23126dbf 100644
  		psy_cfg.drv_data = power;
  		power->batt = devm_power_supply_register(dev, &power->batt_desc, &psy_cfg);
  		if (IS_ERR(power->batt)) {
-@@ -829,16 +1254,27 @@ static int macsmc_power_probe(struct platform_device *pdev)
+@@ -829,16 +1256,27 @@ static int macsmc_power_probe(struct platform_device *pdev)
  		/* Online status is fundamental */
  		props[nprops++] = POWER_SUPPLY_PROP_ONLINE;
  
@@ -927,7 +929,7 @@ index ced37a701..a23126dbf 100644
  		if (nprops > MACSMC_MAX_AC_PROPS)
  			return -ENOMEM;
  
-@@ -858,9 +1294,26 @@ static int macsmc_power_probe(struct platform_device *pdev)
+@@ -858,9 +1296,26 @@ static int macsmc_power_probe(struct platform_device *pdev)
  	if (!power->batt && !power->ac)
  		return -ENODEV;
  
@@ -956,7 +958,7 @@ index ced37a701..a23126dbf 100644
  	return 0;
  }
  
-@@ -868,7 +1321,11 @@ static void macsmc_power_remove(struct platform_device *pdev)
+@@ -868,7 +1323,11 @@ static void macsmc_power_remove(struct platform_device *pdev)
  {
  	struct macsmc_power *power = dev_get_drvdata(&pdev->dev);
  
@@ -969,7 +971,7 @@ index ced37a701..a23126dbf 100644
  }
  
  static const struct platform_device_id macsmc_power_id[] = {
-@@ -891,3 +1348,4 @@ MODULE_LICENSE("Dual MIT/GPL");
+@@ -891,3 +1350,4 @@ MODULE_LICENSE("Dual MIT/GPL");
  MODULE_DESCRIPTION("Apple SMC battery and power management driver");
  MODULE_AUTHOR("Hector Martin <marcan@marcan.st>");
  MODULE_AUTHOR("Michael Reeves <michael.reeves077@gmail.com>");
