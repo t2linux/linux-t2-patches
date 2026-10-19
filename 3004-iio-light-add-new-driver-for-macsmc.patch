@@ -1,7 +1,7 @@
-From 8f4cf36578e2ac6a955ec671added2e74b55154d Mon Sep 17 00:00:00 2001
+From 6ac083e5db5583c73fd63834794285a24755f6e3 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Fri, 25 Sep 2026 15:42:28 -0400
-Subject: [PATCH 04/13] iio/light: add new driver for macsmc
+Subject: [PATCH 04/14] iio/light: add new driver for macsmc
 
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---

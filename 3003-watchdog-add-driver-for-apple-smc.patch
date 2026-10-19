@@ -1,7 +1,7 @@
-From 455bc303522d058e56062d96c384df9ef9c8d507 Mon Sep 17 00:00:00 2001
+From 2fdad5e910111f9ea06426ef299ecd76da3fa0a5 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sat, 12 Sep 2026 16:24:11 -0400
-Subject: [PATCH 03/13] watchdog: add driver for apple smc
+Subject: [PATCH 03/14] watchdog: add driver for apple smc
 
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---

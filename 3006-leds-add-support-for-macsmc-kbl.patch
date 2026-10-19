@@ -1,7 +1,7 @@
-From b12ff9158108f824308ae5e794621cfa9cda4aab Mon Sep 17 00:00:00 2001
+From 14d2faf7922476bae1b7caae874760c1e9705cdc Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sat, 3 Oct 2026 21:18:24 -0400
-Subject: [PATCH 06/13] leds: add support for macsmc kbl
+Subject: [PATCH 06/14] leds: add support for macsmc kbl
 
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---

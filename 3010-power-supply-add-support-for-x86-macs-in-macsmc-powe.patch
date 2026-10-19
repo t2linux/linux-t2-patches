@@ -1,7 +1,7 @@
-From 105032099dfda07b855e5d74fa799f1180d82fe9 Mon Sep 17 00:00:00 2001
+From 83449aedb249cc9752e25c90296ff5a9dfe2f415 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sun, 4 Oct 2026 22:39:31 -0400
-Subject: [PATCH 10/13] power/supply: add support for x86 macs in macsmc-power
+Subject: [PATCH 10/14] power/supply: add support for x86 macs in macsmc-power
 
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---
