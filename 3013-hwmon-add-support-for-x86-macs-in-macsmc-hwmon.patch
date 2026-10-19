@@ -1,4 +1,4 @@
-From e1b1c09338738c989a055cee7b53067421cfbd5d Mon Sep 17 00:00:00 2001
+From 452508e04734de692d83bc4d049b2db08be434e3 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Mon, 5 Oct 2026 03:39:02 -0400
 Subject: [PATCH 13/14] hwmon: add support for x86 macs in macsmc-hwmon
@@ -30,7 +30,7 @@ index 48c30e907..8cab55f94 100644
  	  This driver can also be built as a module. If so, the module will
  	  be called macsmc-hwmon.
 diff --git a/drivers/hwmon/macsmc-hwmon.c b/drivers/hwmon/macsmc-hwmon.c
-index 2e74dcd66..c715b0e81 100644
+index 2e74dcd66..6610dc98f 100644
 --- a/drivers/hwmon/macsmc-hwmon.c
 +++ b/drivers/hwmon/macsmc-hwmon.c
 @@ -2,7 +2,7 @@
@@ -577,26 +577,26 @@ index 2e74dcd66..c715b0e81 100644
 +	{ "Thunderbolt Power (PHSP)", SMC_KEY(PHSP) },
 +	{ "WiFi (PAPC)", SMC_KEY(PAPC) },
 +	{ "Wifi Load-Side Power (PW0R)", SMC_KEY(PW0R) },
-+	{ "Zone 0 Average (PZ0G)", SMC_KEY(PZ0G) },
-+	{ "Zone 0 Average Target (PZ0E)", SMC_KEY(PZ0E) },
-+	{ "Zone 0 Filtered (PZ0F)", SMC_KEY(PZ0F) },
-+	{ "Zone 0 Throttle (PZ0T)", SMC_KEY(PZ0T) },
-+	{ "Zone 1 Average (PZ1G)", SMC_KEY(PZ1G) },
-+	{ "Zone 1 Filtered (PZ1F)", SMC_KEY(PZ1F) },
-+	{ "Zone 1 Target (PZ1E)", SMC_KEY(PZ1E) },
-+	{ "Zone 1 Throttle (PZ1T)", SMC_KEY(PZ1T) },
-+	{ "Zone 2 Average (PZ2G)", SMC_KEY(PZ2G) },
-+	{ "Zone 2 Filtered (PZ2F)", SMC_KEY(PZ2F) },
-+	{ "Zone 2 Target (PZ2E)", SMC_KEY(PZ2E) },
-+	{ "Zone 2 Throttle (PZ2T)", SMC_KEY(PZ2T) },
-+	{ "Zone 3 Average (PZ3G)", SMC_KEY(PZ3G) },
-+	{ "Zone 3 Filtered (PZ3F)", SMC_KEY(PZ3F) },
-+	{ "Zone 3 Target (PZ3E)", SMC_KEY(PZ3E) },
-+	{ "Zone 3 Throttle (PZ3T)", SMC_KEY(PZ3T) },
-+	{ "Zone 4 Average (PZ4G)", SMC_KEY(PZ4G) },
-+	{ "Zone 4 Filtered (PZ4F)", SMC_KEY(PZ4F) },
-+	{ "Zone 4 Target (PZ4E)", SMC_KEY(PZ4E) },
-+	{ "Zone 4 Throttle (PZ4T)", SMC_KEY(PZ4T) },
++	{ "Heatpipe Average (PZ0G)", SMC_KEY(PZ0G) },
++	{ "Heatpipe Average Target (PZ0E)", SMC_KEY(PZ0E) },
++	{ "Heatpipe Filtered (PZ0F)", SMC_KEY(PZ0F) },
++	{ "Heatpipe Throttle (PZ0T)", SMC_KEY(PZ0T) },
++	{ "CPU Average (PZ1G)", SMC_KEY(PZ1G) },
++	{ "CPU Filtered (PZ1F)", SMC_KEY(PZ1F) },
++	{ "CPU Target (PZ1E)", SMC_KEY(PZ1E) },
++	{ "CPU Throttle (PZ1T)", SMC_KEY(PZ1T) },
++	{ "dGPU Average (PZ2G)", SMC_KEY(PZ2G) },
++	{ "dGPU Filtered (PZ2F)", SMC_KEY(PZ2F) },
++	{ "dGPU Target (PZ2E)", SMC_KEY(PZ2E) },
++	{ "dGPU Throttle (PZ2T)", SMC_KEY(PZ2T) },
++	{ "Batt aux Average (PZ3G)", SMC_KEY(PZ3G) },
++	{ "Batt aux Filtered (PZ3F)", SMC_KEY(PZ3F) },
++	{ "Batt aux Target (PZ3E)", SMC_KEY(PZ3E) },
++	{ "Batt aux Throttle (PZ3T)", SMC_KEY(PZ3T) },
++	{ "Battery Average (PZ4G)", SMC_KEY(PZ4G) },
++	{ "Battery Filtered (PZ4F)", SMC_KEY(PZ4F) },
++	{ "Battery Target (PZ4E)", SMC_KEY(PZ4E) },
++	{ "Battery Throttle (PZ4T)", SMC_KEY(PZ4T) },
 +	{ "Zone 5 Abstract Throttle (PZ5T)", SMC_KEY(PZ5T) },
 +	{ "Zone 5 Average Power (PZ5G)", SMC_KEY(PZ5G) },
 +	{ "Zone 5 Filtered Power (PZ5F)", SMC_KEY(PZ5F) },
