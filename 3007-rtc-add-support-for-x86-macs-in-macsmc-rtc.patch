@@ -1,7 +1,7 @@
-From 8b4f48d74ca28c74c62e8000aa54165419d5d445 Mon Sep 17 00:00:00 2001
+From 1d5c7b0f17ae03d4f92e9b5564a5a60f29c28378 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sun, 4 Oct 2026 16:20:13 -0400
-Subject: [PATCH 07/13] rtc: add support for x86 macs in macsmc-rtc
+Subject: [PATCH 07/14] rtc: add support for x86 macs in macsmc-rtc
 
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---

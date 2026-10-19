@@ -1,7 +1,7 @@
-From 17cc06cbbcc16e4b3f6aaa35216f55cd8a512a40 Mon Sep 17 00:00:00 2001
+From 359bdbe34e7712175bbbf9f86dae657f870635b6 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Fri, 24 Apr 2026 21:56:06 +0530
-Subject: [PATCH 12/13] hwmon/macsmc: add more types
+Subject: [PATCH 12/14] hwmon/macsmc: add more types
 
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---

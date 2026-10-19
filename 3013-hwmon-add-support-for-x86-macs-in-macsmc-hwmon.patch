@@ -1,7 +1,7 @@
-From ed3986f6efa93b40ea276923a4ee156a1158301e Mon Sep 17 00:00:00 2001
+From e1b1c09338738c989a055cee7b53067421cfbd5d Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Mon, 5 Oct 2026 03:39:02 -0400
-Subject: [PATCH 13/13] hwmon: add support for x86 macs in macsmc-hwmon
+Subject: [PATCH 13/14] hwmon: add support for x86 macs in macsmc-hwmon
 
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---

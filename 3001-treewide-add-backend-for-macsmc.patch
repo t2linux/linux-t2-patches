@@ -1,7 +1,7 @@
 From 0e00a1f7ad59bbcbeffdbcff0ca1cc74d214e9e1 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Thu, 15 Oct 2026 09:32:53 -0400
-Subject: [PATCH 01/13] treewide: add backend for macsmc
+Subject: [PATCH 01/14] treewide: add backend for macsmc
 
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---

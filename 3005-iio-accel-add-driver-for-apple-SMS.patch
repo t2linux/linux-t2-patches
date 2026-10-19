@@ -1,7 +1,7 @@
-From c4c3ca836efcfb1636f7e425d5bf789604b35797 Mon Sep 17 00:00:00 2001
+From 286a31201fc6b5586a44eac775ff3146a142be3f Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sat, 3 Oct 2026 21:15:47 -0400
-Subject: [PATCH 05/13] iio/accel: add driver for apple SMS
+Subject: [PATCH 05/14] iio/accel: add driver for apple SMS
 
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---

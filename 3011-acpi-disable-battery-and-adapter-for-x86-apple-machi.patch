@@ -1,7 +1,7 @@
-From 9de9fca23436bb1cefa6c5472e9d69a19989f7ca Mon Sep 17 00:00:00 2001
+From d87e6e06d40bfda8c23c700741da01604a35e974 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sun, 4 Oct 2026 23:35:44 -0400
-Subject: [PATCH 11/13] acpi: disable battery and adapter for x86 apple
+Subject: [PATCH 11/14] acpi: disable battery and adapter for x86 apple
  machines
 
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>

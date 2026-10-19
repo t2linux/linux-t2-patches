@@ -1,15 +1,15 @@
-From afce11073764b85695cf6d589c9672bb3fd2a122 Mon Sep 17 00:00:00 2001
+From 24195e547a2c4e504b38491df41b0100964a7135 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Fri, 11 Sep 2026 16:34:42 -0400
-Subject: [PATCH 02/13] platform/x86: add backend for macsmc in intel macs
+Subject: [PATCH 02/14] platform/x86: add backend for macsmc in intel macs
  using ACPI
 
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---
  drivers/platform/x86/Kconfig       |  10 +
  drivers/platform/x86/Makefile      |   1 +
- drivers/platform/x86/macsmc-acpi.c | 653 +++++++++++++++++++++++++++++
- 3 files changed, 664 insertions(+)
+ drivers/platform/x86/macsmc-acpi.c | 637 +++++++++++++++++++++++++++++
+ 3 files changed, 648 insertions(+)
  create mode 100644 drivers/platform/x86/macsmc-acpi.c
 
 diff --git a/drivers/platform/x86/Kconfig b/drivers/platform/x86/Kconfig
@@ -47,10 +47,10 @@ index 872ac3842..5124dad7b 100644
  # ASUS
 diff --git a/drivers/platform/x86/macsmc-acpi.c b/drivers/platform/x86/macsmc-acpi.c
 new file mode 100644
-index 000000000..0151a610f
+index 000000000..33f629778
 --- /dev/null
 +++ b/drivers/platform/x86/macsmc-acpi.c
-@@ -0,0 +1,653 @@
+@@ -0,0 +1,637 @@
 +// SPDX-License-Identifier: GPL-2.0-only OR MIT
 +/*
 + * Apple SMC ACPI backend
@@ -271,22 +271,20 @@ index 000000000..0151a610f
 +	int ms = SMC_TIMEOUT_MS;
 +
 +	if (smc->interrupt_enabled) {
-+		if (wait_for_completion_timeout(&smc->cmd_done, msecs_to_jiffies(SMC_TIMEOUT_MS))
-+				<= 0)
-+			goto err;
++		if (wait_for_completion_timeout(&smc->cmd_done, msecs_to_jiffies(SMC_TIMEOUT_MS)) > 0)
++			return 0;
 +
-+		return 0;
-+	} else {
-+		for (ms = SMC_TIMEOUT_MS; ms != 0; ms--) {
-+			if (ioread8(smc->iomem_base + SMC_MMIO_KEY_STATUS) & 0x20)
-+				return 0;
-+
-+			fsleep(1000);
-+		}
++		smc->interrupt_enabled = 0;
++		dev_dbg(smc->dev, "mmio/wait: interrupt missed, reverting to polling\n");
 +	}
-+err:
-+	dev_dbg(smc->dev, "mmio/wait: timeout, was using %s\n",
-+			smc->interrupt_enabled ? "interrupt" : "polling");
++
++	for (ms = SMC_TIMEOUT_MS; ms != 0; ms--) {
++		if (ioread8(smc->iomem_base + SMC_MMIO_KEY_STATUS) & 0x20)
++			return 0;
++
++		fsleep(1000);
++	}
++	dev_dbg(smc->dev, "mmio/wait: timeout");
 +	return -ETIMEDOUT;
 +}
 +
@@ -666,22 +664,8 @@ index 000000000..0151a610f
 +	return 0;
 +}
 +
-+static int apple_smc_acpi_poweroff_late(struct device *dev)
-+{
-+	/*
-+	 * NESN is used to inform bridgeOS that we're going
-+	 * to shutdown
-+	 */
-+	struct apple_smc *smc = dev_get_drvdata(dev);
-+	u32 val = 0x8C70;
-+
-+	apple_smc_write(smc, SMC_KEY(NESN), &val, 4);
-+	return 0;
-+}
-+
 +static const struct dev_pm_ops apple_smc_acpi_ops = {
 +	.resume = apple_smc_acpi_resume,
-+	.poweroff_late = apple_smc_acpi_poweroff_late,
 +};
 +
 +static const struct acpi_device_id apple_smc_acpi_ids[] = {

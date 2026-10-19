@@ -1,7 +1,7 @@
-From 345cbf1cfd065e53ee8a259cfd68ef2906abccb4 Mon Sep 17 00:00:00 2001
+From c1b3c2210357881f8920cd35cb3c0d9c12e6179a Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Wed, 19 Aug 2026 17:44:04 -0400
-Subject: [PATCH 08/13] treewide: Add a flag to detect the Apple T2 chip
+Subject: [PATCH 08/14] treewide: Add a flag to detect the Apple T2 chip
 
 Add a flag to detect Apple T2 chips on Intel Macs.
 Cache the result to avoid repeated checks. That will
