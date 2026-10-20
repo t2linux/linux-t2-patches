@@ -1,4 +1,4 @@
-From aa1df3d016aaa6a81da77c9c22c46f0b02f971af Mon Sep 17 00:00:00 2001
+From c2c6e483d8fcec1ba80cf8cdce9f9f6aaabce9aa Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Mon, 19 Oct 2026 20:06:12 -0400
 Subject: [PATCH 4/8] platform/apple-gmux: Fix Interrupts for MMIO systems
@@ -14,11 +14,11 @@ Signed-off-by: Andre Eikmeyer <andre.eikmeyer@kait2en.org>
 
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---
- drivers/platform/x86/apple-gmux.c | 95 +++++++++++++++++++++++++++----
- 1 file changed, 83 insertions(+), 12 deletions(-)
+ drivers/platform/x86/apple-gmux.c | 96 +++++++++++++++++++++++++++----
+ 1 file changed, 84 insertions(+), 12 deletions(-)
 
 diff --git a/drivers/platform/x86/apple-gmux.c b/drivers/platform/x86/apple-gmux.c
-index 54886b4a6..5d6906e1f 100644
+index 54886b4a6..7d22cf7ae 100644
 --- a/drivers/platform/x86/apple-gmux.c
 +++ b/drivers/platform/x86/apple-gmux.c
 @@ -6,6 +6,8 @@
@@ -96,7 +96,7 @@ index 54886b4a6..5d6906e1f 100644
  	gmux_write8(gmux_data, GMUX_PORT_INTERRUPT_ENABLE,
  		    GMUX_INTERRUPT_ENABLE);
  }
-@@ -818,23 +831,77 @@ static void gmux_clear_interrupts(struct apple_gmux_data *gmux_data)
+@@ -818,23 +831,78 @@ static void gmux_clear_interrupts(struct apple_gmux_data *gmux_data)
  	/* to clear interrupts write back current status */
  	status = gmux_interrupt_get_status(gmux_data);
  	gmux_write8(gmux_data, GMUX_PORT_INTERRUPT_STATUS, status);
@@ -125,6 +125,7 @@ index 54886b4a6..5d6906e1f 100644
 +		gmux_write8(gmux_data, GMUX_PORT_INTERRUPT_STATUS, status);
 +		if (status & GMUX_INTERRUPT_STATUS_FAILED) {
 +			pr_warn_ratelimited("interrupt failed: status: 0x%x\n", status);
++			status = gmux_interrupt_get_status(gmux_data);
 +			continue;
 +		}
 +		if (status & GMUX_INTERRUPT_STATUS_POWER)
@@ -178,7 +179,7 @@ index 54886b4a6..5d6906e1f 100644
  
  	if (status & GMUX_INTERRUPT_STATUS_POWER)
  		complete(&gmux_data->powerchange_done);
-@@ -928,7 +995,7 @@ static int gmux_resume(struct device *dev)
+@@ -928,7 +996,7 @@ static int gmux_resume(struct device *dev)
  	struct pnp_dev *pnp = to_pnp_dev(dev);
  	struct apple_gmux_data *gmux_data = pnp_get_drvdata(pnp);
  
@@ -187,7 +188,7 @@ index 54886b4a6..5d6906e1f 100644
  	gmux_write_switch_state(gmux_data);
  	if (gmux_data->power_state == VGA_SWITCHEROO_OFF)
  		gmux_set_discrete_state(gmux_data, gmux_data->power_state);
-@@ -989,6 +1056,7 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
+@@ -989,6 +1057,7 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
  			pr_err("couldn't remap gmux mmio region");
  			goto err_release;
  		}
@@ -195,7 +196,7 @@ index 54886b4a6..5d6906e1f 100644
  		goto get_version;
  	case APPLE_GMUX_TYPE_INDEXED:
  		gmux_data->config = &apple_gmux_index;
-@@ -1108,7 +1176,7 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
+@@ -1108,7 +1177,7 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
  
  	apple_gmux_data = gmux_data;
  	init_completion(&gmux_data->powerchange_done);
@@ -204,7 +205,7 @@ index 54886b4a6..5d6906e1f 100644
  	gmux_read_switch_state(gmux_data);
  
  	/*
-@@ -1143,6 +1211,8 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
+@@ -1143,6 +1212,8 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
  err_unmap:
  	if (gmux_data->iomem_base)
  		iounmap(gmux_data->iomem_base);
@@ -213,7 +214,7 @@ index 54886b4a6..5d6906e1f 100644
  err_release:
  	if (gmux_data->config->resource_type == IORESOURCE_MEM)
  		release_mem_region(gmux_data->iostart, gmux_data->iolen);
-@@ -1161,6 +1231,7 @@ static void gmux_remove(struct pnp_dev *pnp)
+@@ -1161,6 +1232,7 @@ static void gmux_remove(struct pnp_dev *pnp)
  	vga_switcheroo_unregister_handler();
  	pci_dev_put(gmux_data->discrete_pdev);
  	gmux_disable_interrupts(gmux_data);
