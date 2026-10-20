@@ -1,0 +1,172 @@
+From 3dbcd890954b7a439d961aa1c6907b258d3ba318 Mon Sep 17 00:00:00 2001
+From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
+Date: Fri, 16 Oct 2026 11:36:12 -0400
+Subject: [PATCH 2/8] PCI: Disable pcie port and access on D3 on specific amd
+ devices
+
+As mentioned in the previous commit, PWRD turns off the entire
+bridge, and if we read/write anything to the config space
+or the PCIE space when the bridge is dead, the CPU CATERR's,
+so to avoid interaction when the bridge is dead,
+we remove pcieport support for the bridges, and we restrict
+access to those bridges when the bridge is dead.
+
+Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
+---
+ arch/x86/pci/fixup.c       | 30 ++++++++++++++++++++++++++++++
+ drivers/pci/access.c       | 18 ++++++++++++++++++
+ drivers/pci/pcie/portdrv.c |  2 +-
+ include/linux/pci.h        |  7 +++++++
+ 4 files changed, 56 insertions(+), 1 deletion(-)
+
+diff --git a/arch/x86/pci/fixup.c b/arch/x86/pci/fixup.c
+index 795d81c7a..66829941e 100644
+--- a/arch/x86/pci/fixup.c
++++ b/arch/x86/pci/fixup.c
+@@ -1094,6 +1094,35 @@ static void asus_disable_nvme_d3cold(struct pci_dev *pdev)
+ }
+ DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, 0x9a09, asus_disable_nvme_d3cold);
+ 
++static const struct dmi_system_id quirk_disable_pcie_port_dmi_table[] = {
++	{
++		.matches = {
++			DMI_MATCH(DMI_SYS_VENDOR, "Apple Inc."),
++			DMI_MATCH(DMI_PRODUCT_NAME, "MacBookPro16,1"),
++		},
++	},
++	{
++		.matches = {
++			DMI_MATCH(DMI_SYS_VENDOR, "Apple Inc."),
++			DMI_MATCH(DMI_PRODUCT_NAME, "MacBookPro16,4"),
++		},
++	},
++	{}
++};
++
++static void quirk_disable_pcie_port(struct pci_dev *pdev)
++{
++	struct pci_dev *upstream = pdev;
++
++	if (dmi_check_system(quirk_disable_pcie_port_dmi_table)) {
++		while ((upstream = pci_upstream_bridge(upstream))) {
++			upstream->no_pcie_port = 1;
++			upstream->ignore_access_d3 = 1;
++		}
++	}
++}
++DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_ATI, 0x7340, quirk_disable_pcie_port);
++
+ #ifdef CONFIG_SUSPEND
+ /*
+  * Root Ports on some AMD SoCs advertise PME_Support for D3hot and D3cold, but
+@@ -1179,4 +1208,5 @@ static void quirk_tuxeo_rp_d3(struct pci_dev *pdev)
+ 	}
+ }
+ DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_AMD, 0x1502, quirk_tuxeo_rp_d3);
++
+ #endif /* CONFIG_SUSPEND */
+diff --git a/drivers/pci/access.c b/drivers/pci/access.c
+index b123da16b..5e9513067 100644
+--- a/drivers/pci/access.c
++++ b/drivers/pci/access.c
+@@ -559,6 +559,9 @@ EXPORT_SYMBOL(pcie_capability_clear_and_set_dword);
+ 
+ int pci_read_config_byte(const struct pci_dev *dev, int where, u8 *val)
+ {
++	if (pci_dev_ignore_access(dev))
++		return PCIBIOS_SUCCESSFUL;
++
+ 	if (pci_dev_is_disconnected(dev)) {
+ 		PCI_SET_ERROR_RESPONSE(val);
+ 		return PCIBIOS_DEVICE_NOT_FOUND;
+@@ -569,6 +572,9 @@ EXPORT_SYMBOL(pci_read_config_byte);
+ 
+ int pci_read_config_word(const struct pci_dev *dev, int where, u16 *val)
+ {
++	if (pci_dev_ignore_access(dev))
++		return PCIBIOS_SUCCESSFUL;
++
+ 	if (pci_dev_is_disconnected(dev)) {
+ 		PCI_SET_ERROR_RESPONSE(val);
+ 		return PCIBIOS_DEVICE_NOT_FOUND;
+@@ -580,6 +586,9 @@ EXPORT_SYMBOL(pci_read_config_word);
+ int pci_read_config_dword(const struct pci_dev *dev, int where,
+ 					u32 *val)
+ {
++	if (pci_dev_ignore_access(dev))
++		return PCIBIOS_SUCCESSFUL;
++
+ 	if (pci_dev_is_disconnected(dev)) {
+ 		PCI_SET_ERROR_RESPONSE(val);
+ 		return PCIBIOS_DEVICE_NOT_FOUND;
+@@ -590,6 +599,9 @@ EXPORT_SYMBOL(pci_read_config_dword);
+ 
+ int pci_write_config_byte(const struct pci_dev *dev, int where, u8 val)
+ {
++	if (pci_dev_ignore_access(dev))
++		return PCIBIOS_SUCCESSFUL;
++
+ 	if (pci_dev_is_disconnected(dev))
+ 		return PCIBIOS_DEVICE_NOT_FOUND;
+ 	return pci_bus_write_config_byte(dev->bus, dev->devfn, where, val);
+@@ -598,6 +610,9 @@ EXPORT_SYMBOL(pci_write_config_byte);
+ 
+ int pci_write_config_word(const struct pci_dev *dev, int where, u16 val)
+ {
++	if (pci_dev_ignore_access(dev))
++		return PCIBIOS_SUCCESSFUL;
++
+ 	if (pci_dev_is_disconnected(dev))
+ 		return PCIBIOS_DEVICE_NOT_FOUND;
+ 	return pci_bus_write_config_word(dev->bus, dev->devfn, where, val);
+@@ -607,6 +622,9 @@ EXPORT_SYMBOL(pci_write_config_word);
+ int pci_write_config_dword(const struct pci_dev *dev, int where,
+ 					 u32 val)
+ {
++	if (pci_dev_ignore_access(dev))
++		return PCIBIOS_SUCCESSFUL;
++
+ 	if (pci_dev_is_disconnected(dev))
+ 		return PCIBIOS_DEVICE_NOT_FOUND;
+ 	return pci_bus_write_config_dword(dev->bus, dev->devfn, where, val);
+diff --git a/drivers/pci/pcie/portdrv.c b/drivers/pci/pcie/portdrv.c
+index a9cbfc1d2..d2f19e566 100644
+--- a/drivers/pci/pcie/portdrv.c
++++ b/drivers/pci/pcie/portdrv.c
+@@ -688,7 +688,7 @@ static int pcie_portdrv_probe(struct pci_dev *dev,
+ 	int type = pci_pcie_type(dev);
+ 	int status;
+ 
+-	if (!pci_is_pcie(dev) ||
++	if (!pci_is_pcie(dev) || dev->no_pcie_port ||
+ 	    ((type != PCI_EXP_TYPE_ROOT_PORT) &&
+ 	     (type != PCI_EXP_TYPE_UPSTREAM) &&
+ 	     (type != PCI_EXP_TYPE_DOWNSTREAM) &&
+diff --git a/include/linux/pci.h b/include/linux/pci.h
+index d31a8d107..8835b1c82 100644
+--- a/include/linux/pci.h
++++ b/include/linux/pci.h
+@@ -420,6 +420,8 @@ struct pci_dev {
+ 	unsigned int	no_d1d2:1;	/* D1 and D2 are forbidden */
+ 	unsigned int	no_d3cold:1;	/* D3cold is forbidden */
+ 	unsigned int	bridge_d3:1;	/* Allow D3 for bridge */
++	unsigned int	no_pcie_port:1; /* PCIE Port driver is forbidden */
++	unsigned int	ignore_access_d3:1;	/* Ignore access when device is in D3Cold */
+ 	unsigned int	d3cold_allowed:1;	/* D3cold is allowed by user */
+ 	unsigned int	mmio_always_on:1;	/* Disallow turning off io/mem
+ 						   decoding during BAR sizing */
+@@ -2747,6 +2749,11 @@ static inline bool pci_dev_is_disconnected(const struct pci_dev *dev)
+ 	return READ_ONCE(dev->error_state) == pci_channel_io_perm_failure;
+ }
+ 
++static inline bool pci_dev_ignore_access(const struct pci_dev *dev)
++{
++	return dev->ignore_access_d3 && dev->current_state == PCI_D3cold;
++}
++
+ void pci_request_acs(void);
+ bool pci_acs_enabled(struct pci_dev *pdev, u16 acs_flags);
+ bool pci_acs_path_enabled(struct pci_dev *start,
+-- 
+2.55.0
+

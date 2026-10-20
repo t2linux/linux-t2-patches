@@ -1,0 +1,31 @@
+From 79011e65199c32773616a48085686de0822235c7 Mon Sep 17 00:00:00 2001
+From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
+Date: Mon, 19 Oct 2026 21:55:52 -0400
+Subject: [PATCH 8/8] platform/apple-gmux: Add documentation about iMacs
+
+Add documentation about iMacs
+
+Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
+---
+ drivers/platform/x86/apple-gmux.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/drivers/platform/x86/apple-gmux.c b/drivers/platform/x86/apple-gmux.c
+index 5a32cc14a..2bde99c84 100644
+--- a/drivers/platform/x86/apple-gmux.c
++++ b/drivers/platform/x86/apple-gmux.c
+@@ -453,6 +453,11 @@ static const struct backlight_ops gmux_bl_ops = {
+  * switch the panel and the external DP connector and allocates a framebuffer
+  * for the selected GPU.
+  *
++ * There is iGPU present on iMac's aswell, and we can enable it using apple-set-os.
++ * But there arent any display lines going from the iGPU to the display. iGPU is only
++ * used for offloading then, it makes sense as iMac's display are massive (4K or 5K).
++ * A integrated GPU wont be able to handle that.
++ *
+  * .. _US 8,687,007 B2: https://pimg-fpiw.uspto.gov/fdd/07/870/086/0.pdf
+  * .. _NXP CBTL06141:   https://www.nxp.com/documents/data_sheet/CBTL06141.pdf
+  * .. _NXP CBTL06142:   https://www.nxp.com/documents/data_sheet/CBTL06141.pdf
+-- 
+2.55.0
+

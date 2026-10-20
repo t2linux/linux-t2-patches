@@ -1,0 +1,45 @@
+From 8a6c814121f3a041e7fcbfd89da312861bb20fb1 Mon Sep 17 00:00:00 2001
+From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
+Date: Mon, 19 Oct 2026 21:46:29 -0400
+Subject: [PATCH 7/8] platform/apple-gmux: Add check to detect FSS
+
+On MMIO macs, there is feature called FSS, we assume its
+a display syncing technology between internal links
+(for example 5K iMacs).
+
+We detect it and then warn the user about it, if its broken/unavailable.
+
+Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
+---
+ drivers/platform/x86/apple-gmux.c | 2 ++
+ include/linux/apple-gmux.h        | 1 +
+ 2 files changed, 3 insertions(+)
+
+diff --git a/drivers/platform/x86/apple-gmux.c b/drivers/platform/x86/apple-gmux.c
+index d581582f7..5a32cc14a 100644
+--- a/drivers/platform/x86/apple-gmux.c
++++ b/drivers/platform/x86/apple-gmux.c
+@@ -1216,6 +1216,8 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
+ 	else if (boot_gpu == 1)
+ 		gmux_switchto(VGA_SWITCHEROO_DIS);
+ 
++	if (type == APPLE_GMUX_TYPE_MMIO && gmux_read8(gmux_data, GMUX_PORT_FSS) & 1)
++		pr_warn("FSS Failure, display tearing expected\n");
+ 	/*
+ 	 * Retina MacBook Pros cannot switch the panel's AUX separately
+ 	 * and need eDP pre-calibration. They are distinguishable from
+diff --git a/include/linux/apple-gmux.h b/include/linux/apple-gmux.h
+index 206d97ffd..a4fa84500 100644
+--- a/include/linux/apple-gmux.h
++++ b/include/linux/apple-gmux.h
+@@ -22,6 +22,7 @@
+ #define GMUX_PORT_VERSION_RELEASE	0x06
+ #define GMUX_PORT_SWITCH_DISPLAY	0x10
+ #define GMUX_PORT_SWITCH_GET_DISPLAY	0x11
++#define GMUX_PORT_FSS			0x12
+ #define GMUX_PORT_INTERRUPT_ENABLE	0x14
+ #define GMUX_PORT_INTERRUPT_STATUS	0x16
+ #define GMUX_PORT_SWITCH_DDC		0x28
+-- 
+2.55.0
+
