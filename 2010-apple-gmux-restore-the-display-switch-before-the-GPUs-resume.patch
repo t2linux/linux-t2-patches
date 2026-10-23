@@ -1,0 +1,100 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Johan Walles <johan.walles@gmail.com>
+Date: Mon, 19 Oct 2026 07:13:09 +0200
+Subject: [PATCH] apple-gmux: restore the display switch before the GPUs resume
+
+With force_igd, suspending with the screen on gives a black screen
+after resume, every time. Turning the screen off and on again brings
+the picture back.
+
+On a MacBookPro16,1 at least, the firmware switches the panel to the
+discrete GPU during S3. gmux_resume() switches it back, but the gmux is
+a PNP device and resumes after the PCI GPUs. So i915 resumes first and
+fails eDP link training on a panel that is switched away.
+
+Restore the switch in .resume_early instead, which runs before any
+.resume callback. Do the same for thaw and restore, which also went
+through gmux_resume() before.
+
+Restoring early is not enough by itself: right after the switch, the
+panel doesn't answer on the AUX channel. On a MacBookPro16,1, waiting
+100 ms after the switch was too short and 175 ms was enough. Wait
+200 ms, the eDP maximum from panel power on until AUX works (T3). Only
+wait on T2 Macs, and only if the firmware actually changed the switch,
+so other resumes don't get slower.
+
+Assisted-by: Claude:claude-opus-5-5
+Signed-off-by: Johan Walles <johan.walles@gmail.com>
+---
+Tested on a MacBookPro16,1 with the t2linux 7.2.8 kernel and
+force_igd=y, S3 with the screen on (rtcwake -m mem -s 20): 4 out of 4
+resumes came back with a picture. A debug build showed the gmux
+display port reading 4 (iGPU) before suspend and 5 (dGPU) in
+resume_early, every time. Hibernation and pre-T2 Macs are untested.
+
+ drivers/platform/x86/apple-gmux.c | 36 ++++++++++++++++++++++++++++++-
+ 1 file changed, 35 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/platform/x86/apple-gmux.c b/drivers/platform/x86/apple-gmux.c
+index 656191d..4f14cab 100644
+--- a/drivers/platform/x86/apple-gmux.c
++++ b/drivers/platform/x86/apple-gmux.c
+@@ -765,13 +765,44 @@ static int gmux_suspend(struct device *dev)
+ 	return 0;
+ }
+ 
++/*
++ * The firmware may switch the display to the discrete GPU during suspend.
++ * Switch it back before the GPU drivers resume, otherwise the integrated GPU
++ * fails to train the eDP link and the screen stays black.
++ */
++static int gmux_resume_early(struct device *dev)
++{
++	struct pnp_dev *pnp = to_pnp_dev(dev);
++	struct apple_gmux_data *gmux_data = pnp_get_drvdata(pnp);
++	bool is_mmio = gmux_data->config == &apple_gmux_mmio;
++	bool display_changed = false;
++	bool is_discrete;
++
++	if (is_mmio) {
++		is_discrete = gmux_read8(gmux_data, GMUX_PORT_SWITCH_DISPLAY) & 1;
++		display_changed = is_discrete !=
++			(gmux_data->switch_state_display == VGA_SWITCHEROO_DIS);
++	}
++
++	gmux_write_switch_state(gmux_data);
++
++	/*
++	 * On T2 Macs the panel doesn't answer on the AUX channel right after a
++	 * switch. On a MacBookPro16,1, 100 ms was too short and 175 ms enough.
++	 * Wait the eDP maximum from panel power on until AUX works (T3).
++	 */
++	if (display_changed)
++		msleep(200);
++
++	return 0;
++}
++
+ static int gmux_resume(struct device *dev)
+ {
+ 	struct pnp_dev *pnp = to_pnp_dev(dev);
+ 	struct apple_gmux_data *gmux_data = pnp_get_drvdata(pnp);
+ 
+ 	gmux_enable_interrupts(gmux_data);
+-	gmux_write_switch_state(gmux_data);
+ 	if (gmux_data->power_state == VGA_SWITCHEROO_OFF)
+ 		gmux_set_discrete_state(gmux_data, gmux_data->power_state);
+ 	return 0;
+@@ -1037,6 +1068,9 @@ static const struct pnp_device_id gmux_device_ids[] = {
+ 
+ static const struct dev_pm_ops gmux_dev_pm_ops = {
+ 	.suspend = gmux_suspend,
++	.resume_early = gmux_resume_early,
++	.thaw_early = gmux_resume_early,
++	.restore_early = gmux_resume_early,
+ 	.resume = gmux_resume,
+ };
+ 
+-- 
+2.53.0
+
