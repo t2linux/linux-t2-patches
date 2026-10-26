@@ -1,0 +1,116 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Simon=20J=C3=BCrgensmeyer?= <simon.juergensmeyer@gmail.com>
+Date: Mon, 26 Oct 2026 14:57:57 +0100
+Subject: [PATCH] PCI: Keep Apple Titan Ridge Thunderbolt controller in D0 for
+ suspend
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+On T2 Macs (seen on MacBookPro16,1) resume from S3 spends ~7 s per
+Titan Ridge Thunderbolt controller in the noirq phase.
+
+The time is spent in ACPI _PS0 of the upstream bridge (UPSB) and of the
+NHI (UPSB.DSB0.NHI0). Both end with CRMW, a read-modify-write of the
+controller's CIO config space through a mailbox in the upstream bridge's
+PCI config space. After S3 that mailbox never answers: an ACPI method
+trace shows every CIOR timing out (10 per bridge, 5 per NHI) and CIOW is
+never reached. CIOR busy-waits with Stall(), which also serializes both
+controllers in the ACPI interpreter, so pm_async does not help. _PS0
+ignores the result of CRMW.
+
+The controller loses power in S3 anyway. Saving the state from a suspend
+fixup keeps the PCI core from putting the NHI and the upstream bridge
+into D3, so the cached ACPI power state stays D0 and acpi_device_set_power()
+skips _PS0 on resume, as the firmware provides no _PSC.
+
+Restrict the quirk to Apple machines, suspend via firmware and upstream
+bridges with an ACPI CRMW method, like quirk_apple_poweroff_thunderbolt()
+does for Cactus Ridge.
+
+On MacBookPro16,1 the kernel resume (S3 wakeup to "Restarting tasks")
+drops from 18.4 s to about 1.5 s. pci_pm_resume_noirq() of each NHI goes
+from ~5.8 s to a few milliseconds. After resume both Thunderbolt domains
+come back, charging and USB-C devices keep working.
+
+Signed-off-by: Simon Jürgensmeyer <simon.juergensmeyer@gmail.com>
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ drivers/pci/quirks.c | 61 ++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 61 insertions(+)
+
+diff --git a/drivers/pci/quirks.c b/drivers/pci/quirks.c
+index 1aa87a3ef9ede1bf60d89fccbef71c1645a094eb..f0c1d31f772e3e39e66c54c2c76165878598a3eb 100644
+--- a/drivers/pci/quirks.c
++++ b/drivers/pci/quirks.c
+@@ -3941,6 +3941,67 @@ static void quirk_apple_poweroff_thunderbolt(struct pci_dev *dev)
+ DECLARE_PCI_FIXUP_SUSPEND_LATE(PCI_VENDOR_ID_INTEL,
+ 			       PCI_DEVICE_ID_INTEL_CACTUS_RIDGE_4C,
+ 			       quirk_apple_poweroff_thunderbolt);
++
++#define PCI_DEVICE_ID_INTEL_TITAN_RIDGE_4C_BRIDGE	0x15ea
++#define PCI_DEVICE_ID_INTEL_TITAN_RIDGE_4C_NHI		0x15eb
++
++/*
++ * Apple: Keep the Titan Ridge Thunderbolt controller in D0 across suspend.
++ *
++ * On T2 Macs the _PS0 methods of the upstream bridge (UPSB) and of the NHI
++ * (UPSB.DSB0.NHI0) end with read-modify-write cycles on the controller's
++ * CIO config space, done through a mailbox in the upstream bridge's PCI
++ * config space (CRMW/CIOR/CIOW). After resume from S3 that mailbox never
++ * answers, so every read busy-waits until it times out and CRMW retries
++ * five times. This adds several seconds per controller to the noirq resume
++ * phase, while _PS0 ignores the result.
++ *
++ * The controller loses power in S3 anyway. Saving the state here keeps the
++ * PCI core from putting the device into D3, so the cached ACPI power state
++ * stays D0 and _PS0 is skipped on resume because the firmware provides no
++ * _PSC. A device left in D0 also keeps the bridges above it in D0.
++ */
++static void quirk_apple_titan_ridge_keep_d0(struct pci_dev *dev)
++{
++	struct pci_dev *bridge = dev;
++	acpi_handle handle, crmw;
++
++	if (!x86_apple_machine)
++		return;
++	if (!pm_suspend_via_firmware())
++		return;
++
++	/* The NHI sits behind a downstream port of the upstream bridge */
++	if (dev->device == PCI_DEVICE_ID_INTEL_TITAN_RIDGE_4C_NHI) {
++		bridge = pci_upstream_bridge(dev);
++		if (bridge)
++			bridge = pci_upstream_bridge(bridge);
++		if (!bridge || bridge->vendor != PCI_VENDOR_ID_INTEL ||
++		    bridge->device != PCI_DEVICE_ID_INTEL_TITAN_RIDGE_4C_BRIDGE)
++			return;
++	}
++
++	if (pci_pcie_type(bridge) != PCI_EXP_TYPE_UPSTREAM)
++		return;
++
++	/*
++	 * CRMW is present only on the host controller's upstream bridge.
++	 * Thunderbolt bridges in external devices might have the same device
++	 * ID, but they will not have the ACPI method.
++	 */
++	handle = ACPI_HANDLE(&bridge->dev);
++	if (!handle || ACPI_FAILURE(acpi_get_handle(handle, "CRMW", &crmw)))
++		return;
++
++	pci_dbg(dev, "quirk: keeping Thunderbolt controller in D0 for suspend\n");
++	pci_save_state(dev);
++}
++DECLARE_PCI_FIXUP_SUSPEND(PCI_VENDOR_ID_INTEL,
++			  PCI_DEVICE_ID_INTEL_TITAN_RIDGE_4C_BRIDGE,
++			  quirk_apple_titan_ridge_keep_d0);
++DECLARE_PCI_FIXUP_SUSPEND(PCI_VENDOR_ID_INTEL,
++			  PCI_DEVICE_ID_INTEL_TITAN_RIDGE_4C_NHI,
++			  quirk_apple_titan_ridge_keep_d0);
+ #endif
+ 
+ /*
+-- 
+2.54.0
+
