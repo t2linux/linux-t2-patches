@@ -1,0 +1,157 @@
+From 4ce307efec15f663ec782831ce955c4bc7719598 Mon Sep 17 00:00:00 2001
+From: Q xiong <xiongqr@gmail.com>
+Date: Mon, 26 Oct 2026 20:07:37 -0400
+Subject: [PATCH] apple-gmux: resume the iGPU after the panel mux is restored
+
+T2 firmware resets the panel mux to the discrete GPU across S3.
+gmux_resume() already programs it back correctly - measured on a
+MacBookPro16,1, the write lands first try with zero MMIO timeouts - but
+it runs too late to matter.
+
+i915 restores the display state and retrains the eDP link from
+i915_drm_resume(), which is its ->resume callback. gmux_resume() is also
+a ->resume callback, so which runs first is decided by dpm_list position,
+and apple-gmux - a PNP device enumerated long after the GPU at 00:02.0 -
+loses. i915 drives the panel through a mux still pointing at the discrete
+GPU, every AUX transaction fails:
+
+  i915 0000:00:02.0: [drm] *ERROR* Failed to read source OUI
+  i915 0000:00:02.0: [drm] *ERROR* Failed to read DPCD register 0x92
+
+and nothing retries, so the panel stays dark while the machine runs
+normally over SSH.
+
+Add a stateless device link making the GPU a consumer of gmux. Creating
+the link moves the consumer to the tail of dpm_list, which fixes the
+synchronous path, and dpm_wait_for_suppliers() covers pm_async. The same
+idiom is used by t2bce_core to order itself against function 0.
+
+Also log the mux state gmux_resume() finds, since that reset is otherwise
+invisible; only ports gmux_read_switch_state() already reads are touched.
+
+An earlier attempt moved the mux restore to a ->resume_early callback
+instead. Do not do that: it hard-hangs the machine on the S3 cycle with
+no log, most likely from touching the gmux BAR before the bus beneath it
+has resumed. Reordering is the safe way to win the race.
+
+Tested on MacBookPro16,1 (Coffee Lake iGPU, Navi 14 dGPU blacklisted),
+7.3.0-t2-jammy, S3 deep sleep, with and without Wi-Fi active. The panel
+comes back, and resume now logs
+
+  apple_gmux: panel mux was reset to DIS during sleep, restoring IGD
+
+with zero AUX errors, where previously every resume produced them and
+left the panel dark.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ drivers/platform/x86/apple-gmux.c | 63 +++++++++++++++++++++++++++++++
+ 1 file changed, 63 insertions(+)
+
+diff --git a/drivers/platform/x86/apple-gmux.c b/drivers/platform/x86/apple-gmux.c
+index 656191dcc..e152cdc8c 100644
+--- a/drivers/platform/x86/apple-gmux.c
++++ b/drivers/platform/x86/apple-gmux.c
+@@ -76,6 +76,9 @@ struct apple_gmux_data {
+ 	enum vga_switcheroo_state power_state;
+ 	struct completion powerchange_done;
+ 
++	/* PM ordering against the integrated GPU */
++	struct device_link *igd_link;
++
+ 	/* debugfs data */
+ 	u8 selected_port;
+ 	struct dentry *debug_dentry;
+@@ -769,8 +772,23 @@ static int gmux_resume(struct device *dev)
+ {
+ 	struct pnp_dev *pnp = to_pnp_dev(dev);
+ 	struct apple_gmux_data *gmux_data = pnp_get_drvdata(pnp);
++	enum vga_switcheroo_client_id was_display;
+ 
+ 	gmux_enable_interrupts(gmux_data);
++
++	/*
++	 * T2 firmware resets the panel mux to the discrete GPU across S3.
++	 * Note what we are correcting; this is the only place it is visible.
++	 * Only ports gmux_read_switch_state() already touches are read.
++	 */
++	was_display = (gmux_read8(gmux_data, GMUX_PORT_SWITCH_DISPLAY) & 1) ?
++		      VGA_SWITCHEROO_DIS : VGA_SWITCHEROO_IGD;
++	if (was_display != gmux_data->switch_state_display)
++		pr_info("apple-gmux: panel mux was reset to %s during sleep, restoring %s\n",
++			was_display == VGA_SWITCHEROO_IGD ? "IGD" : "DIS",
++			gmux_data->switch_state_display == VGA_SWITCHEROO_IGD ?
++			"IGD" : "DIS");
++
+ 	gmux_write_switch_state(gmux_data);
+ 	if (gmux_data->power_state == VGA_SWITCHEROO_OFF)
+ 		gmux_set_discrete_state(gmux_data, gmux_data->power_state);
+@@ -782,6 +800,47 @@ static int is_thunderbolt(struct device *dev, void *data)
+ 	return to_pci_dev(dev)->is_thunderbolt;
+ }
+ 
++/**
++ * gmux_link_igd_pm - make the integrated GPU resume after gmux
++ * @gmux_data: driver private data
++ * @gmux_dev: the gmux PNP device, to be the supplier
++ *
++ * T2 firmware resets the panel mux to the discrete GPU across S3, and
++ * gmux_resume() programs it back. That is correct but too late: i915 restores
++ * the display state and retrains the eDP link from its own ->resume callback,
++ * and both callbacks run in the same PM phase. Order within a phase is decided
++ * by dpm_list position, and apple-gmux - a PNP device enumerated long after the
++ * GPU at 00:02.0 - loses that race. i915 then drives the panel through a mux
++ * still pointing at the discrete GPU, every AUX transaction fails with
++ * "Failed to read source OUI" / "Failed to read DPCD register 0x92", and the
++ * panel stays dark. Nothing retries, so the machine runs on fine over SSH with
++ * a black screen.
++ *
++ * Making the GPU a consumer of gmux fixes the order for both cases: creating
++ * the link moves the consumer to the tail of dpm_list, which covers the
++ * synchronous path, and dpm_wait_for_suppliers() covers pm_async.
++ *
++ * The link is stateless because both devices are enumerated by firmware and
++ * neither should gate the other's probing - we only want the PM ordering - so
++ * it has to be dropped explicitly in gmux_remove().
++ */
++static void gmux_link_igd_pm(struct apple_gmux_data *gmux_data,
++			     struct device *gmux_dev)
++{
++	struct pci_dev *pdev;
++
++	pdev = pci_get_domain_bus_and_slot(0, 0, PCI_DEVFN(2, 0));
++	if (!pdev)
++		return;
++
++	gmux_data->igd_link = device_link_add(&pdev->dev, gmux_dev,
++					      DL_FLAG_STATELESS);
++	if (!gmux_data->igd_link)
++		pr_warn("Failed to order the iGPU after gmux for PM; the panel may stay dark after resume\n");
++
++	pci_dev_put(pdev);
++}
++
+ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
+ {
+ 	struct apple_gmux_data *gmux_data;
+@@ -963,6 +1022,8 @@ static int gmux_probe(struct pnp_dev *pnp, const struct pnp_device_id *id)
+ 		}
+ 	}
+ 
++	gmux_link_igd_pm(gmux_data, &pnp->dev);
++
+ 	/*
+ 	 * Retina MacBook Pros cannot switch the panel's AUX separately
+ 	 * and need eDP pre-calibration. They are distinguishable from
+@@ -1010,6 +1071,8 @@ static void gmux_remove(struct pnp_dev *pnp)
+ 	struct apple_gmux_data *gmux_data = pnp_get_drvdata(pnp);
+ 
+ 	gmux_fini_debugfs(gmux_data);
++	if (gmux_data->igd_link)
++		device_link_del(gmux_data->igd_link);
+ 	vga_switcheroo_unregister_handler();
+ 	gmux_disable_interrupts(gmux_data);
+ 	if (gmux_data->gpe >= 0) {
+-- 
+2.34.1
+
