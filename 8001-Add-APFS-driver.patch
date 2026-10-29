@@ -1,7 +1,7 @@
-From 354c16c7dece1935d6a5170277790fa54c902e47 Mon Sep 17 00:00:00 2001
+From 7d4eeb370166b8b34608fa361e39ac94701383e5 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Fri, 16 Oct 2026 21:35:44 +0000
+Date: Thu, 29 Oct 2026 22:55:55 +0000
 Subject: [PATCH] Add APFS driver
 
 ---
@@ -37,9 +37,9 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/unicode.c                 | 3156 +++++++++++++++++++++++++++++
  fs/apfs/unicode.h                 |   27 +
  fs/apfs/version.h                 |    1 +
- fs/apfs/xattr.c                   |  914 +++++++++
+ fs/apfs/xattr.c                   |  921 +++++++++
  fs/apfs/xfield.c                  |  171 ++
- 34 files changed, 27386 insertions(+)
+ 34 files changed, 27393 insertions(+)
  create mode 100644 fs/apfs/Makefile
  create mode 100644 fs/apfs/apfs.h
  create mode 100644 fs/apfs/apfs_raw.h
@@ -26570,10 +26570,10 @@ index 000000000..e16b23c10
 +#define GIT_COMMIT	""
 diff --git a/fs/apfs/xattr.c b/fs/apfs/xattr.c
 new file mode 100644
-index 000000000..3b3f12f51
+index 000000000..4bd3efe5b
 --- /dev/null
 +++ b/fs/apfs/xattr.c
-@@ -0,0 +1,914 @@
+@@ -0,0 +1,921 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -27393,24 +27393,31 @@ index 000000000..3b3f12f51
 +#endif
 +{
 +	struct super_block *sb = inode->i_sb;
-+	int err;
++	int err, ret;
 +
-+	err = apfs_transaction_start(sb, value ? APFS_TRANS_REG : APFS_TRANS_DEL);
-+	if (err)
-+		return err;
++	ret = apfs_transaction_start(sb, value ? APFS_TRANS_REG : APFS_TRANS_DEL);
++	if (ret)
++		return ret;
 +
 +	/* Ignore the fake 'osx' prefix */
-+	err = apfs_xattr_set(inode, name, value, size, flags);
-+	if (err)
-+		goto fail;
++	ret = apfs_xattr_set(inode, name, value, size, flags);
++	if (ret) {
++		/*
++		 * No need to abort the transaction when the user tries to
++		 * replace (or delete) a xattr that doesn't exist.
++		 */
++		if (!(flags & XATTR_REPLACE && ret == -ENODATA))
++			goto fail;
++	}
 +
 +	err = apfs_transaction_commit(sb);
 +	if (!err)
-+		return 0;
++		return ret;
++	ret = err;
 +
 +fail:
 +	apfs_transaction_abort(sb);
-+	return err;
++	return ret;
 +}
 +
 +static const struct xattr_handler apfs_xattr_osx_handler = {
@@ -27666,5 +27673,5 @@ index 000000000..b8cbe17fd
 +	return total_len;
 +}
 -- 
-2.55.0
+2.56.0
 
