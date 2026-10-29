@@ -1,39 +1,28 @@
-From 4ef3ca24d007e4ab4ffa9a28b72540f19f437567 Mon Sep 17 00:00:00 2001
+From 851f60c72e57d7bfb1261a133b87b61024586a45 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
-Date: Mon, 26 Oct 2026 17:06:31 -0400
-Subject: [PATCH v2] amdgpu: add support for 5K
+Date: Fri, 2 Oct 2026 19:49:46 -0400
+Subject: [PATCH] amdgpu: add support for 5K
 
 This patch adds support for 5K in iMac20,1 and iMac20,2.
 
 genlock taken from:
 https://github.com/MarkPronkin/imac5k-universal-linux-patcher/blob/main/patches/genlock-fix.patch
 
-The merged-output part was written with the help of an AI coding
-assistant (Claude).
-
-Co-developed: Ed Schofield <ed@aicharmers.com>
-Signed-off-by: Ed Schofield <ed@aicharmers.com>
-
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---
- drivers/gpu/drm/amd/amdgpu/amdgpu_discovery.c |  31 +-
- .../gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c | 557 ++++++++++++++++++
- .../gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.h |  24 +
- .../display/amdgpu_dm/amdgpu_dm_connector.c   |  69 ++-
- .../amd/display/amdgpu_dm/amdgpu_dm_plane.c   |   9 +-
- .../amd/display/amdgpu_dm/amdgpu_dm_quirks.c  |  29 +-
- .../gpu/drm/amd/display/dc/core/dc_resource.c |  10 +
- drivers/gpu/drm/amd/display/dc/dc.h           |  10 +
- .../amd/display/dc/hwss/dce110/dce110_hwseq.c |  37 +-
- .../amd/display/dc/hwss/dcn10/dcn10_hwseq.c   |   8 +-
- .../drm/amd/display/dc/link/link_detection.c  |  23 +
- .../gpu/drm/amd/display/dc/link/link_dpms.c   |  16 +
- .../display/dc/link/protocols/link_dp_phy.c   |   5 +
- .../dc/link/protocols/link_dp_training.c      |   9 +-
- 14 files changed, 819 insertions(+), 18 deletions(-)
+ drivers/gpu/drm/amd/amdgpu/amdgpu_discovery.c | 31 +++++++++++--
+ .../gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c | 45 ++++++++++++++++++-
+ .../gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.h |  7 +++
+ .../display/amdgpu_dm/amdgpu_dm_connector.c   |  7 +++
+ .../amd/display/amdgpu_dm/amdgpu_dm_quirks.c  | 29 +++++++++++-
+ .../gpu/drm/amd/display/dc/core/dc_resource.c |  8 ++++
+ drivers/gpu/drm/amd/display/dc/dc.h           |  2 +
+ .../amd/display/dc/hwss/dcn10/dcn10_hwseq.c   |  8 +++-
+ .../drm/amd/display/dc/link/link_detection.c  |  5 ++-
+ 9 files changed, 135 insertions(+), 7 deletions(-)
 
 diff --git a/drivers/gpu/drm/amd/amdgpu/amdgpu_discovery.c b/drivers/gpu/drm/amd/amdgpu/amdgpu_discovery.c
-index 890792a94..ab90bddf1 100644
+index 7ab2ad2c5..bb672a923 100644
 --- a/drivers/gpu/drm/amd/amdgpu/amdgpu_discovery.c
 +++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_discovery.c
 @@ -21,6 +21,7 @@
@@ -44,7 +33,7 @@ index 890792a94..ab90bddf1 100644
  #include <linux/firmware.h>
  #include <linux/kernfs.h>
  
-@@ -3412,6 +3413,22 @@ static int amdgpu_discovery_set_ualink_ip_blocks(struct amdgpu_device *adev)
+@@ -3082,6 +3083,22 @@ static int amdgpu_discovery_set_isp_ip_blocks(struct amdgpu_device *adev)
  	return 0;
  }
  
@@ -67,7 +56,7 @@ index 890792a94..ab90bddf1 100644
  int amdgpu_discovery_set_ip_blocks(struct amdgpu_device *adev)
  {
  	int r;
-@@ -4026,15 +4043,23 @@ int amdgpu_discovery_set_ip_blocks(struct amdgpu_device *adev)
+@@ -3679,15 +3696,23 @@ int amdgpu_discovery_set_ip_blocks(struct amdgpu_device *adev)
  		}
  	}
  
@@ -95,21 +84,19 @@ index 890792a94..ab90bddf1 100644
  	r = amdgpu_discovery_set_gc_ip_blocks(adev);
  	if (r)
 diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
-index 5b634ae07..adb79b2c4 100644
+index 47a0ff2ed..7161f8a95 100644
 --- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
 +++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
-@@ -639,6 +639,10 @@ static int amdgpu_dm_init(struct amdgpu_device *adev)
+@@ -617,6 +617,8 @@ static int amdgpu_dm_init(struct amdgpu_device *adev)
  	retrieve_dmi_info(&adev->dm);
  	if (adev->dm.edp0_on_dp1_quirk)
  		init_data.flags.support_edp0_on_dp1 = true;
 +	if (adev->dm.imac5K_support)
 +		init_data.flags.imac5K_support = true;
-+	adev->dm.imac5k_merge = adev->dm.imac5K_support &&
-+				adev->mode_info.num_crtc > 1;
  
  	if (adev->dm.bb_from_dmub)
  		init_data.bb_from_dmub = adev->dm.bb_from_dmub;
-@@ -1967,6 +1971,11 @@ static int dm_resume(struct amdgpu_ip_block *ip_block)
+@@ -1925,6 +1927,11 @@ static int dm_resume(struct amdgpu_ip_block *ip_block)
  		dc_exit_ips_for_hw_access(dm->dc);
  		WARN_ON(!dc_commit_streams(dm->dc, &commit_params));
  
@@ -121,522 +108,29 @@ index 5b634ae07..adb79b2c4 100644
  		dm_gpureset_commit_state(dm->cached_dc_state, dm);
  
  		dm_gpureset_toggle_interrupts(adev, dm->cached_dc_state, true);
-@@ -3657,6 +3666,505 @@ static void remove_stream(struct amdgpu_device *adev,
- 	acrtc->enabled = false;
- }
+@@ -2012,11 +2019,20 @@ static int dm_resume(struct amdgpu_ip_block *ip_block)
+ 		if (!dc_link_detect_connection_type(aconnector->dc_link, &new_connection_type))
+ 			drm_err(adev_to_drm(adev), "KMS: Failed to detect connector\n");
  
-+bool amdgpu_dm_imac5k_merge_active(struct amdgpu_display_manager *dm)
-+{
-+	return dm->imac5k_merge && dm->imac5k_conn[0] && dm->imac5k_conn[1];
-+}
-+
-+static struct drm_crtc *imac5k_companion_crtc(struct amdgpu_display_manager *dm)
-+{
-+	if (!amdgpu_dm_imac5k_merge_active(dm))
-+		return NULL;
-+
-+	return drm_crtc_from_index(dm->ddev, dm->adev->mode_info.num_crtc - 1);
-+}
-+
-+bool amdgpu_dm_imac5k_crtc_is_left(struct amdgpu_display_manager *dm,
-+				   struct drm_crtc *crtc)
-+{
-+	struct drm_crtc *comp = imac5k_companion_crtc(dm);
-+
-+	if (!comp || !crtc || crtc == comp)
-+		return false;
-+
-+	return crtc->state &&
-+	       (crtc->state->connector_mask &
-+		drm_connector_mask(&dm->imac5k_conn[0]->base));
-+}
-+
-+bool amdgpu_dm_imac5k_is_right_connector(const struct drm_connector *connector)
-+{
-+	struct amdgpu_display_manager *dm = &drm_to_adev(connector->dev)->dm;
-+
-+	return amdgpu_dm_imac5k_merge_active(dm) &&
-+	       connector == &dm->imac5k_conn[1]->base;
-+}
-+
-+bool amdgpu_dm_imac5k_stream_is_tile(const struct dc_stream_state *stream)
-+{
-+	struct amdgpu_dm_connector *aconnector = stream->dm_stream_context;
-+	struct amdgpu_display_manager *dm;
-+
-+	if (!aconnector)
-+		return false;
-+
-+	dm = &drm_to_adev(aconnector->base.dev)->dm;
-+
-+	return amdgpu_dm_imac5k_merge_active(dm) &&
-+	       (aconnector == dm->imac5k_conn[0] ||
-+		aconnector == dm->imac5k_conn[1]);
-+}
-+
-+const struct drm_connector *
-+amdgpu_dm_imac5k_proxy_connector(const struct drm_connector *connector)
-+{
-+	if (amdgpu_dm_imac5k_is_right_connector(connector))
-+		return &drm_to_adev(connector->dev)->dm.imac5k_conn[0]->base;
-+
-+	return connector;
-+}
-+
-+int amdgpu_dm_imac5k_tile_origin(struct drm_crtc *crtc,
-+				 struct drm_atomic_commit *state)
-+{
-+	struct drm_crtc_state *crtc_state;
-+
-+	if (!crtc || crtc != imac5k_companion_crtc(&drm_to_adev(crtc->dev)->dm))
-+		return 0;
-+
-+	crtc_state = state ? drm_atomic_get_new_crtc_state(state, crtc) : NULL;
-+	if (!crtc_state)
-+		crtc_state = crtc->state;
-+
-+	return crtc_state->mode.hdisplay / 2;
-+}
-+
-+void amdgpu_dm_imac5k_mode_to_tile(struct drm_display_mode *mode)
-+{
-+	mode->clock /= 2;
-+	mode->hdisplay /= 2;
-+	mode->hsync_start /= 2;
-+	mode->hsync_end /= 2;
-+	mode->htotal /= 2;
-+	mode->hskew /= 2;
-+
-+	mode->crtc_clock /= 2;
-+	mode->crtc_hdisplay /= 2;
-+	mode->crtc_hblank_start /= 2;
-+	mode->crtc_hblank_end /= 2;
-+	mode->crtc_hsync_start /= 2;
-+	mode->crtc_hsync_end /= 2;
-+	mode->crtc_htotal /= 2;
-+	mode->crtc_hskew /= 2;
-+}
-+
-+static bool imac5k_mode_halvable(const struct drm_display_mode *mode)
-+{
-+	return !((mode->clock | mode->hdisplay | mode->hsync_start |
-+		  mode->hsync_end | mode->htotal | mode->hskew) & 1);
-+}
-+
-+bool amdgpu_dm_imac5k_merge_modes(struct drm_connector *connector)
-+{
-+	struct amdgpu_display_manager *dm = &drm_to_adev(connector->dev)->dm;
-+	struct amdgpu_dm_connector *aconnector = to_amdgpu_dm_connector(connector);
-+	struct drm_display_mode *mode, *tmp, *tile = NULL, *merged;
-+
-+	if (!amdgpu_dm_imac5k_merge_active(dm) ||
-+	    aconnector != dm->imac5k_conn[0])
-+		return false;
-+
-+	list_for_each_entry(mode, &connector->probed_modes, head) {
-+		if (mode->hdisplay != IMAC5K_TILE_WIDTH ||
-+		    mode->vdisplay != IMAC5K_TILE_HEIGHT)
-+			continue;
-+		if (!tile || (mode->type & DRM_MODE_TYPE_PREFERRED))
-+			tile = mode;
-+	}
-+
-+	if (!tile)
-+		return false;
-+
-+	merged = drm_mode_duplicate(connector->dev, tile);
-+	if (!merged)
-+		return false;
-+
-+	merged->clock *= 2;
-+	merged->hdisplay *= 2;
-+	merged->hsync_start *= 2;
-+	merged->hsync_end *= 2;
-+	merged->htotal *= 2;
-+	merged->hskew *= 2;
-+	merged->type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED;
-+	drm_mode_set_name(merged);
-+
-+	list_for_each_entry_safe(mode, tmp, &connector->probed_modes, head) {
-+		if (mode->hdisplay != IMAC5K_TILE_WIDTH ||
-+		    mode->vdisplay != IMAC5K_TILE_HEIGHT)
-+			continue;
-+
-+		list_del(&mode->head);
-+		drm_mode_destroy(connector->dev, mode);
-+		aconnector->num_modes--;
-+	}
-+
-+	drm_mode_probed_add(connector, merged);
-+	aconnector->num_modes++;
-+
-+	return true;
-+}
-+
-+static int imac5k_copy_plane_state(struct drm_plane_state *dst,
-+				   struct drm_plane_state *src,
-+				   struct drm_crtc *crtc)
-+{
-+	struct dm_plane_state *ddst = to_dm_plane_state(dst);
-+	struct dm_plane_state *dsrc = to_dm_plane_state(src);
-+	bool blob_changed = false;
-+	int ret;
-+
-+	if (!src->fb || !src->crtc) {
-+		drm_atomic_set_fb_for_plane(dst, NULL);
-+		return drm_atomic_set_crtc_for_plane(dst, NULL);
-+	}
-+
-+	if (src->color_pipeline)
-+		return -EINVAL;
-+
-+	ret = drm_atomic_set_crtc_for_plane(dst, crtc);
-+	if (ret)
-+		return ret;
-+
-+	drm_atomic_set_fb_for_plane(dst, src->fb);
-+
-+	dst->crtc_x = src->crtc_x;
-+	dst->crtc_y = src->crtc_y;
-+	dst->crtc_w = src->crtc_w;
-+	dst->crtc_h = src->crtc_h;
-+	dst->src_x = src->src_x;
-+	dst->src_y = src->src_y;
-+	dst->src_w = src->src_w;
-+	dst->src_h = src->src_h;
-+	dst->hotspot_x = src->hotspot_x;
-+	dst->hotspot_y = src->hotspot_y;
-+	dst->alpha = src->alpha;
-+	dst->pixel_blend_mode = src->pixel_blend_mode;
-+	dst->rotation = src->rotation;
-+	dst->zpos = src->zpos;
-+	dst->color_encoding = src->color_encoding;
-+	dst->color_range = src->color_range;
-+	dst->scaling_filter = src->scaling_filter;
-+	dst->ignore_damage_clips = src->ignore_damage_clips;
-+	drm_property_replace_blob(&dst->fb_damage_clips, src->fb_damage_clips);
-+
-+	if (src->fence && !dst->fence)
-+		dst->fence = dma_fence_get(src->fence);
-+
-+	blob_changed |= drm_property_replace_blob(&ddst->degamma_lut, dsrc->degamma_lut);
-+	blob_changed |= drm_property_replace_blob(&ddst->ctm, dsrc->ctm);
-+	blob_changed |= drm_property_replace_blob(&ddst->shaper_lut, dsrc->shaper_lut);
-+	blob_changed |= drm_property_replace_blob(&ddst->lut3d, dsrc->lut3d);
-+	blob_changed |= drm_property_replace_blob(&ddst->blend_lut, dsrc->blend_lut);
-+	ddst->degamma_tf = dsrc->degamma_tf;
-+	ddst->shaper_tf = dsrc->shaper_tf;
-+	ddst->blend_tf = dsrc->blend_tf;
-+	ddst->hdr_mult = dsrc->hdr_mult;
-+	dst->color_mgmt_changed = src->color_mgmt_changed || blob_changed;
-+
-+	return 0;
-+}
-+
-+static int imac5k_disable_plane(struct drm_atomic_commit *state,
-+				struct drm_plane *plane)
-+{
-+	struct drm_plane_state *ps = drm_atomic_get_plane_state(state, plane);
-+
-+	if (IS_ERR(ps))
-+		return PTR_ERR(ps);
-+
-+	if (!ps->crtc && !ps->fb)
-+		return 0;
-+
-+	drm_atomic_set_fb_for_plane(ps, NULL);
-+	return drm_atomic_set_crtc_for_plane(ps, NULL);
-+}
-+
-+static int imac5k_disable_companion(struct drm_atomic_commit *state,
-+				    struct drm_crtc *comp,
-+				    struct drm_connector_state *right_state)
-+{
-+	struct drm_crtc_state *comp_state;
-+	int ret;
-+
-+	comp_state = drm_atomic_get_crtc_state(state, comp);
-+	if (IS_ERR(comp_state))
-+		return PTR_ERR(comp_state);
-+
-+	if (!comp_state->enable && !comp_state->active && !right_state->crtc &&
-+	    !comp->primary->state->crtc)
-+		return 0;
-+
-+	if (right_state->crtc) {
-+		ret = drm_atomic_set_crtc_for_connector(right_state, NULL);
-+		if (ret)
-+			return ret;
-+	}
-+
-+	ret = imac5k_disable_plane(state, comp->primary);
-+	if (ret)
-+		return ret;
-+
-+	ret = imac5k_disable_plane(state, comp->cursor);
-+	if (ret)
-+		return ret;
-+
-+	ret = drm_atomic_set_mode_for_crtc(comp_state, NULL);
-+	if (ret)
-+		return ret;
-+
-+	comp_state->active = false;
-+
-+	return 0;
-+}
-+
-+static int imac5k_mirror_crtc(struct drm_crtc_state *dst_state,
-+			      struct drm_crtc_state *src_state)
-+{
-+	bool changed = false;
-+	int ret;
-+
-+	ret = drm_atomic_set_mode_for_crtc(dst_state, &src_state->mode);
-+	if (ret)
-+		return ret;
-+
-+	dst_state->active = src_state->active;
-+	dst_state->target_vblank = src_state->target_vblank;
-+	dst_state->async_flip = src_state->async_flip;
-+	dst_state->background_color = src_state->background_color;
-+	dst_state->scaling_filter = src_state->scaling_filter;
-+	dst_state->sharpness_strength = src_state->sharpness_strength;
-+	dst_state->vrr_enabled = false;
-+
-+	changed |= drm_property_replace_blob(&dst_state->degamma_lut, src_state->degamma_lut);
-+	changed |= drm_property_replace_blob(&dst_state->ctm, src_state->ctm);
-+	changed |= drm_property_replace_blob(&dst_state->gamma_lut, src_state->gamma_lut);
-+	if (changed || src_state->color_mgmt_changed)
-+		dst_state->color_mgmt_changed = true;
-+
-+	to_dm_crtc_state(dst_state)->regamma_tf = to_dm_crtc_state(src_state)->regamma_tf;
-+
-+	return 0;
-+}
-+
-+static bool imac5k_cursor_only_commit(struct drm_atomic_commit *state)
-+{
-+	struct drm_connector_state *conn_state;
-+	struct drm_crtc_state *crtc_state;
-+	struct drm_plane_state *plane_state;
-+	struct drm_connector *connector;
-+	struct drm_crtc *crtc;
-+	struct drm_plane *plane;
-+	bool cursor = false;
-+	int i;
-+
-+	for_each_new_connector_in_state(state, connector, conn_state, i)
-+		return false;
-+
-+	for_each_new_crtc_in_state(state, crtc, crtc_state, i) {
-+		if (drm_atomic_crtc_needs_modeset(crtc_state) ||
-+		    crtc_state->color_mgmt_changed)
-+			return false;
-+	}
-+
-+	for_each_new_plane_in_state(state, plane, plane_state, i) {
-+		if (plane->type != DRM_PLANE_TYPE_CURSOR)
-+			return false;
-+		cursor = true;
-+	}
-+
-+	return cursor;
-+}
-+
-+static int imac5k_expand_state(struct drm_device *dev,
-+			       struct drm_atomic_commit *state)
-+{
-+	struct amdgpu_display_manager *dm = &drm_to_adev(dev)->dm;
-+	struct drm_crtc *comp = imac5k_companion_crtc(dm);
-+	struct drm_connector_state *left_state, *right_state;
-+	struct drm_crtc_state *crtc_state, *comp_state;
-+	struct drm_plane_state *plane_state, *comp_plane_state;
-+	struct drm_crtc *crtc;
-+	struct drm_plane *plane;
-+	int ret;
-+
-+	if (!comp || imac5k_cursor_only_commit(state))
-+		return 0;
-+
-+	left_state = drm_atomic_get_connector_state(state, &dm->imac5k_conn[0]->base);
-+	if (IS_ERR(left_state))
-+		return PTR_ERR(left_state);
-+
-+	right_state = drm_atomic_get_connector_state(state, &dm->imac5k_conn[1]->base);
-+	if (IS_ERR(right_state))
-+		return PTR_ERR(right_state);
-+
-+	crtc = left_state->crtc;
-+	if (!crtc)
-+		return imac5k_disable_companion(state, comp, right_state);
-+
-+	crtc_state = drm_atomic_get_crtc_state(state, crtc);
-+	if (IS_ERR(crtc_state))
-+		return PTR_ERR(crtc_state);
-+
-+	if (!crtc_state->enable)
-+		return imac5k_disable_companion(state, comp, right_state);
-+
-+	if (!imac5k_mode_halvable(&crtc_state->mode)) {
-+		drm_dbg_atomic(dev, "iMac 5K: mode " DRM_MODE_FMT " cannot be split\n",
-+			       DRM_MODE_ARG(&crtc_state->mode));
-+		return -EINVAL;
-+	}
-+
-+	drm_for_each_plane(plane, dev) {
-+		if (plane->type != DRM_PLANE_TYPE_OVERLAY)
-+			continue;
-+
-+		plane_state = drm_atomic_get_new_plane_state(state, plane);
-+		if (!plane_state || !plane_state->crtc)
-+			continue;
-+
-+		if (plane_state->crtc == crtc && plane_state->fb) {
-+			drm_dbg_atomic(dev, "iMac 5K: overlay planes are not supported\n");
-+			return -EINVAL;
-+		}
-+
-+		if (plane_state->crtc == comp) {
-+			ret = imac5k_disable_plane(state, plane);
-+			if (ret)
-+				return ret;
-+		}
-+	}
-+
-+	ret = drm_atomic_set_crtc_for_connector(right_state, comp);
-+	if (ret)
-+		return ret;
-+
-+	comp_state = drm_atomic_get_crtc_state(state, comp);
-+	if (IS_ERR(comp_state))
-+		return PTR_ERR(comp_state);
-+
-+	ret = imac5k_mirror_crtc(comp_state, crtc_state);
-+	if (ret)
-+		return ret;
-+
-+	plane_state = drm_atomic_get_plane_state(state, crtc->primary);
-+	if (IS_ERR(plane_state))
-+		return PTR_ERR(plane_state);
-+
-+	comp_plane_state = drm_atomic_get_plane_state(state, comp->primary);
-+	if (IS_ERR(comp_plane_state))
-+		return PTR_ERR(comp_plane_state);
-+
-+	ret = imac5k_copy_plane_state(comp_plane_state, plane_state, comp);
-+	if (ret)
-+		return ret;
-+
-+	return imac5k_disable_plane(state, comp->cursor);
-+}
-+
-+void amdgpu_dm_imac5k_update_companion_cursor(struct drm_plane *plane,
-+					      struct drm_plane_state *old_plane_state)
-+{
-+	struct amdgpu_device *adev = drm_to_adev(plane->dev);
-+	struct amdgpu_display_manager *dm = &adev->dm;
-+	struct amdgpu_framebuffer *afb = to_amdgpu_framebuffer(plane->state->fb);
-+	struct drm_crtc *crtc = afb ? plane->state->crtc : old_plane_state->crtc;
-+	struct drm_crtc *comp = imac5k_companion_crtc(dm);
-+	struct dm_crtc_state *comp_state;
-+	struct amdgpu_crtc *acomp;
-+	struct dc_cursor_position position = {0};
-+	struct dc_cursor_attributes attributes;
-+
-+	if (!comp || !amdgpu_dm_imac5k_crtc_is_left(dm, crtc))
-+		return;
-+
-+	if (!plane->state->fb && !old_plane_state->fb)
-+		return;
-+
-+	comp_state = to_dm_crtc_state(comp->state);
-+	if (!comp_state->stream)
-+		return;
-+
-+	acomp = to_amdgpu_crtc(comp);
-+
-+	if (amdgpu_dm_plane_get_cursor_position(plane, comp, &position))
-+		return;
-+
-+	if (!position.enable) {
-+		if (!comp_state->stream->cursor_position.enable)
-+			return;
-+
-+		mutex_lock(&dm->dc_lock);
-+		dc_stream_program_cursor_position(comp_state->stream, &position);
-+		mutex_unlock(&dm->dc_lock);
-+		return;
-+	}
-+
-+	memset(&attributes, 0, sizeof(attributes));
-+	attributes.address.high_part = upper_32_bits(afb->address);
-+	attributes.address.low_part = lower_32_bits(afb->address);
-+	attributes.width = plane->state->crtc_w;
-+	attributes.height = plane->state->crtc_h;
-+	attributes.color_format = CURSOR_MODE_COLOR_PRE_MULTIPLIED_ALPHA;
-+	attributes.rotation_angle = 0;
-+	attributes.attribute_flags.value = 0;
-+	attributes.pitch = afb->base.pitches[0] / afb->base.format->cpp[0];
-+
-+	if (comp_state->cm_is_degamma_srgb && dm->dc->caps.color.dpp.gamma_corr)
-+		attributes.attribute_flags.bits.ENABLE_CURSOR_DEGAMMA = 1;
-+
-+	if (!memcmp(&comp_state->stream->cursor_position, &position, sizeof(position)) &&
-+	    !memcmp(&comp_state->stream->cursor_attributes, &attributes, sizeof(attributes)))
-+		return;
-+
-+	mutex_lock(&dm->dc_lock);
-+	amdgpu_dm_ism_commit_event(&acomp->ism, DM_ISM_EVENT_BEGIN_CURSOR_UPDATE);
-+
-+	if (!dc_stream_program_cursor_attributes(comp_state->stream, &attributes))
-+		drm_err(adev_to_drm(adev), "iMac 5K: DC failed to set right tile cursor attributes\n");
-+
-+	if (!dc_stream_program_cursor_position(comp_state->stream, &position))
-+		drm_err(adev_to_drm(adev), "iMac 5K: DC failed to set right tile cursor position\n");
-+
-+	amdgpu_dm_ism_commit_event(&acomp->ism, DM_ISM_EVENT_END_CURSOR_UPDATE);
-+	mutex_unlock(&dm->dc_lock);
-+}
-+
-+static int imac5k_allow_added_crtc(struct amdgpu_display_manager *dm,
-+				   struct drm_atomic_commit *state)
-+{
-+	struct drm_crtc *comp = imac5k_companion_crtc(dm);
-+	struct drm_crtc_state *crtc_state;
-+	struct drm_crtc *crtc;
-+	int i;
-+
-+	if (!comp || state->allow_modeset ||
-+	    !drm_atomic_get_new_crtc_state(state, comp))
-+		return 0;
-+
-+	for_each_new_crtc_in_state(state, crtc, crtc_state, i) {
-+		if (drm_atomic_crtc_needs_modeset(crtc_state)) {
-+			drm_dbg_atomic(state->dev, "[CRTC:%d:%s] requires full modeset\n",
-+				       crtc->base.id, crtc->name);
-+			return -EINVAL;
-+		}
-+	}
-+
-+	state->allow_modeset = true;
-+
-+	return 0;
-+}
-+
- STATIC_IFN_KUNIT void amdgpu_dm_commit_cursors(struct drm_atomic_commit *state)
- {
- 	struct drm_plane *plane;
-@@ -3941,6 +4449,8 @@ static void amdgpu_dm_commit_planes(struct drm_atomic_commit *state,
- 				cursor_update = true;
- 				if (amdgpu_ip_version(dm->adev, DCE_HWIP, 0) != 0) {
- 					amdgpu_dm_update_cursor(plane, old_plane_state, &bundle->stream_update);
-+					amdgpu_dm_imac5k_update_companion_cursor(plane,
-+										 old_plane_state);
- 					stream_update_needed = true;
- 				}
- 			}
-@@ -4739,6 +5249,26 @@ static void amdgpu_dm_commit_streams(struct drm_atomic_commit *state,
+-		if (aconnector->base.force && new_connection_type == dc_connection_none) {
++		if ((aconnector->base.force && new_connection_type == dc_connection_none)
++				|| (dm->dc->config.imac5K_support &&
++					!dm->dc->config.imac5K_using_5K &&
++					aconnector->dc_link->link_index == 1)) {
+ 			amdgpu_dm_emulated_link_detect(aconnector->dc_link);
+ 		} else {
+ 			guard(mutex)(&dm->dc_lock);
+ 			dc_exit_ips_for_hw_access(dm->dc);
++			if (dm->dc->config.imac5K_using_5K &&
++					aconnector->dc_link->link_index == 1) {
++				const u8 value = 1;
++
++				core_link_write_dpcd(dm->dc->links[0], 0x4F1, &value, 1);
++			}
+ 			ret = dc_link_detect(aconnector->dc_link, DETECT_REASON_RESUMEFROMS3S4);
+ 			if (ret) {
+ 				/* w/a delay for certain panels */
+@@ -4627,6 +4643,25 @@ static void amdgpu_dm_commit_streams(struct drm_atomic_commit *state,
  	dc_exit_ips_for_hw_access(dm->dc);
  	WARN_ON(!dc_commit_streams(dm->dc, &params));
  
@@ -650,8 +144,7 @@ index 5b634ae07..adb79b2c4 100644
 +			if (dm_new_crtc_state->stream->signal != SIGNAL_TYPE_EDP)
 +				continue;
 +
-+			if (dm_new_crtc_state->stream->timing.v_addressable == 2880 &&
-+			    dm_new_crtc_state->stream->timing.h_addressable == 2560) {
++			if (new_crtc_state->mode.vdisplay == 2880 && new_crtc_state->mode.hdisplay == 2560) {
 +				u8 value = 1;
 +
 +				core_link_write_dpcd(dm->dc->links[0], 0x4F1, &value, 1);
@@ -663,7 +156,7 @@ index 5b634ae07..adb79b2c4 100644
  	bool frl_stream_found = false;
  
  	for (i = 0; i < params.stream_count; i++) {
-@@ -5127,6 +5657,14 @@ STATIC_IFN_KUNIT void dm_enable_per_frame_crtc_master_sync(struct dc_state *cont
+@@ -5011,6 +5046,14 @@ STATIC_IFN_KUNIT void dm_enable_per_frame_crtc_master_sync(struct dc_state *cont
  		 */
  	}
  
@@ -678,104 +171,29 @@ index 5b634ae07..adb79b2c4 100644
  	set_master_stream(context->streams, context->stream_count);
  
  	for (i = 0; i < context->stream_count ; i++) {
-@@ -6282,6 +6820,15 @@ STATIC_IFN_KUNIT int amdgpu_dm_atomic_check(struct drm_device *dev,
- 
- 	trace_amdgpu_dm_atomic_check_begin(state);
- 
-+	if (amdgpu_dm_imac5k_merge_active(&adev->dm)) {
-+		ret = imac5k_expand_state(dev, state);
-+		if (ret) {
-+			drm_dbg_atomic(dev, "iMac 5K state expansion failed: %pe\n",
-+				       ERR_PTR(ret));
-+			goto fail;
-+		}
-+	}
-+
- 	ret = drm_atomic_helper_check_modeset(dev, state);
- 	if (ret) {
- 		drm_dbg_atomic(dev, "drm_atomic_helper_check_modeset() failed: %pe\n", ERR_PTR(ret));
-@@ -6428,6 +6975,12 @@ STATIC_IFN_KUNIT int amdgpu_dm_atomic_check(struct drm_device *dev,
- 		 * need to be added for DC to not disable a plane by mistake
- 		 */
- 		if (dm_new_crtc_state->cursor_mode == DM_CURSOR_OVERLAY_MODE) {
-+			if (amdgpu_dm_imac5k_crtc_is_left(&adev->dm, crtc)) {
-+				drm_dbg(dev, "Overlay cursor not supported on the merged iMac 5K output\n");
-+				ret = -EINVAL;
-+				goto fail;
-+			}
-+
- 			if (amdgpu_ip_version(adev, DCE_HWIP, 0) == 0) {
- 				drm_dbg(dev, "Overlay cursor not supported on DCE\n");
- 				ret = -EINVAL;
-@@ -6752,6 +7305,10 @@ STATIC_IFN_KUNIT int amdgpu_dm_atomic_check(struct drm_device *dev,
- 			UPDATE_TYPE_FULL : UPDATE_TYPE_FAST;
- 	}
- 
-+	ret = imac5k_allow_added_crtc(&adev->dm, state);
-+	if (ret)
-+		goto fail;
-+
- 	/* Must be success */
- 	WARN_ON(ret);
- 
 diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.h b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.h
-index 1b91fe4c3..376ce4222 100644
+index 881c8d1c3..e75f04260 100644
 --- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.h
 +++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.h
-@@ -698,6 +698,12 @@ struct amdgpu_display_manager {
+@@ -689,6 +689,13 @@ struct amdgpu_display_manager {
  	 */
  	bool edp0_on_dp1_quirk;
  
++	/**
++	 * @imac5K_support:
++	 *
++	 * quirk for iMac that support 5K
++	 */
 +	bool imac5K_support;
-+
-+	bool imac5k_merge;
-+
-+	struct amdgpu_dm_connector *imac5k_conn[2];
 +
  	/**
  	 * @dpia_aux_lock:
  	 *
-@@ -1371,4 +1377,22 @@ int fill_dc_plane_attributes(struct amdgpu_device *adev, struct dc_plane_state *
- 			     struct drm_crtc_state *crtc_state);
- #endif
- 
-+
-+#define IMAC5K_TILE_WIDTH	2560
-+#define IMAC5K_TILE_HEIGHT	2880
-+
-+bool amdgpu_dm_imac5k_merge_active(struct amdgpu_display_manager *dm);
-+bool amdgpu_dm_imac5k_is_right_connector(const struct drm_connector *connector);
-+bool amdgpu_dm_imac5k_stream_is_tile(const struct dc_stream_state *stream);
-+bool amdgpu_dm_imac5k_crtc_is_left(struct amdgpu_display_manager *dm,
-+				   struct drm_crtc *crtc);
-+const struct drm_connector *
-+amdgpu_dm_imac5k_proxy_connector(const struct drm_connector *connector);
-+int amdgpu_dm_imac5k_tile_origin(struct drm_crtc *crtc,
-+				 struct drm_atomic_commit *state);
-+void amdgpu_dm_imac5k_mode_to_tile(struct drm_display_mode *mode);
-+bool amdgpu_dm_imac5k_merge_modes(struct drm_connector *connector);
-+void amdgpu_dm_imac5k_update_companion_cursor(struct drm_plane *plane,
-+					      struct drm_plane_state *old_plane_state);
-+
- #endif /* __AMDGPU_DM_H__ */
 diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_connector.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_connector.c
-index 2b81396bd..3a8bc870a 100644
+index 45a69bf43..0b6d44890 100644
 --- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_connector.c
 +++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_connector.c
-@@ -109,6 +109,12 @@ STATIC_IFN_KUNIT int dm_encoder_helper_atomic_check(struct drm_encoder *encoder,
- 	int clock, bpp = 0;
- 	bool is_y420 = false;
- 
-+	if (amdgpu_dm_imac5k_is_right_connector(connector)) {
-+		dm_new_connector_state->scaling =
-+			crtc_state->mode.vdisplay != 2880 ? RMX_FULL : RMX_OFF;
-+		return 0;
-+	}
-+
- 	if ((connector->connector_type == DRM_MODE_CONNECTOR_eDP) ||
- 	    (connector->connector_type == DRM_MODE_CONNECTOR_LVDS)) {
- 		struct amdgpu_encoder *amdgpu_encoder = to_amdgpu_encoder(encoder);
-@@ -123,6 +129,13 @@ STATIC_IFN_KUNIT int dm_encoder_helper_atomic_check(struct drm_encoder *encoder,
+@@ -125,6 +125,13 @@ STATIC_IFN_KUNIT int dm_encoder_helper_atomic_check(struct drm_encoder *encoder,
  				       drm_mode_vrefresh(adjusted_mode));
  			dm_new_connector_state->scaling = RMX_ASPECT;
  		}
@@ -788,216 +206,6 @@ index 2b81396bd..3a8bc870a 100644
 +		}
  		return 0;
  	}
- 
-@@ -205,6 +218,15 @@ int amdgpu_dm_encoder_init(struct drm_device *dev,
- 
- 	aencoder->base.possible_crtcs = amdgpu_dm_get_encoder_crtc_mask(adev);
- 
-+	if (adev->dm.imac5k_merge) {
-+		u32 reserved = BIT(adev->mode_info.num_crtc - 1);
-+
-+		if (link_index == 1)
-+			aencoder->base.possible_crtcs = reserved;
-+		else
-+			aencoder->base.possible_crtcs &= ~reserved;
-+	}
-+
- 	if (!res)
- 		aencoder->encoder_id = link_index;
- 	else
-@@ -678,7 +700,7 @@ amdgpu_dm_convert_color_depth_from_display_info(const struct drm_connector *conn
- 		else if (connector->display_info.hdmi.y420_dc_modes & DRM_EDID_YCBCR420_DC_30)
- 			bpc = 10;
- 	} else {
--		bpc = (uint8_t)connector->display_info.bpc;
-+		bpc = (uint8_t)amdgpu_dm_imac5k_proxy_connector(connector)->display_info.bpc;
- 		/* Assume 8 bpc by default if no bpc is specified. */
- 		bpc = bpc ? bpc : 8;
- 	}
-@@ -1412,6 +1434,8 @@ void amdgpu_dm_update_stream_scaling_settings(struct drm_device *dev,
- 	/* Full screen scaling by default */
- 	src.width = mode->hdisplay;
- 	src.height = mode->vdisplay;
-+	if (amdgpu_dm_imac5k_stream_is_tile(stream))
-+		src.width /= 2;
- 	dst.width = stream->timing.h_addressable;
- 	dst.height = stream->timing.v_addressable;
- 
-@@ -1468,7 +1492,10 @@ create_stream_for_sink(struct drm_connector *connector,
- 	struct dc_stream_state *stream = NULL;
- 	struct drm_display_mode mode;
- 	struct drm_display_mode saved_mode;
-+	struct drm_display_mode scale_mode;
- 	struct drm_display_mode *freesync_mode = NULL;
-+	struct drm_connector *mode_connector;
-+	bool imac5k_tile = false;
- 	bool native_mode_found = false;
- 	bool recalculate_timing = false;
- 	bool scale = dm_state->scaling != RMX_OFF;
-@@ -1520,7 +1547,10 @@ create_stream_for_sink(struct drm_connector *connector,
- 	stream->timing.flags.LTE_340MCSC_SCRAMBLE =
- 		connector->display_info.hdmi.scdc.scrambling.low_rates;
- 
--	list_for_each_entry(preferred_mode, &connector->modes, head) {
-+	mode_connector = amdgpu_dm_imac5k_is_right_connector(connector) ?
-+			 &drm_to_adev(dev)->dm.imac5k_conn[0]->base : connector;
-+
-+	list_for_each_entry(preferred_mode, &mode_connector->modes, head) {
- 		/* Search for preferred mode */
- 		if (preferred_mode->type & DRM_MODE_TYPE_PREFERRED) {
- 			native_mode_found = true;
-@@ -1529,7 +1559,7 @@ create_stream_for_sink(struct drm_connector *connector,
- 	}
- 	if (!native_mode_found)
- 		preferred_mode = list_first_entry_or_null(
--				&connector->modes,
-+				&mode_connector->modes,
- 				struct drm_display_mode,
- 				head);
- 
-@@ -1563,6 +1593,11 @@ create_stream_for_sink(struct drm_connector *connector,
- 	if (recalculate_timing)
- 		drm_mode_set_crtcinfo(&saved_mode, 0);
- 
-+	imac5k_tile = amdgpu_dm_imac5k_stream_is_tile(stream);
-+	drm_mode_copy(&scale_mode, &mode);
-+	if (imac5k_tile)
-+		amdgpu_dm_imac5k_mode_to_tile(&mode);
-+
- 	/*
- 	 * If scaling is enabled and refresh rate didn't change
- 	 * we copy the vic and polarities of the old timings
-@@ -1595,7 +1630,7 @@ create_stream_for_sink(struct drm_connector *connector,
- 		apply_dsc_policy_for_stream(aconnector, sink, stream, &dsc_caps);
- #endif
- 
--	amdgpu_dm_update_stream_scaling_settings(dev, &mode, dm_state, stream);
-+	amdgpu_dm_update_stream_scaling_settings(dev, &scale_mode, dm_state, stream);
- 
- 	amdgpu_dm_fill_audio_info(
- 		&stream->audio_info,
-@@ -1768,6 +1803,9 @@ amdgpu_dm_connector_detect(struct drm_connector *connector, bool force)
- {
- 	struct amdgpu_dm_connector *aconnector = to_amdgpu_dm_connector(connector);
- 
-+	if (amdgpu_dm_imac5k_is_right_connector(connector))
-+		return connector_status_disconnected;
-+
- 	update_subconnector_property(aconnector);
- 
- 	if (aconnector->base.force == DRM_FORCE_ON ||
-@@ -2305,10 +2343,13 @@ amdgpu_dm_create_validate_stream_for_sink(struct drm_connector *connector,
- 	u32 bpc_mask = 0;
- 	bool is_hdmi_ep = false;
- 	unsigned int i, j;
-+	u8 bpc_cap;
- 
- 	if (!dm_state)
- 		return NULL;
- 
-+	bpc_cap = amdgpu_dm_imac5k_proxy_connector(connector)->display_info.bpc;
-+
- 	if (connector->connector_type != DRM_MODE_CONNECTOR_WRITEBACK)
- 		aconnector = to_amdgpu_dm_connector(connector);
- 
-@@ -2414,7 +2455,7 @@ amdgpu_dm_create_validate_stream_for_sink(struct drm_connector *connector,
- 		if (bpc == 6 && is_hdmi_ep)
- 			continue;
- 
--		if (info->bpc && bpc > info->bpc)
-+		if (bpc_cap && bpc > bpc_cap)
- 			continue;
- 
- 		bpc_mask |= BIT(bpc);
-@@ -2982,6 +3023,7 @@ STATIC_IFN_KUNIT void amdgpu_dm_connector_ddc_get_modes(struct drm_connector *co
- 				drm_edid_connector_add_modes(connector);
- 
- 		amdgpu_dm_prune_primary_tile_modes(connector);
-+		amdgpu_dm_imac5k_merge_modes(connector);
- 
- 		/* sorting the probed modes before calling function
- 		 * amdgpu_dm_get_native_mode() since EDID can have
-@@ -3130,9 +3172,18 @@ STATIC_IFN_KUNIT int amdgpu_dm_connector_get_modes(struct drm_connector *connect
- 	const struct drm_edid *drm_edid = amdgpu_dm_connector->drm_edid;
- 	struct dc_link_settings *verified_link_cap = &dc_link->verified_link_cap;
- 	const struct dc *dc = dc_link->dc;
-+	struct dc_sink *sink = amdgpu_dm_connector->dc_sink;
- 
- 	encoder = amdgpu_dm_connector_to_encoder(connector);
- 
-+	if (sink && dc_sink_is_kept_imac5k_tile(sink) && !connector->edid_blob_ptr) {
-+		const struct drm_edid *kept = drm_edid_alloc(sink->dc_edid.raw_edid,
-+							     sink->dc_edid.length);
-+
-+		drm_edid_connector_update(connector, kept);
-+		drm_edid_free(kept);
-+	}
-+
- 	if (!drm_edid) {
- 		amdgpu_dm_connector->num_modes =
- 				drm_add_modes_noedid(connector, 640, 480);
-@@ -3227,6 +3278,12 @@ void amdgpu_dm_connector_init_helper(struct amdgpu_display_manager *dm,
- {
- 	struct amdgpu_device *adev = drm_to_adev(dm->ddev);
- 
-+	if (dm->imac5K_support && link_index <= 1)
-+		dm->imac5k_conn[link_index] = aconnector;
-+
-+	if (dm->imac5k_merge && link_index == 1)
-+		aconnector->base.status = connector_status_disconnected;
-+
- 	/*
- 	 * Some of the properties below require access to state, like bpc.
- 	 * Allocate some default initial connector state with our reset helper.
-@@ -3312,7 +3369,7 @@ void amdgpu_dm_connector_init_helper(struct amdgpu_display_manager *dm,
- 				adev->mode_info.underscan_vborder_property,
- 				0);
- 
--	if (!aconnector->mst_root)
-+	if (!aconnector->mst_root && !(dm->imac5K_support && link_index <= 1))
- 		drm_connector_attach_max_bpc_property(&aconnector->base, 8, 16);
- 
- 	aconnector->base.state->max_bpc = 16;
-diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_plane.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_plane.c
-index 91398230d..63e442b6b 100644
---- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_plane.c
-+++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_plane.c
-@@ -1471,7 +1471,8 @@ int amdgpu_dm_plane_fill_dc_scaling_info(struct amdgpu_device *adev,
- 	if (scaling_info->src_rect.height == 0)
- 		return -EINVAL;
- 
--	scaling_info->dst_rect.x = state->crtc_x;
-+	scaling_info->dst_rect.x = state->crtc_x -
-+				   amdgpu_dm_imac5k_tile_origin(state->crtc, state->state);
- 	scaling_info->dst_rect.y = state->crtc_y;
- 
- 	if (state->crtc_w == 0)
-@@ -1610,7 +1611,8 @@ int amdgpu_dm_plane_get_cursor_position(struct drm_plane *plane, struct drm_crtc
- 		return -EINVAL;
- 	}
- 
--	x = plane->state->crtc_x;
-+	x = plane->state->crtc_x -
-+	    amdgpu_dm_imac5k_tile_origin(crtc, plane->state->state);
- 	y = plane->state->crtc_y;
- 
- 	if (x <= -amdgpu_crtc->max_cursor_width ||
-@@ -1678,6 +1680,7 @@ void amdgpu_dm_plane_handle_cursor_update(struct drm_plane *plane,
- 				DM_ISM_EVENT_END_CURSOR_UPDATE);
- 			mutex_unlock(&adev->dm.dc_lock);
- 		}
-+		amdgpu_dm_imac5k_update_companion_cursor(plane, old_plane_state);
- 		return;
- 	}
- 
-@@ -1722,6 +1725,8 @@ void amdgpu_dm_plane_handle_cursor_update(struct drm_plane *plane,
- 			DM_ISM_EVENT_END_CURSOR_UPDATE);
- 		mutex_unlock(&adev->dm.dc_lock);
- 	}
-+
-+	amdgpu_dm_imac5k_update_companion_cursor(plane, old_plane_state);
- }
- EXPORT_IF_KUNIT(amdgpu_dm_plane_handle_cursor_update);
  
 diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_quirks.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_quirks.c
 index 259966703..8657dd972 100644
@@ -1072,20 +280,18 @@ index 259966703..8657dd972 100644
  EXPORT_IF_KUNIT(retrieve_dmi_info);
  
 diff --git a/drivers/gpu/drm/amd/display/dc/core/dc_resource.c b/drivers/gpu/drm/amd/display/dc/core/dc_resource.c
-index 187486d97..e07b3648e 100644
+index fc9080f0c..4bf16f3a7 100644
 --- a/drivers/gpu/drm/amd/display/dc/core/dc_resource.c
 +++ b/drivers/gpu/drm/amd/display/dc/core/dc_resource.c
-@@ -689,6 +689,16 @@ bool resource_are_streams_timing_synchronizable(
+@@ -685,6 +685,14 @@ bool resource_are_streams_timing_synchronizable(
  	struct dc_stream_state *stream1,
  	struct dc_stream_state *stream2)
  {
 +
 +	if (stream1->ctx->dc->config.imac5K_support &&
-+		((stream1->signal == SIGNAL_TYPE_EDP &&
-+		  stream2->signal == SIGNAL_TYPE_DISPLAY_PORT &&
++		((stream1->signal == SIGNAL_TYPE_EDP && stream2->signal == SIGNAL_TYPE_DISPLAY_PORT &&
 +		stream2->link->link_index == 1) ||
-+		(stream2->signal == SIGNAL_TYPE_EDP &&
-+		 stream1->signal == SIGNAL_TYPE_DISPLAY_PORT &&
++		(stream2->signal == SIGNAL_TYPE_EDP && stream1->signal == SIGNAL_TYPE_DISPLAY_PORT &&
 +		stream1->link->link_index == 1)))
 +		return true;
 +
@@ -1093,10 +299,10 @@ index 187486d97..e07b3648e 100644
  		return false;
  
 diff --git a/drivers/gpu/drm/amd/display/dc/dc.h b/drivers/gpu/drm/amd/display/dc/dc.h
-index d3c484f45..76207ab0d 100644
+index 871063f80..022707594 100644
 --- a/drivers/gpu/drm/amd/display/dc/dc.h
 +++ b/drivers/gpu/drm/amd/display/dc/dc.h
-@@ -635,6 +635,8 @@ struct dc_config {
+@@ -631,6 +631,8 @@ struct dc_config {
  	struct spl_sharpness_range dcn_sharpness_range;
  	struct spl_sharpness_range dcn_override_sharpness_range;
  	bool no_native422_support;
@@ -1105,89 +311,11 @@ index d3c484f45..76207ab0d 100644
  };
  
  enum visual_confirm {
-@@ -3180,6 +3182,14 @@ struct dc_sink_init_data {
- 
- struct dc_sink *dc_sink_create(const struct dc_sink_init_data *init_params);
- 
-+static inline bool dc_sink_is_kept_imac5k_tile(const struct dc_sink *sink)
-+{
-+	return sink->link->dc->config.imac5K_support &&
-+	       sink->link->link_index == 1 &&
-+	       sink->sink_signal == SIGNAL_TYPE_DISPLAY_PORT &&
-+	       sink->dc_edid.length > DC_EDID_BLOCK_SIZE;
-+}
-+
- /* Newer interfaces  */
- struct dc_cursor {
- 	struct dc_plane_address address;
-diff --git a/drivers/gpu/drm/amd/display/dc/hwss/dce110/dce110_hwseq.c b/drivers/gpu/drm/amd/display/dc/hwss/dce110/dce110_hwseq.c
-index 7b3aa02dd..aba1dc9b4 100644
---- a/drivers/gpu/drm/amd/display/dc/hwss/dce110/dce110_hwseq.c
-+++ b/drivers/gpu/drm/amd/display/dc/hwss/dce110/dce110_hwseq.c
-@@ -2656,7 +2656,8 @@ enum dc_status dce110_apply_ctx_to_hw(
- 	struct dce_hwseq *hws = dc->hwseq;
- 	struct dc_bios *dcb = dc->ctx->dc_bios;
- 	enum dc_status status;
--	unsigned int i;
-+	unsigned int i, n, enable_order[MAX_PIPES];
-+	int primary = -1, companion = -1;
- 	bool was_hpo_acquired = resource_is_hpo_acquired(dc->current_state);
- 	bool is_hpo_acquired = resource_is_hpo_acquired(context);
- 
-@@ -2664,6 +2665,32 @@ enum dc_status dce110_apply_ctx_to_hw(
- 	if (dc->config.use_pipe_ctx_sync_logic)
- 		reset_syncd_pipes_from_disabled_pipes(dc, context);
- 
-+	for (i = 0; i < dc->res_pool->pipe_count; i++) {
-+		struct pipe_ctx *pipe = &context->res_ctx.pipe_ctx[i];
-+
-+		enable_order[i] = i;
-+		if (!dc->config.imac5K_support || !pipe->stream ||
-+		    pipe->top_pipe || pipe->prev_odm_pipe)
-+			continue;
-+		if (pipe->stream->link->link_index == 0)
-+			primary = i;
-+		else if (pipe->stream->link->link_index == 1)
-+			companion = i;
-+	}
-+	if (companion >= 0 && primary > companion) {
-+		enable_order[companion] = primary;
-+		enable_order[primary] = companion;
-+	}
-+
-+	if (primary >= 0 && companion >= 0) {
-+		struct pipe_ctx *old = &dc->current_state->res_ctx.pipe_ctx[primary];
-+		struct dc_link *right = context->res_ctx.pipe_ctx[companion].stream->link;
-+
-+		if (!old->stream ||
-+		    pipe_need_reprogram(old, &context->res_ctx.pipe_ctx[primary]))
-+			right->link_state_valid = false;
-+	}
-+
- 	/* Reset old context */
- 	/* look up the targets that have been removed since last commit */
- 	hws->funcs.reset_hw_ctx_wrap(dc, context);
-@@ -2705,10 +2732,12 @@ enum dc_status dce110_apply_ctx_to_hw(
- 		dc->hwseq->funcs.setup_hpo_hw_control(dc->hwseq, is_hpo_acquired);
- 	}
- 
--	for (i = 0; i < dc->res_pool->pipe_count; i++) {
-+	for (n = 0; n < dc->res_pool->pipe_count; n++) {
- 		struct pipe_ctx *pipe_ctx_old =
--					&dc->current_state->res_ctx.pipe_ctx[i];
--		struct pipe_ctx *pipe_ctx = &context->res_ctx.pipe_ctx[i];
-+			&dc->current_state->res_ctx.pipe_ctx[enable_order[n]];
-+		struct pipe_ctx *pipe_ctx = &context->res_ctx.pipe_ctx[enable_order[n]];
-+
-+		i = enable_order[n];
- 
- 		if (pipe_ctx->stream == NULL)
- 			continue;
 diff --git a/drivers/gpu/drm/amd/display/dc/hwss/dcn10/dcn10_hwseq.c b/drivers/gpu/drm/amd/display/dc/hwss/dcn10/dcn10_hwseq.c
-index 771555ec1..f7cffd6bf 100644
+index 097e4ac2d..0c9784dbb 100644
 --- a/drivers/gpu/drm/amd/display/dc/hwss/dcn10/dcn10_hwseq.c
 +++ b/drivers/gpu/drm/amd/display/dc/hwss/dcn10/dcn10_hwseq.c
-@@ -2693,15 +2693,21 @@ void dcn10_enable_per_frame_crtc_position_reset(
+@@ -2675,15 +2675,21 @@ void dcn10_enable_per_frame_crtc_position_reset(
  	struct pipe_ctx *grouped_pipes[])
  {
  	int i;
@@ -1211,111 +339,21 @@ index 771555ec1..f7cffd6bf 100644
  
  	DC_SYNC_INFO("Waiting for trigger\n");
 diff --git a/drivers/gpu/drm/amd/display/dc/link/link_detection.c b/drivers/gpu/drm/amd/display/dc/link/link_detection.c
-index b4546f93a..bf48c7f74 100644
+index 22ad6a743..f254f2d9e 100644
 --- a/drivers/gpu/drm/amd/display/dc/link/link_detection.c
 +++ b/drivers/gpu/drm/amd/display/dc/link/link_detection.c
-@@ -1205,7 +1205,11 @@ static bool detect_link_and_local_sink(struct dc_link *link,
+@@ -1203,7 +1203,10 @@ static bool detect_link_and_local_sink(struct dc_link *link,
  				if (!link->dpcd_caps.set_power_state_capable_edp)
  					link->wa_flags.dp_keep_receiver_powered = true;
  			}
+-
 +			if (dc->config.imac5K_support) {
 +				const uint8_t val = 1;
- 
 +				core_link_write_dpcd(link, 0x4F1, &val, 1);
 +			}
  			sink_caps.transaction_type = DDC_TRANSACTION_TYPE_I2C_OVER_AUX;
  			sink_caps.signal = SIGNAL_TYPE_EDP;
  			break;
-@@ -1634,6 +1638,25 @@ bool link_detect(struct dc_link *link, enum dc_detect_reason reason)
- 	bool is_delegated_to_mst_top_mgr = false;
- 	enum dc_connection_type pre_link_type = link->type;
- 
-+	if (link->local_sink && dc_sink_is_kept_imac5k_tile(link->local_sink))
-+		return false;
-+
-+	if (reason == DETECT_REASON_BOOT && link->dc->config.imac5K_support &&
-+	    link->link_index == 1) {
-+		unsigned long long start = dm_get_timestamp(link->ctx);
-+		uint8_t rev;
-+
-+		while (!link_get_hpd_state(link) ||
-+		       core_link_read_dpcd(link, DP_DPCD_REV, &rev, 1) != DC_OK) {
-+			if (dm_get_elapse_time_in_ns(link->ctx, dm_get_timestamp(link->ctx),
-+						     start) > 150 * NSEC_PER_MSEC) {
-+				DC_LOG_WARNING("iMac 5K: right tile not ready at boot\n");
-+				return false;
-+			}
-+			fsleep(1000);
-+		}
-+	}
-+
- 	is_local_sink_detect_success = detect_link_and_local_sink(link, reason);
- 
- 	if (is_local_sink_detect_success && link->local_sink) {
-diff --git a/drivers/gpu/drm/amd/display/dc/link/link_dpms.c b/drivers/gpu/drm/amd/display/dc/link/link_dpms.c
-index 2aeb9a0e6..dc6c9d03c 100644
---- a/drivers/gpu/drm/amd/display/dc/link/link_dpms.c
-+++ b/drivers/gpu/drm/amd/display/dc/link/link_dpms.c
-@@ -2084,6 +2084,22 @@ static enum dc_status enable_link_dp(struct dc_state *state,
- 			!link->dc->config.enable_dpia_pre_training)
- 		do_fallback = true;
- 
-+	if (link->dc->config.imac5K_support && link->link_index == 1) {
-+		DC_LOGGER_INIT(link->ctx->logger);
-+		unsigned long long start = dm_get_timestamp(link->ctx);
-+		uint8_t rev;
-+
-+		while (!link_get_hpd_state(link) ||
-+		       core_link_read_dpcd(link, DP_DPCD_REV, &rev, 1) != DC_OK) {
-+			if (dm_get_elapse_time_in_ns(link->ctx, dm_get_timestamp(link->ctx),
-+						     start) > 150 * NSEC_PER_MSEC) {
-+				DC_LOG_WARNING("iMac 5K: right tile not ready for training\n");
-+				break;
-+			}
-+			fsleep(1000);
-+		}
-+	}
-+
- 	/*
- 	 * Temporary w/a to get DP2.0 link rates to work with SST.
- 	 * TODO DP2.0 - Workaround: Remove w/a if and when the issue is resolved.
-diff --git a/drivers/gpu/drm/amd/display/dc/link/protocols/link_dp_phy.c b/drivers/gpu/drm/amd/display/dc/link/protocols/link_dp_phy.c
-index 49521ac4b..e90164a58 100644
---- a/drivers/gpu/drm/amd/display/dc/link/protocols/link_dp_phy.c
-+++ b/drivers/gpu/drm/amd/display/dc/link/protocols/link_dp_phy.c
-@@ -53,6 +53,11 @@ void dpcd_write_rx_power_ctrl(struct dc_link *link, bool on)
- 	core_link_write_dpcd(link, DP_SET_POWER, &state,
- 						 sizeof(state));
- 
-+	if (on && link->dc->config.imac5K_support &&
-+	    link->connector_signal == SIGNAL_TYPE_EDP) {
-+		state = 1;
-+		core_link_write_dpcd(link, 0x4F1, &state, sizeof(state));
-+	}
- }
- 
- void dp_enable_link_phy(
-diff --git a/drivers/gpu/drm/amd/display/dc/link/protocols/link_dp_training.c b/drivers/gpu/drm/amd/display/dc/link/protocols/link_dp_training.c
-index 3be36d106..4eca11169 100644
---- a/drivers/gpu/drm/amd/display/dc/link/protocols/link_dp_training.c
-+++ b/drivers/gpu/drm/amd/display/dc/link/protocols/link_dp_training.c
-@@ -1540,8 +1540,15 @@ static enum link_training_result dp_transition_to_video_idle(
- 		 */
- 		if (link->connector_signal != SIGNAL_TYPE_EDP && status == LINK_TRAINING_SUCCESS) {
- 			msleep(5);
--			if (!link->skip_fallback_on_link_loss)
-+			if (link->dc->config.imac5K_support && link->link_index == 1) {
-+				uint8_t lanes;
-+
-+				if (core_link_read_dpcd(link, DP_LANE0_1_STATUS,
-+							&lanes, 1) != DC_OK)
-+					status = LINK_TRAINING_LINK_LOSS;
-+			} else if (!link->skip_fallback_on_link_loss) {
- 				status = dp_check_link_loss_status(link, lt_settings);
-+			}
- 		}
- 		return status;
- 	}
 -- 
 2.55.0
 
