@@ -1,0 +1,38 @@
+From: Andre Eikmeyer <dev@deq.rocks>
+Subject: [PATCH] wifi: brcmfmac: use a 200 ms power save timeout by default
+
+cfg80211 calls set_power_mgmt with timeout -1 when userspace does not ask
+for a particular dynamic power save timeout, which is what NetworkManager
+does. brcmfmac clamps that to BRCMF_PS_MAX_TIMEOUT_MS, so the firmware
+stays awake for 2 s after every frame in PM_FAST mode and rarely sleeps
+with the background traffic of a typical network.
+
+Use 200 ms for -1, the value Apple configures for the BCM4364 of the
+MacBookPro15,1. Measured on that machine, idle with WLAN associated:
+
+  pm2_sleep_ret 2000 ms: 11.27 W system power
+  pm2_sleep_ret  200 ms:  9.2 W
+  WLAN off:               8.82 W
+
+Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
+---
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
+@@ -87,6 +87,7 @@
+ #define BRCMF_ND_INFO_TIMEOUT		msecs_to_jiffies(2000)
+ 
+ #define BRCMF_PS_MAX_TIMEOUT_MS		2000
++#define BRCMF_PS_DEFAULT_TIMEOUT_MS	200
+ 
+ /* Dump obss definitions */
+ #define ACS_MSRMNT_DELAY		80
+@@ -3332,6 +3333,9 @@ brcmf_cfg80211_set_power_mgmt(struct wiphy *wiphy, struct net_device *ndev,
+ 			bphy_err(drvr, "error (%d)\n", err);
+ 	}
+ 
++	/* cfg80211 passes -1 when userspace asks for no particular timeout */
++	if (timeout < 0)
++		timeout = BRCMF_PS_DEFAULT_TIMEOUT_MS;
+ 	err = brcmf_fil_iovar_int_set(ifp, "pm2_sleep_ret",
+ 				min_t(u32, timeout, BRCMF_PS_MAX_TIMEOUT_MS));
+ 	if (err)

@@ -1,0 +1,44 @@
+From: Andre Eikmeyer <dev@deq.rocks>
+Subject: [PATCH] wifi: brcmfmac: disable TX beamforming on BCM4364
+
+With "txbf" enabled, the BCM4364 firmware (9.30.514.0.32.5.94, as shipped
+by Apple for the MacBookPro15,1) transmits a single beamformed spatial
+stream (nrate VHT MCS9 NSS1 TXBF) towards a two stream AP. With "txbf"
+cleared it picks two streams (VHT MCS9 NSS2) on its own. The firmware
+enables "txbf" by default, so skipping the write is not enough.
+
+Measured with iperf3 against a wired server on the same AP:
+
+  0.5 m from the AP, -36 dBm:  351 -> 623 Mbit/s uplink
+  -70 dBm:                      96-130 -> 149-175 Mbit/s uplink
+  -70 dBm, mesh satellite:      no change
+
+Downlink and latency are unchanged.
+
+Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
+---
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/common.c
+@@ -10,6 +10,7 @@
+ #include <linux/firmware.h>
+ #include <brcmu_wifi.h>
+ #include <brcmu_utils.h>
++#include <brcm_hw_ids.h>
+ #include "core.h"
+ #include "bus.h"
+ #include "debug.h"
+@@ -450,8 +451,12 @@ int brcmf_c_preinit_dcmds(struct brcmf_if *ifp)
+ 		goto done;
+ 	}
+ 
+-	/* Enable tx beamforming, errors can be ignored (not supported) */
+-	(void)brcmf_fil_iovar_int_set(ifp, "txbf", 1);
++	/* Enable tx beamforming, errors can be ignored (not supported).
++	 * BCM4364 firmware enables it by default and then transmits a single
++	 * beamformed stream instead of two, halving its uplink throughput.
++	 */
++	(void)brcmf_fil_iovar_int_set(ifp, "txbf",
++				      drvr->bus_if->chip != BRCM_CC_4364_CHIP_ID);
+ done:
+ 	return err;
+ }
