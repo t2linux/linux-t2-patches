@@ -1,0 +1,118 @@
+From: Andre Eikmeyer <dev@deq.rocks>
+Subject: [PATCH] Bluetooth: btbcm: clear vendor bits in LE advertising report types
+
+The BCM4364B0 of the MacBookPro15,1 (UART) and the BCM4377 of the
+MacBookAir9,1 (PCIe) set bits 4, 5 and 7 of the event type in LE
+Advertising Report events. btmon on the 15,1 shows types 0x10, 0x13,
+0x14, 0x20, 0x23, 0x24, 0x93 and 0xa0 next to plain 0x00, 0x03 and 0x04,
+the same advertiser shows up as 0x13, 0x23 and 0x03. The kernel log of
+the 9,1 lists 0x10 to 0x24 and 0x80, 0x83, 0x90, 0x93, 0xa0, 0xa3.
+process_adv_report() drops every type above 0x04 with "Unknown
+advertising packet type", so most advertisements never reach the host.
+An AirDrop sender was reported as 0x23, 0x23 and 0x13 and only the
+fourth report, 0x03, reached BlueZ 32 s after the first one.
+
+Add btbcm_fixup_le_adv_report(), which clears the bits above the type,
+and call it from hci_bcm on Apple machines and from hci_bcm4377 before
+the event goes to the core.
+
+Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
+---
+--- a/drivers/bluetooth/btbcm.c
++++ b/drivers/bluetooth/btbcm.c
+@@ -280,6 +280,36 @@
+ }
+ EXPORT_SYMBOL_GPL(btbcm_set_acl_priority_on_connect);
+ 
++/* The BCM4364 and BCM4377 of the T2 Macs set bits above the event type of LE
++ * Advertising Reports, 0x13 and 0x23 for ADV_NONCONN_IND for example. The
++ * core drops reports of unknown types, so clear them.
++ */
++void btbcm_fixup_le_adv_report(struct sk_buff *skb)
++{
++	struct hci_event_hdr *hdr = (void *)skb->data;
++	struct hci_ev_le_advertising_info *info;
++	u8 *p, *end;
++	u8 num;
++
++	if (hci_skb_pkt_type(skb) != HCI_EVENT_PKT ||
++	    skb->len < HCI_EVENT_HDR_SIZE + 2 || hdr->evt != HCI_EV_LE_META)
++		return;
++
++	p = skb->data + HCI_EVENT_HDR_SIZE;
++	if (p[0] != HCI_EV_LE_ADVERTISING_REPORT)
++		return;
++
++	num = p[1];
++	p += 2;
++	end = skb->data + skb->len;
++	while (num-- && p + sizeof(*info) + 1 <= end) {
++		info = (void *)p;
++		info->type &= 0x0f;
++		p += sizeof(*info) + info->length + 1;
++	}
++}
++EXPORT_SYMBOL_GPL(btbcm_fixup_le_adv_report);
++
+ int btbcm_patchram(struct hci_dev *hdev, const struct firmware *fw)
+ {
+ 	const struct hci_command_hdr *cmd;
+--- a/drivers/bluetooth/btbcm.h
++++ b/drivers/bluetooth/btbcm.h
+@@ -60,6 +60,7 @@
+ 			       const struct bcm_set_pcm_int_params *params);
+ 
+ void btbcm_set_acl_priority_on_connect(struct hci_dev *hdev, struct sk_buff *skb);
++void btbcm_fixup_le_adv_report(struct sk_buff *skb);
+ 
+ int btbcm_setup_patchram(struct hci_dev *hdev);
+ int btbcm_setup_apple(struct hci_dev *hdev);
+@@ -101,6 +102,10 @@
+ {
+ }
+ 
++static inline void btbcm_fixup_le_adv_report(struct sk_buff *skb)
++{
++}
++
+ static inline int btbcm_setup_patchram(struct hci_dev *hdev)
+ {
+ 	return 0;
+--- a/drivers/bluetooth/hci_bcm.c
++++ b/drivers/bluetooth/hci_bcm.c
+@@ -148,6 +148,7 @@
+ 	bool			no_uart_clock_set;
+ 	bool			use_autobaud_mode;
+ 	bool			acl_priority;
++	bool			adv_type_fixup;
+ 	u8			pcm_int_params[5];
+ 	u32			max_autobaud_speed;
+ };
+@@ -686,6 +687,9 @@
+ 	struct hci_uart *hu = hci_get_drvdata(hdev);
+ 	struct bcm_data *bcm = hu->priv;
+ 
++	if (bcm->dev && bcm->dev->adv_type_fixup)
++		btbcm_fixup_le_adv_report(skb);
++
+ 	if (bcm->dev && bcm->dev->acl_priority)
+ 		btbcm_set_acl_priority_on_connect(hdev, skb);
+ 
+@@ -1100,6 +1104,7 @@
+ 
+ 	if (x86_apple_machine && !bcm_apple_get_resources(dev)) {
+ 		dev->acl_priority = true;
++		dev->adv_type_fixup = true;
+ 		return 0;
+ 	}
+ 
+--- a/drivers/bluetooth/hci_bcm4377.c
++++ b/drivers/bluetooth/hci_bcm4377.c
+@@ -691,6 +691,7 @@
+ 
+ 	memcpy(skb_put(skb, len), payload, len);
+ 	hci_skb_pkt_type(skb) = type;
++	btbcm_fixup_le_adv_report(skb);
+ 	btbcm_set_acl_priority_on_connect(bcm4377->hdev, skb);
+ 	hci_recv_frame(bcm4377->hdev, skb);
+ 

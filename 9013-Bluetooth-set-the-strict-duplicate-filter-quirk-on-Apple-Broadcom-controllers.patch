@@ -1,0 +1,45 @@
+From: Andre Eikmeyer <dev@deq.rocks>
+Subject: [PATCH] Bluetooth: set the strict duplicate filter quirk on Apple Broadcom controllers
+
+btbcm_finalize() sets HCI_QUIRK_STRICT_DUPLICATE_FILTER, but bcm_setup()
+returns before it when no patch file was loaded. The MacBookPro15,1 has
+none for its BCM4364B0 ("BCM: firmware Patch file not found").
+hci_bcm4377 does not use btbcm_finalize() and never sets the quirk. A
+service discovery then scans with "Filter duplicates: Enabled", and the
+controller reports an address once per discovery cycle of about 10.7 s.
+A Mac that changed its advertisement data on the same address was
+reported 6 s after the change, at the next cycle.
+
+Set the quirk in hci_bcm on that path and in hci_bcm4377.
+
+Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
+---
+--- a/drivers/bluetooth/hci_bcm.c
++++ b/drivers/bluetooth/hci_bcm.c
+@@ -597,8 +597,11 @@
+ 	if (err)
+ 		return err;
+ 
+-	if (!fw_load_done)
++	if (!fw_load_done) {
++		/* btbcm_finalize() sets this after loading a patch file */
++		hci_set_quirk(hu->hdev, HCI_QUIRK_STRICT_DUPLICATE_FILTER);
+ 		return 0;
++	}
+ 
+ 	/* Init speed if any */
+ 	if (bcm->dev && bcm->dev->init_speed)
+--- a/drivers/bluetooth/hci_bcm4377.c
++++ b/drivers/bluetooth/hci_bcm4377.c
+@@ -2392,6 +2392,11 @@
+ 	hdev->set_bdaddr = bcm4377_hci_set_bdaddr;
+ 	hdev->setup = bcm4377_hci_setup;
+ 
++	/* The controller reports an address once per scan with duplicate
++	 * filtering, also after its advertisement data changed.
++	 */
++	hci_set_quirk(hdev, HCI_QUIRK_STRICT_DUPLICATE_FILTER);
++
+ 	if (bcm4377->hw->broken_mws_transport_config)
+ 		hci_set_quirk(hdev, HCI_QUIRK_BROKEN_MWS_TRANSPORT_CONFIG);
+ 	if (bcm4377->hw->broken_ext_scan)
