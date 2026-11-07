@@ -1,19 +1,19 @@
-From 26bb05458eb3eecd2803802322e0ad4485a6d43b Mon Sep 17 00:00:00 2001
+From d4fa9525af993bd278df71ae2090bed1030a0dbc Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Sat, 31 Oct 2026 21:48:41 +0000
+Date: Sat, 7 Nov 2026 22:13:42 +0000
 Subject: [PATCH] Add APFS driver
 
 ---
  fs/apfs/Makefile                  |   28 +
- fs/apfs/apfs.h                    | 1375 +++++++++++++
+ fs/apfs/apfs.h                    | 1374 +++++++++++++
  fs/apfs/apfs_raw.h                | 1570 ++++++++++++++
  fs/apfs/btree.c                   | 1174 +++++++++++
  fs/apfs/compress.c                |  478 +++++
  fs/apfs/dir.c                     | 1513 ++++++++++++++
  fs/apfs/extents.c                 | 2372 ++++++++++++++++++++++
  fs/apfs/file.c                    |  400 ++++
- fs/apfs/inode.c                   | 2642 ++++++++++++++++++++++++
+ fs/apfs/inode.c                   | 2715 +++++++++++++++++++++++++
  fs/apfs/key.c                     |  337 +++
  fs/apfs/libzbitmap.c              |  442 ++++
  fs/apfs/libzbitmap.h              |   31 +
@@ -39,7 +39,7 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/version.h                 |    1 +
  fs/apfs/xattr.c                   |  923 +++++++++
  fs/apfs/xfield.c                  |  171 ++
- 34 files changed, 27395 insertions(+)
+ 34 files changed, 27467 insertions(+)
  create mode 100644 fs/apfs/Makefile
  create mode 100644 fs/apfs/apfs.h
  create mode 100644 fs/apfs/apfs_raw.h
@@ -111,10 +111,10 @@ index 000000000..2bafc31f1
 +	make -C $(KERNEL_DIR) M=$(PWD) clean
 diff --git a/fs/apfs/apfs.h b/fs/apfs/apfs.h
 new file mode 100644
-index 000000000..d36aabc6f
+index 000000000..9214072e2
 --- /dev/null
 +++ b/fs/apfs/apfs.h
-@@ -0,0 +1,1375 @@
+@@ -0,0 +1,1374 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -909,6 +909,7 @@ index 000000000..d36aabc6f
 +	u64			ds_id;		/* ID of the extent records */
 +	u64			ds_size;	/* Length of the stream */
 +	u64			ds_sparse_bytes;/* Hole byte count in stream */
++	u64			ds_alloced_size;/* Total size of the extents */
 +	struct apfs_file_extent	ds_cached_ext;	/* Latest extent record */
 +	bool			ds_ext_dirty;	/* Is ds_cached_ext dirty? */
 +	spinlock_t		ds_ext_lock;	/* Protects ds_cached_ext */
@@ -916,10 +917,8 @@ index 000000000..d36aabc6f
 +};
 +
 +/**
-+ * apfs_alloced_size - Return the alloced size for a data stream
++ * apfs_alloced_size - Return a dstream's alloced size with no overallocation
 + * @dstream: data stream info
-+ *
-+ * TODO: is this always correct? Or could the extents have an unused tail?
 + */
 +static inline u64 apfs_alloced_size(struct apfs_dstream_info *dstream)
 +{
@@ -9035,10 +9034,10 @@ index 000000000..46dfdcb69
 +};
 diff --git a/fs/apfs/inode.c b/fs/apfs/inode.c
 new file mode 100644
-index 000000000..d260c6a76
+index 000000000..36b625383
 --- /dev/null
 +++ b/fs/apfs/inode.c
-@@ -0,0 +1,2642 @@
+@@ -0,0 +1,2715 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -9904,7 +9903,8 @@ index 000000000..d260c6a76
 +			struct apfs_dstream *dstream_raw = (struct apfs_dstream *)xval;
 +
 +			dstream->ds_size = inode->i_size = le64_to_cpu(dstream_raw->size);
-+			inode->i_blocks = le64_to_cpu(dstream_raw->alloced_size) >> 9;
++			dstream->ds_alloced_size = le64_to_cpu(dstream_raw->alloced_size);
++			inode->i_blocks = dstream->ds_alloced_size >> 9;
 +			ai->i_has_dstream = true;
 +		}
 +	}
@@ -10058,6 +10058,67 @@ index 000000000..d260c6a76
 +}
 +
 +/**
++ * apfs_inode_trim_overallocation - Get rid of overallocated tail extent if any
++ * @inode:	inode to trim
++ *
++ * Truncates the allocated inode size to match the number of blocks needed, in
++ * case the official driver overallocated in the tail extent. Returns 0 on
++ * success and a negative error code in case of failure.
++ */
++static int apfs_inode_trim_overallocation(struct inode *inode)
++{
++	struct super_block *sb = NULL;
++	struct apfs_inode_info *ai = NULL;
++	struct apfs_dstream_info *dstream = NULL;
++	int err;
++
++	if (!S_ISREG(inode->i_mode))
++		return 0;
++
++	sb = inode->i_sb;
++	/* The overallocation issues we want to prevent only affect writes */
++	if (sb->s_flags & SB_RDONLY)
++		return 0;
++
++	/*
++	 * I don't know if compressed files get overallocated or not, but we
++	 * never write to them either way.
++	 */
++	ai = APFS_I(inode);
++	if (ai->i_bsd_flags & APFS_INOBSD_COMPRESSED)
++		return 0;
++
++	dstream = &ai->i_dstream;
++	if (dstream->ds_alloced_size == apfs_alloced_size(dstream)) {
++		/* No overallocation */
++		return 0;
++	}
++	if (dstream->ds_alloced_size < apfs_alloced_size(dstream)) {
++		apfs_err(sb, "bad alloced size (%llu < %llu) for inode 0x%llx", dstream->ds_alloced_size, apfs_alloced_size(dstream), apfs_ino(inode));
++		return -EFSCORRUPTED;
++	}
++
++	/* The dstream is overallocated, so trim it */
++	err = apfs_transaction_start(sb, APFS_TRANS_DEL);
++	if (err)
++		return err;
++	apfs_inode_join_transaction(sb, inode);
++	err = apfs_truncate(dstream, dstream->ds_size);
++	if (err) {
++		apfs_err(sb, "truncation failed for overallocated ino 0x%llx", apfs_ino(inode));
++		goto fail;
++	}
++	err = apfs_transaction_commit(sb);
++	if (err)
++		goto fail;
++	return 0;
++
++fail:
++	apfs_transaction_abort(sb);
++	return err;
++}
++
++/**
 + * apfs_iget - Populate inode structures with metadata from disk
 + * @sb:		filesystem superblock
 + * @cnid:	inode number
@@ -10105,6 +10166,17 @@ index 000000000..d260c6a76
 +		inode->i_uid = sbi->s_uid;
 +	if (gid_valid(sbi->s_gid))
 +		inode->i_gid = sbi->s_gid;
++
++	/*
++	 * The official driver sometimes overallocates in the tail extent. This
++	 * driver does CoW on every write so the overallocation is useless for
++	 * us and it would be tricky to handle correcty; get rid of it.
++	 */
++	err = apfs_inode_trim_overallocation(inode);
++	if (err) {
++		iget_failed(inode);
++		return ERR_PTR(err);
++	}
 +
 +	/* Inode flags are not important for now, leave them at 0 */
 +	unlock_new_inode(inode);
