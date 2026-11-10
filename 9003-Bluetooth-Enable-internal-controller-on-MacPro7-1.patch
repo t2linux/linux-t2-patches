@@ -1,4 +1,4 @@
-From: Rodrigo Queiroz <670685+queiroz@users.noreply.github.com>
+From: Rodrigo Queiroz <rodrigo@queiroz.org>
 Subject: [PATCH] Bluetooth: enable internal controller on MacPro7,1
 
 The internal Bluetooth controller on the 2019 Mac Pro (MacPro7,1)
@@ -14,7 +14,7 @@ Add the required ACPI presence handling, CDC ACM serdev bridge, and
 MacPro7,1-specific Broadcom handling required for the controller to
 enumerate correctly.
 
-Signed-off-by: Rodrigo Queiroz <670685+queiroz@users.noreply.github.com>
+Signed-off-by: Rodrigo Queiroz <rodrigo@queiroz.org>
 
 ---
 diff --git a/drivers/acpi/x86/utils.c b/drivers/acpi/x86/utils.c
