@@ -1,7 +1,7 @@
-From d4fa9525af993bd278df71ae2090bed1030a0dbc Mon Sep 17 00:00:00 2001
+From 7a9bd7f1a3af6381cc5170c9a8ba734045b5bdfe Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Sat, 7 Nov 2026 22:13:42 +0000
+Date: Tue, 10 Nov 2026 01:44:07 +0000
 Subject: [PATCH] Add APFS driver
 
 ---
@@ -13,7 +13,7 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/dir.c                     | 1513 ++++++++++++++
  fs/apfs/extents.c                 | 2372 ++++++++++++++++++++++
  fs/apfs/file.c                    |  400 ++++
- fs/apfs/inode.c                   | 2715 +++++++++++++++++++++++++
+ fs/apfs/inode.c                   | 2718 +++++++++++++++++++++++++
  fs/apfs/key.c                     |  337 +++
  fs/apfs/libzbitmap.c              |  442 ++++
  fs/apfs/libzbitmap.h              |   31 +
@@ -39,7 +39,7 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/version.h                 |    1 +
  fs/apfs/xattr.c                   |  923 +++++++++
  fs/apfs/xfield.c                  |  171 ++
- 34 files changed, 27467 insertions(+)
+ 34 files changed, 27470 insertions(+)
  create mode 100644 fs/apfs/Makefile
  create mode 100644 fs/apfs/apfs.h
  create mode 100644 fs/apfs/apfs_raw.h
@@ -111,7 +111,7 @@ index 000000000..2bafc31f1
 +	make -C $(KERNEL_DIR) M=$(PWD) clean
 diff --git a/fs/apfs/apfs.h b/fs/apfs/apfs.h
 new file mode 100644
-index 000000000..9214072e2
+index 000000000..f1cf5f9e3
 --- /dev/null
 +++ b/fs/apfs/apfs.h
 @@ -0,0 +1,1374 @@
@@ -909,7 +909,7 @@ index 000000000..9214072e2
 +	u64			ds_id;		/* ID of the extent records */
 +	u64			ds_size;	/* Length of the stream */
 +	u64			ds_sparse_bytes;/* Hole byte count in stream */
-+	u64			ds_alloced_size;/* Total size of the extents */
++	u64			ds_alloced_size;/* Total extent size on iget */
 +	struct apfs_file_extent	ds_cached_ext;	/* Latest extent record */
 +	bool			ds_ext_dirty;	/* Is ds_cached_ext dirty? */
 +	spinlock_t		ds_ext_lock;	/* Protects ds_cached_ext */
@@ -9034,10 +9034,10 @@ index 000000000..46dfdcb69
 +};
 diff --git a/fs/apfs/inode.c b/fs/apfs/inode.c
 new file mode 100644
-index 000000000..36b625383
+index 000000000..db06f3cd0
 --- /dev/null
 +++ b/fs/apfs/inode.c
-@@ -0,0 +1,2715 @@
+@@ -0,0 +1,2718 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -10074,6 +10074,8 @@ index 000000000..36b625383
 +
 +	if (!S_ISREG(inode->i_mode))
 +		return 0;
++	if (!ai->i_has_dstream)
++		return 0;
 +
 +	sb = inode->i_sb;
 +	/* The overallocation issues we want to prevent only affect writes */
@@ -10111,6 +10113,7 @@ index 000000000..36b625383
 +	err = apfs_transaction_commit(sb);
 +	if (err)
 +		goto fail;
++	inode->i_blocks = apfs_alloced_size(dstream) >> 9;
 +	return 0;
 +
 +fail:
