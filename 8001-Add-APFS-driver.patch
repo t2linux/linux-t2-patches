@@ -10074,8 +10074,6 @@ index 000000000..db06f3cd0
 +
 +	if (!S_ISREG(inode->i_mode))
 +		return 0;
-+	if (!ai->i_has_dstream)
-+		return 0;
 +
 +	sb = inode->i_sb;
 +	/* The overallocation issues we want to prevent only affect writes */
@@ -10090,6 +10088,8 @@ index 000000000..db06f3cd0
 +	if (ai->i_bsd_flags & APFS_INOBSD_COMPRESSED)
 +		return 0;
 +
++	if (!ai->i_has_dstream)
++		return 0;
 +	dstream = &ai->i_dstream;
 +	if (dstream->ds_alloced_size == apfs_alloced_size(dstream)) {
 +		/* No overallocation */
