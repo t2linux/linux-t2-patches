@@ -1,7 +1,7 @@
-From 7a9bd7f1a3af6381cc5170c9a8ba734045b5bdfe Mon Sep 17 00:00:00 2001
+From ef4abdf34c577a3b185c17067b2f38ecf3c27207 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Tue, 10 Nov 2026 01:44:07 +0000
+Date: Wed, 11 Nov 2026 04:01:26 +0000
 Subject: [PATCH] Add APFS driver
 
 ---
@@ -33,13 +33,13 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/spaceman.c                | 1480 ++++++++++++++
  fs/apfs/super.c                   | 2280 +++++++++++++++++++++
  fs/apfs/symlink.c                 |   80 +
- fs/apfs/transaction.c             | 1036 ++++++++++
+ fs/apfs/transaction.c             | 1045 ++++++++++
  fs/apfs/unicode.c                 | 3156 +++++++++++++++++++++++++++++
  fs/apfs/unicode.h                 |   27 +
  fs/apfs/version.h                 |    1 +
  fs/apfs/xattr.c                   |  923 +++++++++
  fs/apfs/xfield.c                  |  171 ++
- 34 files changed, 27470 insertions(+)
+ 34 files changed, 27479 insertions(+)
  create mode 100644 fs/apfs/Makefile
  create mode 100644 fs/apfs/apfs.h
  create mode 100644 fs/apfs/apfs_raw.h
@@ -9034,7 +9034,7 @@ index 000000000..46dfdcb69
 +};
 diff --git a/fs/apfs/inode.c b/fs/apfs/inode.c
 new file mode 100644
-index 000000000..db06f3cd0
+index 000000000..9099578b7
 --- /dev/null
 +++ b/fs/apfs/inode.c
 @@ -0,0 +1,2718 @@
@@ -10074,8 +10074,6 @@ index 000000000..db06f3cd0
 +
 +	if (!S_ISREG(inode->i_mode))
 +		return 0;
-+	if (!ai->i_has_dstream)
-+		return 0;
 +
 +	sb = inode->i_sb;
 +	/* The overallocation issues we want to prevent only affect writes */
@@ -10090,6 +10088,8 @@ index 000000000..db06f3cd0
 +	if (ai->i_bsd_flags & APFS_INOBSD_COMPRESSED)
 +		return 0;
 +
++	if (!ai->i_has_dstream)
++		return 0;
 +	dstream = &ai->i_dstream;
 +	if (dstream->ds_alloced_size == apfs_alloced_size(dstream)) {
 +		/* No overallocation */
@@ -22401,10 +22401,10 @@ index 000000000..be4f9df8f
 +};
 diff --git a/fs/apfs/transaction.c b/fs/apfs/transaction.c
 new file mode 100644
-index 000000000..ef66e6ea4
+index 000000000..878a48b5f
 --- /dev/null
 +++ b/fs/apfs/transaction.c
-@@ -0,0 +1,1036 @@
+@@ -0,0 +1,1045 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2019 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -22428,10 +22428,11 @@ index 000000000..ef66e6ea4
 +	struct apfs_obj_phys *obj = &nxi->nx_raw->nx_o;
 +	struct buffer_head *bh = NULL;
 +	struct apfs_blkdev_info *bd_info = nxi->nx_blkdev_info;
++	struct block_device *blkdev = bd_info->blki_bdev;
 +#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 10, 0)
-+	struct address_space *bdev_map = bd_info->blki_bdev->bd_mapping;
++	struct address_space *bdev_map = blkdev->bd_mapping;
 +#else
-+	struct inode *bdev_inode = bd_info->blki_bdev->bd_inode;
++	struct inode *bdev_inode = blkdev->bd_inode;
 +	struct address_space *bdev_map = bdev_inode->i_mapping;
 +#endif
 +	int err;
@@ -22450,6 +22451,9 @@ index 000000000..ef66e6ea4
 +	err = filemap_write_and_wait(bdev_map);
 +	if (err)
 +		goto out;
++	err = blkdev_issue_flush(blkdev);
++	if (err)
++		goto out;
 +
 +	mark_buffer_dirty(bh);
 +	err = sync_dirty_buffer(bh);
@@ -22457,6 +22461,11 @@ index 000000000..ef66e6ea4
 +		goto out;
 +
 +	err = filemap_write_and_wait(bdev_map);
++	if (err)
++		goto out;
++	err = blkdev_issue_flush(blkdev);
++	if (err)
++		goto out;
 +out:
 +	brelse(bh);
 +	bh = NULL;
