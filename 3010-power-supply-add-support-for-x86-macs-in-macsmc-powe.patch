@@ -4,9 +4,10 @@ Date: Sun, 4 Oct 2026 22:39:31 -0400
 Subject: [PATCH 10/14] power/supply: add support for x86 macs in macsmc-power
 
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
+Signed-off-by: Raymont Qin <git@qincai.xyz>
 ---
- drivers/power/supply/macsmc-power.c | 762 ++++++++++++++++++++++-------
- 1 file changed, 617 insertions(+), 145 deletions(-)
+ drivers/power/supply/macsmc-power.c | 768 +++++++++++++++++++++++-------
+ 1 file changed, 623 insertions(+), 145 deletions(-)
 
 diff --git a/drivers/power/supply/macsmc-power.c b/drivers/power/supply/macsmc-power.c
 index ced37a701..6f8460007 100644
@@ -638,7 +639,7 @@ index ced37a701..6f8460007 100644
  		has_ac_adapter = true;
  
  	if (!has_battery && !has_ac_adapter)
-@@ -694,118 +1089,162 @@ static int macsmc_power_probe(struct platform_device *pdev)
+@@ -694,118 +1089,168 @@ static int macsmc_power_probe(struct platform_device *pdev)
  
  		nprops = 0;
  
@@ -736,6 +737,12 @@ index ced37a701..6f8460007 100644
 +			props[nprops++] = POWER_SUPPLY_PROP_CHARGE_NOW;
 +			props[nprops++] = POWER_SUPPLY_PROP_ENERGY_FULL;
 +			props[nprops++] = POWER_SUPPLY_PROP_ENERGY_NOW;
++
++			/* Design capacity, used by UPower for battery health */
++			if (apple_smc_key_exists(smc, SMC_KEY(B0DC))) {
++				props[nprops++] = POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN;
++				props[nprops++] = POWER_SUPPLY_PROP_ENERGY_FULL_DESIGN;
++			}
 +
 +			/*
 +			 * Intel T2 firmware keeps the charge limit in BCLM.
@@ -904,7 +911,7 @@ index ced37a701..6f8460007 100644
  		psy_cfg.drv_data = power;
  		power->batt = devm_power_supply_register(dev, &power->batt_desc, &psy_cfg);
  		if (IS_ERR(power->batt)) {
-@@ -829,16 +1268,27 @@ static int macsmc_power_probe(struct platform_device *pdev)
+@@ -829,16 +1274,27 @@ static int macsmc_power_probe(struct platform_device *pdev)
  		/* Online status is fundamental */
  		props[nprops++] = POWER_SUPPLY_PROP_ONLINE;
  
@@ -941,7 +948,7 @@ index ced37a701..6f8460007 100644
  		if (nprops > MACSMC_MAX_AC_PROPS)
  			return -ENOMEM;
  
-@@ -858,9 +1308,26 @@ static int macsmc_power_probe(struct platform_device *pdev)
+@@ -858,9 +1314,26 @@ static int macsmc_power_probe(struct platform_device *pdev)
  	if (!power->batt && !power->ac)
  		return -ENODEV;
  
@@ -970,7 +977,7 @@ index ced37a701..6f8460007 100644
  	return 0;
  }
  
-@@ -868,7 +1335,11 @@ static void macsmc_power_remove(struct platform_device *pdev)
+@@ -868,7 +1341,11 @@ static void macsmc_power_remove(struct platform_device *pdev)
  {
  	struct macsmc_power *power = dev_get_drvdata(&pdev->dev);
  
@@ -983,7 +990,7 @@ index ced37a701..6f8460007 100644
  }
  
  static const struct platform_device_id macsmc_power_id[] = {
-@@ -891,3 +1362,4 @@ MODULE_LICENSE("Dual MIT/GPL");
+@@ -891,3 +1368,4 @@ MODULE_LICENSE("Dual MIT/GPL");
  MODULE_DESCRIPTION("Apple SMC battery and power management driver");
  MODULE_AUTHOR("Hector Martin <marcan@marcan.st>");
  MODULE_AUTHOR("Michael Reeves <michael.reeves077@gmail.com>");
