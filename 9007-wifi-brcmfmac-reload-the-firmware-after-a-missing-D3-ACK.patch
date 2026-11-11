@@ -1,0 +1,125 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Andre Eikmeyer <dev@deq.rocks>
+Date: Wed, 4 Nov 2026 16:16:16 +0100
+Subject: [PATCH] wifi: brcmfmac: reload the firmware after a missing D3 ACK
+
+Since commit 6f88e6ebdc1a ("wifi: brcmfmac: Improve D3 substate entering
+timeout handling") system suspend goes on after a missing D3 ACK when
+WoWL is off. On resume brcmf_pcie_pm_leave_D3() still takes the hot
+resume path when the INTMASK register reads back nonzero. Firmware that
+did not answer D3_INFORM can do that and stays dead afterwards. On the
+BCM4364 in the MacBookPro16,1 the association and DHCP came back while
+the data path was dead. On the MacBookPro15,1 every firmware command
+timed out after such a resume and each further suspend failed.
+
+Record the missing ACK and force the remove and re-probe path on the
+next resume so the firmware is loaded again.
+
+brcmf_msgbuf_delete_flowring() waits for outstanding tx status before
+it checks the bus state. Check the bus first and stop waiting when it
+goes down, since the firmware does not report tx status then.
+
+Fixes: 6f88e6ebdc1a ("wifi: brcmfmac: Improve D3 substate entering timeout handling")
+Link: https://github.com/t2linux/T2-Debian-and-Ubuntu-Kernel/issues/174
+Co-developed-by: Lukas Klizas <lukas@klizas.lt>
+Signed-off-by: Lukas Klizas <lukas@klizas.lt>
+Tested-by: Yossef Osman <Yossef.Osman@proton.me>
+Tested-by: Aditya Garg <aditya.garg@linux.dev>
+Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
+---
+The KaiT2en community runs this patch with its kernels, no regression
+was reported.
+
+This replaces "wifi: brcmfmac: handle missing D3 ACK on BCM4377 T2 Macs"
+(v2). Commit 6f88e6ebdc1a covers its suspend part for all chips, this
+patch handles the resume after it:
+
+  https://lore.kernel.org/all/20261001085308.1688049-1-dev@deq.rocks/
+
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/msgbuf.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/msgbuf.c
+index 069ba701665..f002eda5171 100644
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/msgbuf.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/msgbuf.c
+@@ -1445,13 +1445,26 @@ void brcmf_msgbuf_delete_flowring(struct brcmf_pub *drvr, u16 flowid)
+ 	int err;
+ 	int retry = BRCMF_MAX_TXSTATUS_WAIT_RETRIES;
+ 
++	/* no need to wait or submit if firmware can not be reached */
++	if (drvr->bus_if->state != BRCMF_BUS_UP) {
++		brcmf_dbg(MSGBUF, "bus down, flowring will be removed\n");
++		brcmf_msgbuf_remove_flowring(msgbuf, flowid);
++		return;
++	}
++
+ 	/* make sure it is not in txflow */
+ 	brcmf_commonring_lock(commonring_del);
+ 	flow->rings[flowid]->status = RING_CLOSING;
+ 	brcmf_commonring_unlock(commonring_del);
+ 
+-	/* wait for commonring txflow finished */
++	/* wait for commonring txflow finished, but bail if bus goes down */
+ 	while (retry && atomic_read(&commonring_del->outstanding_tx)) {
++		if (drvr->bus_if->state != BRCMF_BUS_UP) {
++			brcmf_dbg(MSGBUF, "bus went down, aborting wait\n");
++			atomic_set(&commonring_del->outstanding_tx, 0);
++			brcmf_msgbuf_remove_flowring(msgbuf, flowid);
++			return;
++		}
+ 		usleep_range(5000, 10000);
+ 		retry--;
+ 	}
+@@ -1460,13 +1473,6 @@ void brcmf_msgbuf_delete_flowring(struct brcmf_pub *drvr, u16 flowid)
+ 		atomic_set(&commonring_del->outstanding_tx, 0);
+ 	}
+ 
+-	/* no need to submit if firmware can not be reached */
+-	if (drvr->bus_if->state != BRCMF_BUS_UP) {
+-		brcmf_dbg(MSGBUF, "bus down, flowring will be removed\n");
+-		brcmf_msgbuf_remove_flowring(msgbuf, flowid);
+-		return;
+-	}
+-
+ 	commonring = msgbuf->commonrings[BRCMF_H2D_MSGRING_CONTROL_SUBMIT];
+ 	brcmf_commonring_lock(commonring);
+ 	ret_ptr = brcmf_commonring_reserve_for_write(commonring);
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+index 17bae04c14b..21bf3168df3 100644
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+@@ -346,6 +346,7 @@ struct brcmf_pciedev_info {
+ 	struct brcmf_pcie_shared_info shared;
+ 	wait_queue_head_t mbdata_resp_wait;
+ 	bool mbdata_completed;
++	bool d3_ack_timeout;
+ 	bool irq_allocated;
+ 	bool wowl_enabled;
+ 	u8 dma_idx_sz;
+@@ -2659,6 +2660,10 @@ static int brcmf_pcie_pm_enter_D3(struct device *dev)
+ 		}
+ 
+ 		brcmf_dbg(PCIE, "No D3 ACK, continuing to power the device off\n");
++		/* Remember that firmware is unresponsive so resume skips the
++		 * hot-resume path and does a full remove + re-probe.
++		 */
++		devinfo->d3_ack_timeout = true;
+ 	}
+ 
+ 	devinfo->state = BRCMFMAC_PCIE_STATE_DOWN;
+@@ -2680,6 +2685,17 @@ static int brcmf_pcie_pm_leave_D3(struct device *dev)
+ 	devinfo = bus->bus_priv.pcie->devinfo;
+ 	brcmf_dbg(PCIE, "Enter, dev=%p, bus=%p\n", dev, bus);
+ 
++	/* Firmware that failed to ACK D3_INFORM at suspend cannot be
++	 * trusted even if its registers still read back sanely: it may
++	 * keep the association up while the data path is dead. Skip the
++	 * hot-resume path and force a full re-probe to reload it.
++	 */
++	if (devinfo->d3_ack_timeout) {
++		devinfo->d3_ack_timeout = false;
++		brcmf_err(bus, "Firmware was unresponsive at suspend, reloading\n");
++		goto cleanup;
++	}
++
+ 	/* Check if device is still up and running, if so we are ready */
+ 	if (brcmf_pcie_read_reg32(devinfo, devinfo->reginfo->intmask) != 0) {
+ 		brcmf_dbg(PCIE, "Try to wakeup device....\n");
