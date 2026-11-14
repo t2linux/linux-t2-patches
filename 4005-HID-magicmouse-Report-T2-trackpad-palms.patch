@@ -1,0 +1,189 @@
+From 63db4b69766719d6f63ada84ae16bc1a7a8cbc3d Mon Sep 17 00:00:00 2001
+From: Sajan Kumar <ksajan12@gmail.com>
+Date: Sat, 14 Nov 2026 02:36:27 -0500
+Subject: [PATCH] HID: magicmouse: report T2 trackpad palms as MT_TOOL_PALM
+
+The Apple T2 internal trackpad reports palm contacts as ordinary
+fingers. libinput's size-based palm detection misses the narrow palm
+heel in the lower outer corners, and libinput disables edge palm
+detection for Apple touchpads. The palm therefore moves the cursor
+while it rests on the pad.
+
+Classify T2 contacts as palms when they are large or start in the lower
+outer corners, keep the classification sticky until the contact lifts,
+and report them with MT_TOOL_PALM. Advertise ABS_MT_TOOL_TYPE so the
+tool type reaches libinput.
+
+Tested on a MacBookPro15,2 with linux-t2 7.3.4. The right palm no
+longer moves the cursor, while one-finger movement and two-finger
+scrolling keep working.
+
+Link: https://github.com/t2linux/kernel/issues/43
+Signed-off-by: Sajan Kumar <ksajan12@gmail.com>
+---
+ drivers/hid/hid-magicmouse.c | 104 +++++++++++++++++++++++++++++++++--
+ 1 file changed, 98 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/hid/hid-magicmouse.c b/drivers/hid/hid-magicmouse.c
+index 4ee2ce7..f1892d4 100644
+--- a/drivers/hid/hid-magicmouse.c
++++ b/drivers/hid/hid-magicmouse.c
+@@ -235,6 +235,16 @@ model##_TP_MAX_X, model##_TP_MAX_Y, model##_TP_RES_X, model##_TP_RES_Y }
+ 
+ #define INTERNAL_TP_MAX_FINGER_ORIENTATION 16384
+ 
++/*
++ * Palm thresholds measured on the MacBookPro15,2 trackpad. The palm heel in
++ * the lower outer corners is often narrow enough to look like a finger by
++ * size, so position is used as well.
++ */
++#define T2_PALM_TOUCH_MAJOR	900
++#define T2_PALM_WIDTH_MAJOR	3700
++#define T2_PALM_SIDE_PERCENT	15
++#define T2_PALM_BOTTOM_PERCENT	50
++
+ struct magicmouse_input_ops {
+ 	int (*raw_event)(struct hid_device *hdev,
+ 		struct hid_report *report, u8 *data, int size);
+@@ -278,6 +288,15 @@ struct magicmouse_sc {
+ 	} touches[MAX_CONTACTS];
+ 	int tracking_ids[MAX_CONTACTS];
+ 
++	/* T2 internal trackpad palm classification, indexed by MT slot. */
++	bool is_t2;
++	int t2_min_x;
++	int t2_min_y;
++	int t2_max_x;
++	int t2_max_y;
++	bool palm[MAX_CONTACTS];
++	bool palm_seen[MAX_CONTACTS];
++
+ 	struct hid_device *hdev;
+ 	struct delayed_work work;
+ 	struct timer_list battery_timer;
+@@ -843,12 +862,46 @@ struct tp_mouse_report {
+ 	u8 padding[4];
+ };
+ 
++/*
++ * A palm contact is large, or starts in the lower outer corners. The palm
++ * heel in those corners is narrow and can look like a finger by size. Input
++ * Y is inverted by the driver, so the bottom of the pad is the high end of
++ * the reported Y range.
++ */
++static bool magicmouse_t2_is_palm(const struct magicmouse_sc *msc,
++				  const struct input_mt_pos *pos,
++				  const struct tp_finger *f)
++{
++	int width = msc->t2_max_x - msc->t2_min_x;
++	int height = msc->t2_max_y - msc->t2_min_y;
++	int touch_major = le16_to_int(f->touch_major) << 1;
++	int tool_major = le16_to_int(f->tool_major) << 1;
++	int lower_edge;
++	int side_edge;
++
++	if (touch_major > T2_PALM_TOUCH_MAJOR ||
++	    tool_major > T2_PALM_WIDTH_MAJOR)
++		return true;
++
++	if (width <= 0 || height <= 0)
++		return false;
++
++	lower_edge = -msc->t2_min_y - height * T2_PALM_BOTTOM_PERCENT / 100;
++	side_edge = width * T2_PALM_SIDE_PERCENT / 100;
++
++	return pos->y > lower_edge &&
++	       (pos->x < msc->t2_min_x + side_edge ||
++		pos->x > msc->t2_max_x - side_edge);
++}
++
+ static void report_finger_data(struct input_dev *input, int slot,
+ 			       const struct input_mt_pos *pos,
+-			       const struct tp_finger *f)
++			       const struct tp_finger *f,
++			       bool palm)
+ {
+ 	input_mt_slot(input, slot);
+-	input_mt_report_slot_state(input, MT_TOOL_FINGER, true);
++	input_mt_report_slot_state(input, palm ? MT_TOOL_PALM : MT_TOOL_FINGER,
++				   true);
+ 
+ 	input_report_abs(input, ABS_MT_TOUCH_MAJOR,
+ 			 le16_to_int(f->touch_major) << 1);
+@@ -913,10 +966,31 @@ static int magicmouse_raw_event_mtp(struct hid_device *hdev,
+ 
+ 	input_mt_assign_slots(input, msc->tracking_ids, msc->pos, n, 0);
+ 
++	if (msc->is_t2)
++		memset(msc->palm_seen, 0, sizeof(msc->palm_seen));
++
+ 	for (i = 0; i < n; i++) {
+ 		int idx = map_contacs[i];
++		int slot = msc->tracking_ids[i];
++		bool palm = false;
++
+ 		f = (struct tp_finger *)(data + hdr_sz + idx * touch_sz);
+-		report_finger_data(input, msc->tracking_ids[i], &msc->pos[i], f);
++
++		if (msc->is_t2) {
++			palm = msc->palm[slot];
++			if (!palm && magicmouse_t2_is_palm(msc, &msc->pos[i], f))
++				palm = true;
++			msc->palm[slot] = palm;
++			msc->palm_seen[slot] = true;
++		}
++
++		report_finger_data(input, slot, &msc->pos[i], f, palm);
++	}
++
++	if (msc->is_t2) {
++		for (i = 0; i < MAX_CONTACTS; i++)
++			if (!msc->palm_seen[i])
++				msc->palm[i] = false;
+ 	}
+ 
+ 	input_mt_sync_frame(input);
+@@ -1302,7 +1376,11 @@ static int magicmouse_setup_input_spi(struct input_dev *input,
+ static int magicmouse_setup_input_t2(struct input_dev *input,
+ 				      struct hid_device *hdev)
+ {
+-	int min_x, min_y, max_x, max_y, res_x, res_y;
++	struct magicmouse_sc *msc = hid_get_drvdata(hdev);
++	int min_x = J132_TP_MIN_X, min_y = J132_TP_MIN_Y;
++	int max_x = J132_TP_MAX_X, max_y = J132_TP_MAX_Y;
++	int res_x = J132_TP_RES_X, res_y = J132_TP_RES_Y;
++	int ret;
+ 
+ 	for (size_t i = 0; i < ARRAY_SIZE(magicmouse_t2_configs); i++) {
+ 		if (magicmouse_t2_configs[i].id == hdev->product) {
+@@ -1312,11 +1390,25 @@ static int magicmouse_setup_input_t2(struct input_dev *input,
+ 			max_y = magicmouse_t2_configs[i].max_y;
+ 			res_x = magicmouse_t2_configs[i].res_x;
+ 			res_y = magicmouse_t2_configs[i].res_y;
++			break;
+ 		}
+ 	}
+ 
+-	int ret = magicmouse_setup_input_int_tpd(input, hdev, min_x, min_y,
+-						 max_x, max_y, res_x, res_y, false);
++	msc->is_t2 = true;
++	msc->t2_min_x = min_x;
++	msc->t2_min_y = min_y;
++	msc->t2_max_x = max_x;
++	msc->t2_max_y = max_y;
++
++	/*
++	 * input_mt_report_slot_state() only emits ABS_MT_TOOL_TYPE if the
++	 * input device advertises that axis. Without it the kernel can mark a
++	 * contact as MT_TOOL_PALM but libinput never sees the tool type.
++	 */
++	input_set_abs_params(input, ABS_MT_TOOL_TYPE, 0, MT_TOOL_MAX, 0, 0);
++
++	ret = magicmouse_setup_input_int_tpd(input, hdev, min_x, min_y,
++					     max_x, max_y, res_x, res_y, false);
+ 	if (ret)
+ 		return ret;
+ 
+-- 
+2.56.0
+
