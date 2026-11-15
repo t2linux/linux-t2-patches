@@ -1,0 +1,54 @@
+From c2c4b757c572fe9b19952a385a7c600b8a5f6b52 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Bla=C5=BE=20Zupan?= <blaz@inlimbo.org>
+Date: Sun, 15 Nov 2026 09:22:52 -0800
+Subject: [PATCH] wifi: brcmfmac: keep ARP and ND offload off on the BCM4355
+ too
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The Apple firmware for the BCM4355 (MacBookAir8,1/8,2, firmware
+9.30.503.0.32.5.87) has the same ND offload problem as the BCM4364.
+With ARP/ND offload enabled, the firmware console logs
+"EL: 38 5890 0 d8ac0 ffffffff" several times per second. After a
+while the association degrades: downloads are capped at ~48 Mbit/s
+aggregate even with parallel streams, ping to the LAN gateway rises
+from 4 ms to ~120 ms under load (the AP queues frames the client does
+not take), and uploads are unaffected. Reconnecting clears it until
+the next time.
+
+With the offloads off (interface promiscuous), the firmware errors
+stop and downloads stay at 300-400 Mbit/s.
+
+Extend the BCM4364 check to the BCM4355.
+
+Signed-off-by: Blaž Zupan <blaz@inlimbo.org>
+---
+ .../net/wireless/broadcom/brcm80211/brcmfmac/core.c    | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/core.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/core.c
+index 6eae713..8a9c342 100644
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/core.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/core.c
+@@ -105,11 +105,13 @@ void brcmf_configure_arp_nd_offload(struct brcmf_if *ifp, bool enable)
+ 	}
+ 
+ 	/* With ND offload on while awake, the Apple firmware for the BCM4364
+-	 * makes IPv6 downloads drop to low rates. macOS runs ARP and ND
+-	 * offload only in sleep, keep both off on this chip.
++	 * and BCM4355 makes downloads drop to low rates. macOS runs ARP and
++	 * ND offload only in sleep, keep both off on these chips.
+ 	 */
+-	if (enable && ifp->drvr->bus_if->chip == BRCM_CC_4364_CHIP_ID) {
+-		brcmf_dbg(TRACE, "Skip ARP/ND offload enable on BCM4364\n");
++	if (enable && (ifp->drvr->bus_if->chip == BRCM_CC_4364_CHIP_ID ||
++		       ifp->drvr->bus_if->chip == BRCM_CC_4355_CHIP_ID)) {
++		brcmf_dbg(TRACE, "Skip ARP/ND offload enable on BCM%x\n",
++			  ifp->drvr->bus_if->chip);
+ 		enable = false;
+ 	}
+ 
+-- 
+2.53.0
+
