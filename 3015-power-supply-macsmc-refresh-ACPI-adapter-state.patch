@@ -1,0 +1,260 @@
+From 78677894d4f1ccd1aa79a98e7ab5c69c6f1c0549 Mon Sep 17 00:00:00 2001
+From: benekuehn <41262108+benekuehn@users.noreply.github.com>
+Date: Mon, 16 Nov 2026 18:58:25 +0100
+Subject: [PATCH] power: supply: macsmc: refresh ACPI adapter state and notify
+ on changes
+
+The Intel backend caches _PSR at probe and updates it only on an ACPI
+notification. Missed notifications leave ONLINE and battery STATUS stale.
+On a MacBookPro16,2 connected to a USB-C display, _PSR returned 1 while
+macsmc-ac/online remained 0 and the battery reported Discharging despite
+positive current and increasing charge.
+
+Read _PSR when ONLINE or battery STATUS is queried, as the ACPI AC driver
+does. Acquire the adapter reference before registering the supplies so
+their initial property callbacks can safely evaluate _PSR, and release
+that reference through devres.
+
+Query ACPI power state once a second and emit supply changes only when
+online or battery status changes. This also updates userspace when firmware
+misses a notification, without waiting for userspace battery polling.
+Notifications schedule an immediate check. Cancel polling for suspend and
+restart it on resume; use the freezable workqueue and devres cancellation
+to keep polling within the lifetime of the supplies and adapter.
+
+Keep desktop machines permanently online and leave the non-ACPI SMC
+property and notification paths unchanged. Guard absent supplies when
+sending notifications, and skip adapter-handler removal on desktops.
+
+Signed-off-by: benekuehn <41262108+benekuehn@users.noreply.github.com>
+---
+ drivers/power/supply/macsmc-power.c | 138 ++++++++++++++++++++++------
+ 1 file changed, 111 insertions(+), 27 deletions(-)
+
+diff --git a/drivers/power/supply/macsmc-power.c b/drivers/power/supply/macsmc-power.c
+index 6f84600..0d14af1 100644
+--- a/drivers/power/supply/macsmc-power.c
++++ b/drivers/power/supply/macsmc-power.c
+@@ -101,9 +101,11 @@ struct macsmc_power {
+ 
+ 	u8 num_cells;
+ 	int nominal_voltage_mv;
+-	unsigned long long adapter_status;
+ 
+ 	struct acpi_device *adapter;
++	struct delayed_work acpi_poll_work;
++	int acpi_last_online;
++	int acpi_last_status;
+ 	struct notifier_block nb;
+ 	struct work_struct critical_work;
+ 	bool emergency_shutdown_triggered;
+@@ -204,12 +206,35 @@ static int macsmc_battery_get_status(struct macsmc_power *power)
+ 	return POWER_SUPPLY_STATUS_CHARGING;
+ }
+ 
++static int macsmc_acpi_get_online(struct macsmc_power *power, int *online)
++{
++	unsigned long long state;
++	acpi_status status;
++
++	if (!power->has_battery) {
++		*online = 1;
++		return 0;
++	}
++
++	/* Notifications can be missed; read the current state on every query. */
++	status = acpi_evaluate_integer(power->adapter->handle, "_PSR", NULL, &state);
++	if (ACPI_FAILURE(status))
++		return -EIO;
++
++	*online = !!state;
++	return 0;
++}
++
+ static int macsmc_battery_acpi_get_status(struct macsmc_power *power)
+ {
+-	int ret;
++	int ret, online;
+ 	s16 vs16;
+ 	u16 vu16;
+ 
++	ret = macsmc_acpi_get_online(power, &online);
++	if (ret < 0)
++		return ret;
++
+ 	ret = apple_smc_read_s16(power->smc, SMC_KEY(B0AC), &vs16);
+ 	if (ret < 0)
+ 		return ret;
+@@ -221,7 +246,7 @@ static int macsmc_battery_acpi_get_status(struct macsmc_power *power)
+ 	vu16 = swab16(vu16);
+ 	vs16 = (s16)swab16(vs16);
+ 
+-	if (power->adapter_status) {
++	if (online) {
+ 		if (vu16 == 100 && vs16 <= 0)
+ 			return POWER_SUPPLY_STATUS_FULL;
+ 
+@@ -855,10 +880,7 @@ static int macsmc_ac_get_property(struct power_supply *psy,
+ 	switch (psp) {
+ 	case POWER_SUPPLY_PROP_ONLINE:
+ 		if (power->smc->is_acpi) {
+-			if (power->has_battery)
+-				val->intval = power->adapter_status;
+-			else
+-				val->intval = 1;
++			ret = macsmc_acpi_get_online(power, &val->intval);
+ 		} else {
+ 			ret = apple_smc_read_u32(power->smc, SMC_KEY(CHIS), &vu32);
+ 			val->intval = !!vu32;
+@@ -1002,22 +1024,72 @@ static int macsmc_power_event(struct notifier_block *nb, unsigned long event, vo
+ 	return NOTIFY_DONE;
+ }
+ 
++static void macsmc_power_acpi_poll(struct work_struct *work)
++{
++	struct macsmc_power *power = container_of(to_delayed_work(work),
++					struct macsmc_power, acpi_poll_work);
++	bool changed = false;
++	int online, status;
++
++	if (!macsmc_acpi_get_online(power, &online) &&
++	    online != power->acpi_last_online) {
++		power->acpi_last_online = online;
++		changed = true;
++	}
++
++	status = macsmc_battery_acpi_get_status(power);
++	if (status >= 0 && status != power->acpi_last_status) {
++		power->acpi_last_status = status;
++		changed = true;
++	}
++
++	if (changed) {
++		if (power->batt)
++			power_supply_changed(power->batt);
++		if (power->ac)
++			power_supply_changed(power->ac);
++	}
++
++	/* Some Intel firmware misses ACPI notifications on USB-C power changes. */
++	queue_delayed_work(system_freezable_wq, &power->acpi_poll_work, HZ);
++}
++
+ static void macsmc_power_acpi_notify(acpi_handle handle, u32 event, void *context)
+ {
+ 	struct macsmc_power *power = context;
+ 
+-	if (event == 0x80) {
+-		acpi_status status = acpi_evaluate_integer(power->adapter->handle, "_PSR", NULL,
+-								&power->adapter_status);
+-		if (ACPI_FAILURE(status))
+-			return;
+-
+-		power->adapter_status = !!power->adapter_status;
+-		power_supply_changed(power->batt);
+-		power_supply_changed(power->ac);
+-	}
++	if (event == 0x80)
++		mod_delayed_work(system_freezable_wq, &power->acpi_poll_work, 0);
+ }
+ 
++static void macsmc_power_acpi_put_adapter(void *data)
++{
++	acpi_dev_put(data);
++}
++
++static int macsmc_power_suspend(struct device *dev)
++{
++	struct macsmc_power *power = dev_get_drvdata(dev);
++
++	if (power->adapter)
++		cancel_delayed_work_sync(&power->acpi_poll_work);
++
++	return 0;
++}
++
++static int macsmc_power_resume(struct device *dev)
++{
++	struct macsmc_power *power = dev_get_drvdata(dev);
++
++	if (power->adapter)
++		mod_delayed_work(system_freezable_wq, &power->acpi_poll_work, 0);
++
++	return 0;
++}
++
++static DEFINE_SIMPLE_DEV_PM_OPS(macsmc_power_pm_ops, macsmc_power_suspend,
++			      macsmc_power_resume);
++
+ 
+ static int macsmc_power_probe(struct platform_device *pdev)
+ {
+@@ -1073,6 +1145,18 @@ static int macsmc_power_probe(struct platform_device *pdev)
+ 	if (!has_battery && !has_ac_adapter)
+ 		return -ENODEV;
+ 
++	/* Property callbacks can run as soon as the supplies are registered. */
++	if (smc->is_acpi && has_battery) {
++		power->adapter = acpi_dev_get_first_match_dev("ACPI0003", NULL, -1);
++		if (!power->adapter)
++			return -ENODEV;
++
++		ret = devm_add_action_or_reset(dev, macsmc_power_acpi_put_adapter,
++					       power->adapter);
++		if (ret)
++			return ret;
++	}
++
+ 	if (has_battery) {
+ 		power->batt_desc = macsmc_battery_desc_template;
+ 		props = devm_kcalloc(dev, MACSMC_MAX_BATT_PROPS,
+@@ -1300,21 +1384,20 @@ static int macsmc_power_probe(struct platform_device *pdev)
+ 		power->nb.notifier_call = macsmc_power_event;
+ 		blocking_notifier_chain_register(smc->event_handlers, &power->nb);
+ 	} else if (power->has_battery) {
+-		power->adapter = acpi_dev_get_first_match_dev("ACPI0003", NULL, -1);
+-		if (!power->adapter)
+-			return -ENODEV;
++		ret = devm_delayed_work_autocancel(dev, &power->acpi_poll_work,
++						   macsmc_power_acpi_poll);
++		if (ret)
++			return ret;
++
++		power->acpi_last_online = -1;
++		power->acpi_last_status = -1;
+ 
+ 		ret = acpi_dev_install_notify_handler(power->adapter, ACPI_DEVICE_NOTIFY,
+ 					macsmc_power_acpi_notify, power);
+ 		if (ret)
+ 			return ret;
+ 
+-		acpi_status status = acpi_evaluate_integer(power->adapter->handle, "_PSR", NULL,
+-					&power->adapter_status);
+-		if (ACPI_FAILURE(status))
+-			return -EIO;
+-
+-		power->adapter_status = !!power->adapter_status;
++		queue_delayed_work(system_freezable_wq, &power->acpi_poll_work, 0);
+ 	}
+ 	return 0;
+ }
+@@ -1325,7 +1408,7 @@ static void macsmc_power_remove(struct platform_device *pdev)
+ 
+ 	if (!power->smc->is_acpi)
+ 		blocking_notifier_chain_unregister(power->smc->event_handlers, &power->nb);
+-	else
++	else if (power->adapter)
+ 		acpi_dev_remove_notify_handler(power->adapter, ACPI_DEVICE_NOTIFY,
+ 				macsmc_power_acpi_notify);
+ }
+@@ -1339,6 +1422,7 @@ MODULE_DEVICE_TABLE(platform, macsmc_power_id);
+ static struct platform_driver macsmc_power_driver = {
+ 	.driver = {
+ 		.name = "macsmc-power",
++		.pm = pm_sleep_ptr(&macsmc_power_pm_ops),
+ 	},
+ 	.id_table = macsmc_power_id,
+ 	.probe = macsmc_power_probe,
+-- 
+2.56.0
+
