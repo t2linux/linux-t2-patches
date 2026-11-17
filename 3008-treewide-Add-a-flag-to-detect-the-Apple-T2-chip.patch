@@ -1,4 +1,4 @@
-From c1b3c2210357881f8920cd35cb3c0d9c12e6179a Mon Sep 17 00:00:00 2001
+From a516d36209db9aa82ab63a70f6c44c40daf46a90 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Wed, 19 Aug 2026 17:44:04 -0400
 Subject: [PATCH 08/14] treewide: Add a flag to detect the Apple T2 chip

@@ -1,7 +1,16 @@
-From 0e00a1f7ad59bbcbeffdbcff0ca1cc74d214e9e1 Mon Sep 17 00:00:00 2001
+From b68b910ee890765548b7c1ce565ea7c34dede3bf Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Thu, 15 Oct 2026 09:32:53 -0400
-Subject: [PATCH 01/14] treewide: add backend for macsmc
+Subject: [PATCH 01/14] treewide: Add backend for macsmc
+
+Split the Apple SMC driver into a common core and a backend
+that handles the actual communication. The existing RTKit
+code moves to its own backend, and nothing changes for
+Apple Silicon.
+
+This lets the same SMC drivers run on other kinds of
+hardware, starting with Intel Macs, as a replacement for
+applesmc.
 
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---
@@ -19,16 +28,16 @@ Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
  drivers/soc/apple/Kconfig                     |  14 ++
  drivers/soc/apple/Makefile                    |   2 +
  .../macsmc.c => soc/apple/macsmc-rtkit.c}     | 185 ++++++++----------
- include/linux/mfd/macsmc.h                    |  81 +++++---
- 15 files changed, 326 insertions(+), 166 deletions(-)
+ include/linux/mfd/macsmc.h                    |  92 ++++++---
+ 15 files changed, 337 insertions(+), 166 deletions(-)
  create mode 100644 drivers/mfd/macsmc-core.c
  rename drivers/{mfd/macsmc.c => soc/apple/macsmc-rtkit.c} (70%)
 
 diff --git a/MAINTAINERS b/MAINTAINERS
-index f53047aa8..b4612552a 100644
+index 03649f08c..1e5ae12ce 100644
 --- a/MAINTAINERS
 +++ b/MAINTAINERS
-@@ -2675,7 +2675,7 @@ F:	drivers/input/touchscreen/apple_z2.c
+@@ -2727,7 +2727,7 @@ F:	drivers/input/touchscreen/apple_z2.c
  F:	drivers/iommu/apple-dart.c
  F:	drivers/iommu/io-pgtable-dart.c
  F:	drivers/irqchip/irq-apple-aic.c
@@ -38,10 +47,10 @@ index f53047aa8..b4612552a 100644
  F:	drivers/nvmem/apple-efuses.c
  F:	drivers/nvmem/apple-spmi-nvmem.c
 diff --git a/drivers/gpio/Kconfig b/drivers/gpio/Kconfig
-index a48586bb8..d102f1e38 100644
+index 55e428002..63a2b1e2e 100644
 --- a/drivers/gpio/Kconfig
 +++ b/drivers/gpio/Kconfig
-@@ -1549,7 +1549,7 @@ config GPIO_LP87565
+@@ -1582,7 +1582,7 @@ config GPIO_LP87565
  
  config GPIO_MACSMC
  	tristate "Apple Mac SMC GPIO"
@@ -77,10 +86,10 @@ index b0952d066..8c7a942ad 100644
  
  	/* Binary search to find index of first SMC key bigger or equal to key */
 diff --git a/drivers/hwmon/Kconfig b/drivers/hwmon/Kconfig
-index fecff8610..48c30e907 100644
+index 18c682e1a..91ca7031c 100644
 --- a/drivers/hwmon/Kconfig
 +++ b/drivers/hwmon/Kconfig
-@@ -1222,7 +1222,7 @@ config SENSORS_LTQ_CPUTEMP
+@@ -1245,7 +1245,7 @@ config SENSORS_LTQ_CPUTEMP
  
  config SENSORS_MACSMC_HWMON
  	tristate "Apple SMC (Apple Silicon)"
@@ -90,10 +99,10 @@ index fecff8610..48c30e907 100644
  	  This driver enables hwmon support for current, power, temperature,
  	  and voltage sensors, as well as fan speed reporting and control
 diff --git a/drivers/mfd/Kconfig b/drivers/mfd/Kconfig
-index e4fd45724..10e8e31d5 100644
+index 87ed55c15..c58cc3315 100644
 --- a/drivers/mfd/Kconfig
 +++ b/drivers/mfd/Kconfig
-@@ -325,24 +325,15 @@ config MFD_LOCHNAGAR
+@@ -339,24 +339,15 @@ config MFD_LOCHNAGAR
  	help
  	  Support for Cirrus Logic Lochnagar audio development board.
  
@@ -122,7 +131,7 @@ index e4fd45724..10e8e31d5 100644
  	tristate "Cirrus Logic Madera codecs"
  	select MFD_CORE
 diff --git a/drivers/mfd/Makefile b/drivers/mfd/Makefile
-index 72d3944b0..b8d81fb0c 100644
+index f8101d2a9..0b0ccf91e 100644
 --- a/drivers/mfd/Makefile
 +++ b/drivers/mfd/Makefile
 @@ -22,7 +22,7 @@ obj-$(CONFIG_MFD_CS42L43_SDW)	+= cs42l43-sdw.o
@@ -770,10 +779,10 @@ index 514cba7dc..eaebeb1be 100644
 -MODULE_DESCRIPTION("Apple SMC driver");
 +MODULE_DESCRIPTION("Apple SMC RTKIT Backend driver");
 diff --git a/include/linux/mfd/macsmc.h b/include/linux/mfd/macsmc.h
-index cc09ecce0..4b4368b99 100644
+index cc09ecce0..cdd040f0c 100644
 --- a/include/linux/mfd/macsmc.h
 +++ b/include/linux/mfd/macsmc.h
-@@ -47,6 +47,14 @@ typedef u32 smc_key;
+@@ -47,6 +47,25 @@ typedef u32 smc_key;
  #define APPLE_SMC_WRITABLE BIT(6)
  #define APPLE_SMC_FUNCTION BIT(4)
  
@@ -785,10 +794,21 @@ index cc09ecce0..4b4368b99 100644
 +#define SMC_MSG_NOTIFICATION            0x18
 +#define SMC_MSG_RW_KEY                  0x20
 +
++#define SMC_INT_SHUTDOWN                0x40
++#define SMC_INT_BRIDGEOS_CRASH          0x41
++#define SMC_INT_ALS_CHANGE              0x2A
++#define SMC_INT_CMD_DONE                0x4B
++#define SMC_INT_THERMAL_LEVEL           0x54
++#define SMC_INT_PLATFORM_FUNCTION       0x55
++#define SMC_INT_SMS_DROP                0x60
++#define SMC_INT_SMS_ORIENTATION 0x69
++#define SMC_INT_SMS_SHOCK               0x6F
++#define SMC_INT_PLIMIT_CHANGED          0x80
++
  /**
   * struct apple_smc_key_info - Information for a SMC key as returned by SMC
   * @type_code: FourCC code indicating the type for this key.
-@@ -80,24 +88,41 @@ enum apple_smc_boot_stage {
+@@ -80,24 +99,41 @@ enum apple_smc_boot_stage {
  	APPLE_SMC_ERROR_CRASHED
  };
  
@@ -842,7 +862,7 @@ index cc09ecce0..4b4368b99 100644
   * @mutex: Mutex for non-atomic mode
   * @lock: Spinlock for atomic mode
   */
-@@ -108,23 +133,11 @@ struct apple_smc {
+@@ -108,23 +144,11 @@ struct apple_smc {
  	smc_key first_key;
  	smc_key last_key;
  
@@ -870,7 +890,7 @@ index cc09ecce0..4b4368b99 100644
  
  	struct mutex mutex;
  	spinlock_t lock;
-@@ -225,6 +238,18 @@ static inline bool apple_smc_key_exists(struct apple_smc *smc, smc_key key)
+@@ -225,6 +249,18 @@ static inline bool apple_smc_key_exists(struct apple_smc *smc, smc_key key)
  	return apple_smc_get_key_info(smc, key, NULL) >= 0;
  }
  

@@ -1,22 +1,28 @@
-From 286a31201fc6b5586a44eac775ff3146a142be3f Mon Sep 17 00:00:00 2001
+From f0f9a2a4597eaec7916ed52b9b34f350bb2a38c7 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sat, 3 Oct 2026 21:15:47 -0400
 Subject: [PATCH 05/14] iio/accel: add driver for apple SMS
+
+Add a driver for the Sudden Motion Sensor accelerometer,
+exposed through IIO. It reports the three axes and also
+drop, orientation and shock events.
+
+This replaces the motion sensor support in applesmc.
 
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---
  drivers/iio/accel/Kconfig        |  10 ++
  drivers/iio/accel/Makefile       |   1 +
- drivers/iio/accel/macsmc-accel.c | 248 +++++++++++++++++++++++++++++++
+ drivers/iio/accel/macsmc-accel.c | 252 +++++++++++++++++++++++++++++++
  drivers/mfd/macsmc-core.c        |  10 ++
- 4 files changed, 269 insertions(+)
+ 4 files changed, 273 insertions(+)
  create mode 100644 drivers/iio/accel/macsmc-accel.c
 
 diff --git a/drivers/iio/accel/Kconfig b/drivers/iio/accel/Kconfig
-index 4094299e2..17d3bb49e 100644
+index 141ac9842..50bc127a4 100644
 --- a/drivers/iio/accel/Kconfig
 +++ b/drivers/iio/accel/Kconfig
-@@ -531,6 +531,16 @@ config KXCJK1013
+@@ -532,6 +532,16 @@ config KXCJK1013
  	  To compile this driver as a module, choose M here: the module will
  	  be called kxcjk-1013.
  
@@ -47,10 +53,10 @@ index fa440a859..52fe661de 100644
  obj-$(CONFIG_MMA7455_I2C)	+= mma7455_i2c.o
 diff --git a/drivers/iio/accel/macsmc-accel.c b/drivers/iio/accel/macsmc-accel.c
 new file mode 100644
-index 000000000..0abf81e7b
+index 000000000..898b253ba
 --- /dev/null
 +++ b/drivers/iio/accel/macsmc-accel.c
-@@ -0,0 +1,248 @@
+@@ -0,0 +1,252 @@
 +// SPDX-License-Identifier: GPL-2.0-only OR MIT
 +/*
 + * Apple SMC sudden motion sensor (SMS) driver
@@ -62,24 +68,27 @@ index 000000000..0abf81e7b
 + * Copyright (C) 2010 Henrik Rydberg <rydberg@euromail.se>
 + */
 +
++#include <linux/array_size.h>
++#include <linux/bits.h>
++#include <linux/container_of.h>
 +#include <linux/delay.h>
-+#include <linux/byteorder/generic.h>
-+#include <linux/iio/events.h>
-+#include <linux/iio/iio.h>
++#include <linux/device.h>
++#include <linux/errno.h>
 +#include <linux/mfd/macsmc.h>
++#include <linux/module.h>
++#include <linux/notifier.h>
 +#include <linux/platform_device.h>
 +#include <linux/pm.h>
++#include <linux/types.h>
++#include <linux/byteorder/generic.h>
++
++#include <linux/iio/events.h>
++#include <linux/iio/iio.h>
 +
 +struct macsmc_accel {
 +	struct apple_smc *smc;
 +	struct iio_dev *indio_dev;
 +	struct notifier_block nb;
-+};
-+
-+enum {
-+	SMS_DROP = 0,
-+	SMS_ORIENTATION,
-+	SMS_SHOCK,
 +};
 +
 +static int macsmc_accel_read(struct macsmc_accel *drv, smc_key key, s16 *p)
@@ -104,6 +113,7 @@ index 000000000..0abf81e7b
 +		if (!ret && buf)
 +			return 0;
 +
++		/* Magic value that enables the motion sensor*/
 +		buf = 0xE0;
 +		apple_smc_write_u16(drv->smc, SMC_KEY(MOCN), buf);
 +		msleep(50);
@@ -116,6 +126,7 @@ index 000000000..0abf81e7b
 +		int *val, int *val2, long mask)
 +{
 +	struct macsmc_accel *drv = iio_priv(indio_dev);
++	smc_key key;
 +	int ret;
 +	s16 buf;
 +
@@ -124,29 +135,25 @@ index 000000000..0abf81e7b
 +
 +	switch (chan->channel2) {
 +	case IIO_MOD_X:
-+		ret = macsmc_accel_read(drv, SMC_KEY(MO_X), &buf);
-+		if (ret < 0)
-+			return ret;
-+
-+		*val = buf;
-+		return IIO_VAL_INT;
++		key = SMC_KEY(MO_X);
++		break;
 +	case IIO_MOD_Y:
-+		ret = macsmc_accel_read(drv, SMC_KEY(MO_Y), &buf);
-+		if (ret < 0)
-+			return ret;
-+
-+		*val = buf;
-+		return IIO_VAL_INT;
++		key = SMC_KEY(MO_Y);
++		break;
 +	case IIO_MOD_Z:
-+		ret = macsmc_accel_read(drv, SMC_KEY(MO_Z), &buf);
-+		if (ret < 0)
-+			return ret;
-+
-+		*val = buf;
-+		return IIO_VAL_INT;
++		key = SMC_KEY(MO_Z);
++		break;
++	default:
++		return -EINVAL;
 +	}
 +
-+	return -EINVAL;
++	ret = macsmc_accel_read(drv, key, &buf);
++	if (ret < 0)
++		return ret;
++
++	*val = buf;
++
++	return IIO_VAL_INT;
 +}
 +
 +static int macsmc_accel_event(struct notifier_block *nb, unsigned long event, void *data)
@@ -154,26 +161,21 @@ index 000000000..0abf81e7b
 +	struct macsmc_accel *drv = container_of(nb, struct macsmc_accel, nb);
 +	u64 code;
 +
-+	/* check if event is for us */
-+	if (event != 0x60 && event != 0x69 && event != 0x6F)
-+		return NOTIFY_DONE;
-+
 +	switch (event) {
-+	case 0x60:
-+		code = IIO_UNMOD_EVENT_CODE(IIO_ACCEL, SMS_DROP,
-+					    IIO_EV_TYPE_CHANGE,
-+					    IIO_EV_DIR_NONE);
++	case SMC_INT_SMS_DROP:
++		code = IIO_MOD_EVENT_CODE(IIO_ACCEL, 0, IIO_MOD_X_AND_Y_AND_Z,
++					  IIO_EV_TYPE_THRESH, IIO_EV_DIR_FALLING);
 +		break;
-+	case 0x69:
-+		code = IIO_UNMOD_EVENT_CODE(IIO_ACCEL, SMS_ORIENTATION,
-+					    IIO_EV_TYPE_CHANGE,
-+					    IIO_EV_DIR_NONE);
++	case SMC_INT_SMS_ORIENTATION:
++		code = IIO_MOD_EVENT_CODE(IIO_ACCEL, 0, IIO_MOD_X_OR_Y_OR_Z,
++					  IIO_EV_TYPE_CHANGE, IIO_EV_DIR_NONE);
 +		break;
-+	case 0x6F:
-+		code = IIO_UNMOD_EVENT_CODE(IIO_ACCEL, SMS_SHOCK,
-+					    IIO_EV_TYPE_CHANGE,
-+					    IIO_EV_DIR_NONE);
++	case SMC_INT_SMS_SHOCK:
++		code = IIO_MOD_EVENT_CODE(IIO_ACCEL, 0, IIO_MOD_X_OR_Y_OR_Z,
++					  IIO_EV_TYPE_THRESH, IIO_EV_DIR_RISING);
 +		break;
++	default:
++		return NOTIFY_DONE;
 +	}
 +
 +	iio_push_event(drv->indio_dev, code, iio_get_time_ns(drv->indio_dev));
@@ -188,10 +190,22 @@ index 000000000..0abf81e7b
 +					&drv->nb);
 +}
 +
-+static const struct iio_event_spec macsmc_accel_event_spec = {
-+	.type = IIO_EV_TYPE_CHANGE,
-+	.dir = IIO_EV_DIR_NONE,
-+	.mask_separate = BIT(IIO_EV_INFO_ENABLE),
++static const struct iio_event_spec macsmc_accel_drop_events[] = {
++	{
++		.type = IIO_EV_TYPE_THRESH,
++		.dir = IIO_EV_DIR_FALLING,
++	},
++};
++
++static const struct iio_event_spec macsmc_accel_any_axis_events[] = {
++	{
++		.type = IIO_EV_TYPE_THRESH,
++		.dir = IIO_EV_DIR_RISING,
++	},
++	{
++		.type = IIO_EV_TYPE_CHANGE,
++		.dir = IIO_EV_DIR_NONE,
++	},
 +};
 +
 +static const struct iio_chan_spec macsmc_accel_channels[] = {
@@ -215,21 +229,17 @@ index 000000000..0abf81e7b
 +	},
 +	{
 +		.type = IIO_ACCEL,
-+		.channel = SMS_DROP,
-+		.event_spec = &macsmc_accel_event_spec,
-+		.num_event_specs = 1,
++		.modified = 1,
++		.channel2 = IIO_MOD_X_AND_Y_AND_Z,
++		.event_spec = macsmc_accel_drop_events,
++		.num_event_specs = ARRAY_SIZE(macsmc_accel_drop_events),
 +	},
 +	{
 +		.type = IIO_ACCEL,
-+		.channel = SMS_ORIENTATION,
-+		.event_spec = &macsmc_accel_event_spec,
-+		.num_event_specs = 1,
-+	},
-+	{
-+		.type = IIO_ACCEL,
-+		.channel = SMS_SHOCK,
-+		.event_spec = &macsmc_accel_event_spec,
-+		.num_event_specs = 1,
++		.modified = 1,
++		.channel2 = IIO_MOD_X_OR_Y_OR_Z,
++		.event_spec = macsmc_accel_any_axis_events,
++		.num_event_specs = ARRAY_SIZE(macsmc_accel_any_axis_events),
 +	},
 +};
 +
@@ -290,7 +300,7 @@ index 000000000..0abf81e7b
 +	.probe = macsmc_accel_probe,
 +	.driver = {
 +		.name = "macsmc-accel",
-+		.pm = &macsmc_accel_pm_ops,
++		.pm = pm_sleep_ptr(&macsmc_accel_pm_ops),
 +	},
 +};
 +module_platform_driver(macsmc_accel_driver);

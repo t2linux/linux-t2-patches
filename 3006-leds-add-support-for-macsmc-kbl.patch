@@ -1,19 +1,23 @@
-From 14d2faf7922476bae1b7caae874760c1e9705cdc Mon Sep 17 00:00:00 2001
+From 9d0c3c6839b6406b350fb7def59967c45ab67157 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sat, 3 Oct 2026 21:18:24 -0400
 Subject: [PATCH 06/14] leds: add support for macsmc kbl
 
+Add a LED class driver to control the keyboard backlight.
+
+This replaces the keyboard backlight support in applesmc.
+
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---
- drivers/leds/Kconfig       | 11 +++++++
+ drivers/leds/Kconfig       | 11 +++++
  drivers/leds/Makefile      |  1 +
- drivers/leds/leds-macsmc.c | 64 ++++++++++++++++++++++++++++++++++++++
- drivers/mfd/macsmc-core.c  | 11 +++++++
- 4 files changed, 87 insertions(+)
+ drivers/leds/leds-macsmc.c | 91 ++++++++++++++++++++++++++++++++++++++
+ drivers/mfd/macsmc-core.c  | 11 +++++
+ 4 files changed, 114 insertions(+)
  create mode 100644 drivers/leds/leds-macsmc.c
 
 diff --git a/drivers/leds/Kconfig b/drivers/leds/Kconfig
-index d0d318223..1fd8161a1 100644
+index 7ec2c8d78..30cd64d41 100644
 --- a/drivers/leds/Kconfig
 +++ b/drivers/leds/Kconfig
 @@ -729,6 +729,17 @@ config LEDS_ADP5520
@@ -35,28 +39,33 @@ index d0d318223..1fd8161a1 100644
  	tristate "LED Support for Maxim 5970"
  	depends on LEDS_CLASS
 diff --git a/drivers/leds/Makefile b/drivers/leds/Makefile
-index a68244bd5..ac3e3572c 100644
+index 4d4b08915..1ef8b970d 100644
 --- a/drivers/leds/Makefile
 +++ b/drivers/leds/Makefile
-@@ -12,6 +12,7 @@ obj-$(CONFIG_LEDS_KUNIT_TEST)		+= led-test.o
- obj-$(CONFIG_LEDS_88PM860X)		+= leds-88pm860x.o
- obj-$(CONFIG_LEDS_ACER_A500)		+= leds-acer-a500.o
- obj-$(CONFIG_LEDS_ADP5520)		+= leds-adp5520.o
+@@ -63,6 +63,7 @@ obj-$(CONFIG_LEDS_LP8864)		+= leds-lp8864.o
+ obj-$(CONFIG_LEDS_LT3593)		+= leds-lt3593.o
+ obj-$(CONFIG_LEDS_LTC3208)		+= leds-ltc3208.o
+ obj-$(CONFIG_LEDS_LTC3220)		+= leds-ltc3220.o
 +obj-$(CONFIG_LEDS_MACSMC)		+= leds-macsmc.o
- obj-$(CONFIG_LEDS_AN30259A)		+= leds-an30259a.o
- obj-$(CONFIG_LEDS_APU)			+= leds-apu.o
- obj-$(CONFIG_LEDS_ARIEL)		+= leds-ariel.o
+ obj-$(CONFIG_LEDS_MAX5970)		+= leds-max5970.o
+ obj-$(CONFIG_LEDS_MAX77650)		+= leds-max77650.o
+ obj-$(CONFIG_LEDS_MAX77705)		+= leds-max77705.o
 diff --git a/drivers/leds/leds-macsmc.c b/drivers/leds/leds-macsmc.c
 new file mode 100644
-index 000000000..8957ab743
+index 000000000..095653765
 --- /dev/null
 +++ b/drivers/leds/leds-macsmc.c
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,91 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
 + * Apple SMC Keyboard backlight driver
 + *
 + * Copyright (C) 2026 Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
++ *
++ * Based on drivers/hwmon/applesmc.c
++ * Copyright (C) 2007 Nicolas Boichat <nicolas@boichat.ch>
++ * Copyright (C) 2010 Henrik Rydberg <rydberg@euromail.se>
++ *
 + */
 +
 +#include <linux/leds.h>
@@ -76,13 +85,18 @@ index 000000000..8957ab743
 +	return drv->brightness;
 +}
 +
-+static void macsmc_led_set_brightness(struct led_classdev *cdev, enum led_brightness value)
++static int macsmc_led_set_brightness(struct led_classdev *cdev, enum led_brightness value)
 +{
 +	struct macsmc_led *drv = container_of(cdev, struct macsmc_led, cdev);
++	int ret;
 +
-+	drv->brightness = (u8) value;
++	ret = apple_smc_write_u16(drv->smc, SMC_KEY(LKSB), (u16) (value & 0xFF));
++	if (ret < 0)
++		return ret;
 +
-+	apple_smc_write_u16(drv->smc, SMC_KEY(LKSB), drv->brightness);
++	drv->brightness = value & 0xFF;
++
++	return 0;
 +}
 +
 +static int macsmc_led_probe(struct platform_device *pdev)
@@ -95,19 +109,36 @@ index 000000000..8957ab743
 +
 +	drv->smc = dev_get_drvdata(pdev->dev.parent);
 +
-+	drv->cdev.name = "macsmc-led";
++	drv->cdev.name = "smc::kbd_backlight";
 +	drv->cdev.max_brightness = 255;
 +	drv->cdev.brightness_get = macsmc_led_get_brightness;
-+	drv->cdev.brightness_set = macsmc_led_set_brightness;
++	drv->cdev.brightness_set_blocking = macsmc_led_set_brightness;
 +	drv->cdev.dev = &pdev->dev;
++
++	platform_set_drvdata(pdev, drv);
 +
 +	return devm_led_classdev_register(&pdev->dev, &drv->cdev);
 +}
++
++static int macsmc_led_resume(struct device *dev)
++{
++	struct macsmc_led *drv = dev_get_drvdata(dev);
++	int ret;
++
++	ret = apple_smc_write_u16(drv->smc, SMC_KEY(LKSB), (u16) (drv->brightness));
++	if (ret < 0)
++		return ret;
++
++	return 0;
++}
++
++static DEFINE_SIMPLE_DEV_PM_OPS(macsmc_led_pm, NULL, macsmc_led_resume);
 +
 +static struct platform_driver macsmc_led_driver = {
 +	.probe = macsmc_led_probe,
 +	.driver = {
 +		.name = "macsmc-led",
++		.pm = pm_sleep_ptr(&macsmc_led_pm),
 +	},
 +};
 +module_platform_driver(macsmc_led_driver);

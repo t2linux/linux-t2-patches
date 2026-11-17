@@ -1,7 +1,14 @@
-From 359bdbe34e7712175bbbf9f86dae657f870635b6 Mon Sep 17 00:00:00 2001
+From 25ac4236c11dca712cd8db581aa9f40632455dc4 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Fri, 24 Apr 2026 21:56:06 +0530
 Subject: [PATCH 12/14] hwmon/macsmc: add more types
+
+SMC keys come in many data types, and Intel Macs use a lot
+that macsmc-hwmon couldn't read, such as the signed fixed
+point types like sp1e.
+
+Add support for the common integer and fixed point types,
+and allow writing fan speeds.
 
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---
@@ -9,7 +16,7 @@ Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
  1 file changed, 310 insertions(+)
 
 diff --git a/drivers/hwmon/macsmc-hwmon.c b/drivers/hwmon/macsmc-hwmon.c
-index 1500ec2cc..2e74dcd66 100644
+index 1500ec2cc..14b68cf8c 100644
 --- a/drivers/hwmon/macsmc-hwmon.c
 +++ b/drivers/hwmon/macsmc-hwmon.c
 @@ -221,6 +221,313 @@ static int macsmc_hwmon_read_key(struct apple_smc *smc,
@@ -46,7 +53,7 @@ index 1500ec2cc..2e74dcd66 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = ui16 * scale;
++		*val = (s64)ui16 * scale;
 +		break;
 +	}
 +	/* signed 16-bit integer */
@@ -57,7 +64,7 @@ index 1500ec2cc..2e74dcd66 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = si16 * scale;
++		*val = (s64)si16 * scale;
 +		break;
 +	}
 +	/* unsigned 32-bit integer */
@@ -68,7 +75,7 @@ index 1500ec2cc..2e74dcd66 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = ui32 * scale;
++		*val = (s64)ui32 * scale;
 +		break;
 +	}
 +	/* signed 32-bit integer */
@@ -79,7 +86,7 @@ index 1500ec2cc..2e74dcd66 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = si32 * scale;
++		*val = (s64)si32 * scale;
 +		break;
 +	}
 +	/* 2.14 unsigned fixed point decimal */
@@ -90,7 +97,7 @@ index 1500ec2cc..2e74dcd66 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = mult_frac(be16_to_cpu(fp2e), scale, BIT(14));
++		*val = mult_frac((s64)be16_to_cpu(fp2e), scale, BIT(14));
 +		break;
 +	}
 +
@@ -102,7 +109,7 @@ index 1500ec2cc..2e74dcd66 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = mult_frac(be16_to_cpu(fp3d), scale, BIT(13));
++		*val = mult_frac((s64)be16_to_cpu(fp3d), scale, BIT(13));
 +		break;
 +	}
 +
@@ -114,7 +121,7 @@ index 1500ec2cc..2e74dcd66 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = mult_frac(be16_to_cpu(fp4c), scale, BIT(12));
++		*val = mult_frac((s64)be16_to_cpu(fp4c), scale, BIT(12));
 +		break;
 +	}
 +
@@ -126,7 +133,7 @@ index 1500ec2cc..2e74dcd66 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = mult_frac(be16_to_cpu(fp5b), scale, BIT(11));
++		*val = mult_frac((s64)be16_to_cpu(fp5b), scale, BIT(11));
 +		break;
 +	}
 +
@@ -138,7 +145,7 @@ index 1500ec2cc..2e74dcd66 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = mult_frac(be16_to_cpu(fp6a), scale, BIT(10));
++		*val = mult_frac((s64)be16_to_cpu(fp6a), scale, BIT(10));
 +		break;
 +	}
 +
@@ -150,7 +157,7 @@ index 1500ec2cc..2e74dcd66 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = mult_frac(be16_to_cpu(fp88), scale, BIT(8));
++		*val = mult_frac((s64)be16_to_cpu(fp88), scale, BIT(8));
 +		break;
 +	}
 +	/* 14.2 fixed point decimal */
@@ -176,7 +183,7 @@ index 1500ec2cc..2e74dcd66 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = mult_frac((s16)be16_to_cpu(sp1e), scale, BIT(14));
++		*val = mult_frac((s64)(s16)be16_to_cpu(sp1e), scale, 1 << 14);
 +		break;
 +	}
 +
@@ -188,7 +195,7 @@ index 1500ec2cc..2e74dcd66 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = mult_frac((s16)be16_to_cpu(sp2d), scale, BIT(13));
++		*val = mult_frac((s64)(s16)be16_to_cpu(sp2d), scale, 1 << 13);
 +		break;
 +	}
 +
@@ -200,7 +207,7 @@ index 1500ec2cc..2e74dcd66 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = mult_frac((s16)be16_to_cpu(sp3c), scale, BIT(12));
++		*val = mult_frac((s64)(s16)be16_to_cpu(sp3c), scale, 1 << 12);
 +		break;
 +	}
 +
@@ -212,7 +219,7 @@ index 1500ec2cc..2e74dcd66 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = mult_frac((s16)be16_to_cpu(sp4b), scale, BIT(11));
++		*val = mult_frac((s64)(s16)be16_to_cpu(sp4b), scale, 1 << 11);
 +		break;
 +	}
 +
@@ -224,7 +231,7 @@ index 1500ec2cc..2e74dcd66 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = mult_frac((s16)be16_to_cpu(sp5a), scale, BIT(10));
++		*val = mult_frac((s64)(s16)be16_to_cpu(sp5a), scale, 1 << 10);
 +		break;
 +	}
 +
@@ -236,7 +243,7 @@ index 1500ec2cc..2e74dcd66 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = mult_frac((s16)be16_to_cpu(sp69), scale, BIT(9));
++		*val = mult_frac((s64)(s16)be16_to_cpu(sp69), scale, 1 << 9);
 +		break;
 +	}
 +
@@ -248,7 +255,7 @@ index 1500ec2cc..2e74dcd66 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = mult_frac((s16)be16_to_cpu(sp78), scale, BIT(8));
++		*val = mult_frac((s64)(s16)be16_to_cpu(sp78), scale, 1 << 8);
 +		break;
 +	}
 +
@@ -260,7 +267,7 @@ index 1500ec2cc..2e74dcd66 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = mult_frac((s16)be16_to_cpu(sp87), scale, BIT(7));
++		*val = mult_frac((s64)(s16)be16_to_cpu(sp87), scale, 1 << 7);
 +		break;
 +	}
 +
@@ -272,7 +279,7 @@ index 1500ec2cc..2e74dcd66 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = mult_frac((s16)be16_to_cpu(sp96), scale, BIT(6));
++		*val = mult_frac((s64)(s16)be16_to_cpu(sp96), scale, 1 << 6);
 +		break;
 +	}
 +
@@ -284,7 +291,7 @@ index 1500ec2cc..2e74dcd66 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = mult_frac((s16)be16_to_cpu(spa5), scale, BIT(5));
++		*val = mult_frac((s64)(s16)be16_to_cpu(spa5), scale, 1 << 5);
 +		break;
 +	}
 +
@@ -296,7 +303,7 @@ index 1500ec2cc..2e74dcd66 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = mult_frac((s16)be16_to_cpu(spc3), scale, BIT(3));
++		*val = mult_frac((s64)(s16)be16_to_cpu(spc3), scale, 1 << 3);
 +		break;
 +	}
 +
@@ -308,7 +315,7 @@ index 1500ec2cc..2e74dcd66 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = mult_frac((s16)be16_to_cpu(spd2), scale, BIT(2));
++		*val = mult_frac((s64)(s16)be16_to_cpu(spd2), scale, 1 << 2);
 +		break;
 +	}
 +
@@ -320,7 +327,7 @@ index 1500ec2cc..2e74dcd66 100644
 +		if (ret)
 +			return ret;
 +
-+		*val = (s16)be16_to_cpu(spf0) * scale;
++		*val = (s64)(s16)be16_to_cpu(spf0) * scale;
 +		break;
 +	}
  	default:
