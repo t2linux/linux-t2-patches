@@ -1,0 +1,46 @@
+From ff7c854b031dcf80a8b1474af2cc2c39acb75bba Mon Sep 17 00:00:00 2001
+From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
+Date: Tue, 17 Nov 2026 19:11:49 -0500
+Subject: [PATCH] SMU: Add Lower power limits to NAVI14 Apple macs
+
+From: Andre Eikmeyer <dev@deq.rocks>
+
+The title explains itself, probably not gonna get upstreamed.
+
+Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
+---
+ drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c b/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c
+index f8ca5eb9a..e16d1780a 100644
+--- a/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c
++++ b/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c
+@@ -2151,6 +2151,7 @@ static int navi10_init_ppt_limits(struct smu_context *smu)
+ 	struct smu_11_0_powerplay_table *powerplay_table =
+ 		(struct smu_11_0_powerplay_table *)smu->smu_table.power_play_table;
+ 	struct smu_11_0_overdrive_table *od_settings = smu->od_settings;
++	struct pci_dev *pdev = smu->adev->pdev;
+ 	PPTable_t *pptable = smu->smu_table.driver_pptable;
+ 	uint32_t default_limit[SMU_POWER_SOURCE_COUNT];
+ 	uint32_t od_percent_upper = 0, od_percent_lower = 0;
+@@ -2176,6 +2177,16 @@ static int navi10_init_ppt_limits(struct smu_context *smu)
+ 			SMU_11_0_ODSETTING_POWERPERCENTAGE]);
+ 	}
+ 
++	if (!od_percent_lower && pdev->subsystem_vendor == PCI_VENDOR_ID_APPLE) {
++		/* The 60% value is from macOS kexts themselves, but we use 90%
++		 * for non mobile macs like iMacs, so we get the maximum performance
++		 * for both */
++		if (pdev->subsystem_device == 0x218 || pdev->subsystem_device == 0x219)
++			od_percent_lower = 90;
++		else
++			od_percent_lower = 60;
++	}
++
+ 	for (i = SMU_POWER_SOURCE_AC; i < SMU_POWER_SOURCE_COUNT; i++) {
+ 		smu->ppt_limits.range[i][SMU_PPT_LIMIT_PPT0].default_value =
+ 			default_limit[i];
+-- 
+2.55.0
+
