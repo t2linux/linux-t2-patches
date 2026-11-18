@@ -1,0 +1,107 @@
+From 41444ce71ea51bbc2dcb6e1407b45dc21e025dee Mon Sep 17 00:00:00 2001
+From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
+Date: Fri, 16 Oct 2026 11:36:12 -0400
+Subject: [PATCH 02/12] PCI: Disable pcie port on specific amd devices
+
+As mentioned in the previous commit, PWRD turns off the entire
+bridge, and if we read/write anything to the config space
+or the PCIE space when the bridge is dead, the CPU CATERR's,
+so to avoid interaction when the bridge is dead,
+we remove pcieport support for the bridges..
+
+Tested-by: Sebastian Zygadlo <szgit@icloud.com>
+Tested-by: Yossef Osman <yossef.osman@proton.me>
+Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
+---
+ arch/x86/pci/fixup.c       | 43 ++++++++++++++++++++++++++++++++++++++
+ drivers/pci/pcie/portdrv.c |  2 +-
+ include/linux/pci.h        |  1 +
+ 3 files changed, 45 insertions(+), 1 deletion(-)
+
+diff --git a/arch/x86/pci/fixup.c b/arch/x86/pci/fixup.c
+index 795d81c7a..b1697cc4a 100644
+--- a/arch/x86/pci/fixup.c
++++ b/arch/x86/pci/fixup.c
+@@ -1094,6 +1094,48 @@ static void asus_disable_nvme_d3cold(struct pci_dev *pdev)
+ }
+ DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, 0x9a09, asus_disable_nvme_d3cold);
+ 
++static const struct dmi_system_id quirk_disable_pcie_port_dmi_table[] = {
++	{
++		.matches = {
++			DMI_MATCH(DMI_SYS_VENDOR, "Apple Inc."),
++			DMI_MATCH(DMI_PRODUCT_NAME, "MacBookPro15,1"),
++		},
++	},
++	{
++		.matches = {
++			DMI_MATCH(DMI_SYS_VENDOR, "Apple Inc."),
++			DMI_MATCH(DMI_PRODUCT_NAME, "MacBookPro15,3"),
++		},
++	},
++	{
++		.matches = {
++			DMI_MATCH(DMI_SYS_VENDOR, "Apple Inc."),
++			DMI_MATCH(DMI_PRODUCT_NAME, "MacBookPro16,1"),
++		},
++	},
++	{
++		.matches = {
++			DMI_MATCH(DMI_SYS_VENDOR, "Apple Inc."),
++			DMI_MATCH(DMI_PRODUCT_NAME, "MacBookPro16,4"),
++		},
++	},
++	{}
++};
++
++static void quirk_disable_pcie_port(struct pci_dev *pdev)
++{
++	struct pci_dev *upstream = pdev;
++
++	if (dmi_check_system(quirk_disable_pcie_port_dmi_table)) {
++		while ((upstream = pci_upstream_bridge(upstream)))
++			upstream->no_pcie_port = 1;
++	}
++}
++DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_ATI, 0x67ef, quirk_disable_pcie_port);
++DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_ATI, 0x69af, quirk_disable_pcie_port);
++DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_ATI, 0x7340, quirk_disable_pcie_port);
++DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_ATI, 0x7360, quirk_disable_pcie_port);
++
+ #ifdef CONFIG_SUSPEND
+ /*
+  * Root Ports on some AMD SoCs advertise PME_Support for D3hot and D3cold, but
+@@ -1179,4 +1221,5 @@ static void quirk_tuxeo_rp_d3(struct pci_dev *pdev)
+ 	}
+ }
+ DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_AMD, 0x1502, quirk_tuxeo_rp_d3);
++
+ #endif /* CONFIG_SUSPEND */
+diff --git a/drivers/pci/pcie/portdrv.c b/drivers/pci/pcie/portdrv.c
+index a9cbfc1d2..d2f19e566 100644
+--- a/drivers/pci/pcie/portdrv.c
++++ b/drivers/pci/pcie/portdrv.c
+@@ -688,7 +688,7 @@ static int pcie_portdrv_probe(struct pci_dev *dev,
+ 	int type = pci_pcie_type(dev);
+ 	int status;
+ 
+-	if (!pci_is_pcie(dev) ||
++	if (!pci_is_pcie(dev) || dev->no_pcie_port ||
+ 	    ((type != PCI_EXP_TYPE_ROOT_PORT) &&
+ 	     (type != PCI_EXP_TYPE_UPSTREAM) &&
+ 	     (type != PCI_EXP_TYPE_DOWNSTREAM) &&
+diff --git a/include/linux/pci.h b/include/linux/pci.h
+index d31a8d107..fcb4f5893 100644
+--- a/include/linux/pci.h
++++ b/include/linux/pci.h
+@@ -420,6 +420,7 @@ struct pci_dev {
+ 	unsigned int	no_d1d2:1;	/* D1 and D2 are forbidden */
+ 	unsigned int	no_d3cold:1;	/* D3cold is forbidden */
+ 	unsigned int	bridge_d3:1;	/* Allow D3 for bridge */
++	unsigned int	no_pcie_port:1; /* PCIE Port driver is forbidden */
+ 	unsigned int	d3cold_allowed:1;	/* D3cold is allowed by user */
+ 	unsigned int	mmio_always_on:1;	/* Disallow turning off io/mem
+ 						   decoding during BAR sizing */
+-- 
+2.55.0
+

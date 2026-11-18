@@ -1,0 +1,70 @@
+From 9f19fcc4931579f2bcf0ad27c15a82d3da420fed Mon Sep 17 00:00:00 2001
+From: Andre Eikmeyer <dev@deq.rocks>
+Date: Sat, 24 Oct 2026 17:22:30 -0400
+Subject: [PATCH 10/12] drm/amd/display: Refuse DP AUX while GMUX keeps the GPU
+ off
+
+fwupd reads /dev/drm_dp_aux* while the GPU is runtime suspended. The AUX
+device holds no runtime PM reference, so the transfer touched registers of
+the powered off GPU and caused a CPU CATTER.
+
+Tested-by: Sebastian Zygadlo <szgit@icloud.com>
+Tested-by: Yossef Osman <yossef.osman@proton.me>
+Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
+Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
+---
+ .../display/amdgpu_dm/amdgpu_dm_mst_types.c   | 19 +++++++++++++++++--
+ 1 file changed, 17 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_mst_types.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_mst_types.c
+index 7261317d4..0d11a9443 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_mst_types.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_mst_types.c
+@@ -24,6 +24,7 @@
+  *
+  */
+ 
++#include <linux/pm_runtime.h>
+ #include <linux/vmalloc.h>
+ #include <drm/display/drm_dp_helper.h>
+ #include <drm/display/drm_dp_mst_helper.h>
+@@ -111,6 +112,20 @@ STATIC_IFN_KUNIT ssize_t dm_dp_aux_transfer(struct drm_dp_aux *aux,
+ 	if (WARN_ON(msg->size > 16))
+ 		return -E2BIG;
+ 
++	ddc = TO_DM_AUX(aux)->ddc_service;
++	adev = ddc->ctx->driver_context;
++
++	/*
++	 * User space reaches this through the drm_dp_aux_dev character device
++	 * check if the gpu is active or not.
++	 */
++	if (adev->dev) {
++		pm_runtime_get_noresume(adev->dev);
++		if (!READ_ONCE(adev->runpm_active)) {
++			pm_runtime_put_noidle(adev->dev);
++			return -EBUSY;
++		}
++	}
+ 	payload.address = msg->address;
+ 	payload.data = msg->buffer;
+ 	payload.length = msg->size;
+@@ -126,13 +141,13 @@ STATIC_IFN_KUNIT ssize_t dm_dp_aux_transfer(struct drm_dp_aux *aux,
+ 	result = dc_link_aux_transfer_raw(TO_DM_AUX(aux)->ddc_service, &payload,
+ 				      &operation_result);
+ 
++	if (adev->dev)
++		pm_runtime_put_autosuspend(adev->dev);
+ 	/*
+ 	 * w/a on certain intel platform where hpd is unexpected to pull low during
+ 	 * 1st sideband message transaction by return AUX_RET_ERROR_HPD_DISCON
+ 	 * aux transaction is succuess in such case, therefore bypass the error
+ 	 */
+-	ddc = TO_DM_AUX(aux)->ddc_service;
+-	adev = ddc->ctx->driver_context;
+ 	if (adev->dm.aux_hpd_discon_quirk) {
+ 		if (msg->address == DP_SIDEBAND_MSG_DOWN_REQ_BASE &&
+ 			operation_result == AUX_RET_ERROR_HPD_DISCON) {
+-- 
+2.55.0
+

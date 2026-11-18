@@ -1,0 +1,69 @@
+From 903b9127532d19438fc95e312683dba750a41826 Mon Sep 17 00:00:00 2001
+From: Andre Eikmeyer <dev@deq.rocks>
+Date: Sat, 24 Oct 2026 18:12:28 -0400
+Subject: [PATCH 11/12] drm/amdgpu: Skip AC/DC notification while the GPU is
+ runtime suspended
+
+Plugging or unplugging the charger raises an ACPI AC event. The handler
+sent the new power source to the SMU without a runtime PM reference, so
+with GMUX keeping the GPU off every SMU message spun on skipped register
+reads for seconds. A runtime resume racing with that left the SMU
+firmware unable to start on MacBookPro15,1 and the GPU in runtime PM
+error state. Record the power source only and let the resume apply it.
+
+Tested-by: Sebastian Zygadlo <szgit@icloud.com>
+Tested-by: Yossef Osman <yossef.osman@proton.me>
+Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
+Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
+---
+ drivers/gpu/drm/amd/pm/amdgpu_dpm.c | 19 ++++++++++++++-----
+ 1 file changed, 14 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/gpu/drm/amd/pm/amdgpu_dpm.c b/drivers/gpu/drm/amd/pm/amdgpu_dpm.c
+index 808be6c42..3c6dde386 100644
+--- a/drivers/gpu/drm/amd/pm/amdgpu_dpm.c
++++ b/drivers/gpu/drm/amd/pm/amdgpu_dpm.c
+@@ -30,6 +30,7 @@
+ #include "amd_pcie.h"
+ #include "amdgpu_display.h"
+ #include "hwmgr.h"
++#include <linux/pm_runtime.h>
+ #include <linux/power_supply.h>
+ #include "amdgpu_smu.h"
+ 
+@@ -498,19 +499,27 @@ int amdgpu_dpm_smu_i2c_bus_access(struct amdgpu_device *adev,
+ 
+ void amdgpu_pm_acpi_event_handler(struct amdgpu_device *adev)
+ {
++	int active = 0;
++
+ 	if (adev->pm.dpm_enabled) {
+ 		mutex_lock(&adev->pm.mutex);
++		active = pm_runtime_get_if_active(adev->dev);
++
+ 		if (power_supply_is_system_supplied() > 0)
+ 			adev->pm.ac_power = true;
+ 		else
+ 			adev->pm.ac_power = false;
+ 
+-		if (adev->powerplay.pp_funcs &&
+-		    adev->powerplay.pp_funcs->notify_ac_dc)
+-			amdgpu_dpm_notify_ac_dc(adev);
++		if (active > 0) {
++			if (adev->powerplay.pp_funcs &&
++			    adev->powerplay.pp_funcs->notify_ac_dc)
++				amdgpu_dpm_notify_ac_dc(adev);
+ 
+-		if (is_support_sw_smu(adev))
+-			smu_set_ac_dc(adev->powerplay.pp_handle, true);
++			if (is_support_sw_smu(adev))
++				smu_set_ac_dc(adev->powerplay.pp_handle, true);
++
++			pm_runtime_put(adev->dev);
++		}
+ 
+ 		mutex_unlock(&adev->pm.mutex);
+ 	}
+-- 
+2.55.0
+

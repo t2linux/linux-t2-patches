@@ -1,0 +1,51 @@
+From 10cd339bf8024cacdddde782b97947b41608fe36 Mon Sep 17 00:00:00 2001
+From: Andre Eikmeyer <dev@deq.rocks>
+Date: Sat, 24 Oct 2026 18:19:59 -0400
+Subject: [PATCH 12/12] drm/amd/display: Skip panel power savings on eDP links
+ without a panel
+
+When GMUX routes the internal panel to the integrated GPU, the eDP link
+of the AMD GPU has no sink. It still exposed panel_power_savings, and
+tuned writes it on every switch between AC and battery. Each write sends
+a hotplug event and the following connector probe runtime resumes the
+GPU that GMUX had powered off. Only create the attribute when the link
+has a panel.
+
+Tested-by: Sebastian Zygadlo <szgit@icloud.com>
+Tested-by: Yossef Osman <yossef.osman@proton.me>
+Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
+Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
+---
+ drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_backlight.c    | 3 +++
+ .../drm/amd/display/amdgpu_dm/tests/amdgpu_dm_backlight_test.c | 1 +
+ 2 files changed, 4 insertions(+)
+
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_backlight.c b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_backlight.c
+index 703d0617d..c8fbd2167 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_backlight.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm_backlight.c
+@@ -761,6 +761,9 @@ amdgpu_dm_should_create_sysfs(struct amdgpu_dm_connector *amdgpu_dm_connector)
+ 	if (amdgpu_dm_connector->base.connector_type != DRM_MODE_CONNECTOR_eDP)
+ 		return false;
+ 
++	if (!amdgpu_dm_connector->dc_link->edp_sink_present)
++		return false;
++
+ 	if (link->panel_type != PANEL_TYPE_LCD && !link->panel_config.cacp.cacp_supported)
+ 		return false;
+ 
+diff --git a/drivers/gpu/drm/amd/display/amdgpu_dm/tests/amdgpu_dm_backlight_test.c b/drivers/gpu/drm/amd/display/amdgpu_dm/tests/amdgpu_dm_backlight_test.c
+index 7ca17f803..d71f5e5da 100644
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/tests/amdgpu_dm_backlight_test.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/tests/amdgpu_dm_backlight_test.c
+@@ -52,6 +52,7 @@ static void setup_test_connector(struct kunit *test,
+ 	fixture->aconnector->dc_link = fixture->link;
+ 	fixture->aconnector->base.dev = &fixture->adev->ddev;
+ 	fixture->link->connector_signal = signal;
++	fixture->link->edp_sink_present = true;
+ }
+ 
+ static void setup_test_dm_ddev(struct kunit *test, struct amdgpu_display_manager *dm)
+-- 
+2.55.0
+

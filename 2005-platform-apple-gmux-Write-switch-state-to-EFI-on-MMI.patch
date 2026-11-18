@@ -1,0 +1,118 @@
+From 0817d5163ac284d3c704344c6945fdbf66dfdb80 Mon Sep 17 00:00:00 2001
+From: Andre Eikmeyer <dev@deq.rocks>
+Date: Mon, 19 Oct 2026 21:12:07 -0400
+Subject: [PATCH 05/12] platform/apple-gmux: Write switch state to EFI on MMIO
+ devices
+
+On T2 devices (MMIO), the T2 coprocessor reads gpu-active efi
+variable, and macOS seems to write it, so to properly communciate
+to the T2 coprocessor, we write gpu-active.
+
+Tested-by: Sebastian Zygadlo <szgit@icloud.com>
+Tested-by: Yossef Osman <yossef.osman@proton.me>
+Co-developed: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
+Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
+Signed-off-by: Andre Eikmeyer <dev@deq.rocks>
+---
+ drivers/platform/x86/Kconfig      |  1 +
+ drivers/platform/x86/apple-gmux.c | 40 +++++++++++++++++++++++++++++++
+ 2 files changed, 41 insertions(+)
+
+diff --git a/drivers/platform/x86/Kconfig b/drivers/platform/x86/Kconfig
+index c37e76066..01895d511 100644
+--- a/drivers/platform/x86/Kconfig
++++ b/drivers/platform/x86/Kconfig
+@@ -217,6 +217,7 @@ config APPLE_GMUX
+ 	depends on ACPI && PCI
+ 	depends on PNP
+ 	depends on BACKLIGHT_CLASS_DEVICE
++	depends on EFI
+ 	help
+ 	  This driver provides support for the gmux device found on many
+ 	  Apple laptops, which controls the display mux for the hybrid
+diff --git a/drivers/platform/x86/apple-gmux.c b/drivers/platform/x86/apple-gmux.c
+index 6ec74a702..6d95ddf92 100644
+--- a/drivers/platform/x86/apple-gmux.c
++++ b/drivers/platform/x86/apple-gmux.c
+@@ -26,6 +26,7 @@
+ #include <linux/debugfs.h>
+ #include <linux/workqueue.h>
+ #include <linux/pm_runtime.h>
++#include <linux/efi.h>
+ #include <acpi/video.h>
+ #include <asm/io.h>
+ 
+@@ -489,6 +490,32 @@ static void gmux_write_switch_state(struct apple_gmux_data *gmux_data)
+ 		gmux_write8(gmux_data, GMUX_PORT_SWITCH_EXTERNAL, 3);
+ }
+ 
++#define APPLE_GPU_VARS_GUID EFI_GUID(0xfa4ce28d, 0xb62f, 0x4c99, \
++				     0x9c, 0xc3, 0x68, 0x15, 0x68, 0x6e, 0x30, 0xf9)
++
++static efi_char16_t gmux_gpu_active_name[] = L"gpu-active";
++
++static void gmux_write_switch_state_efi(struct apple_gmux_data *gmux_data)
++{
++	efi_guid_t guid = APPLE_GPU_VARS_GUID;
++	u32 active = gmux_data->switch_state_display == VGA_SWITCHEROO_IGD;
++	efi_status_t status;
++
++	if (!efivar_is_available() ||
++			!efi_rt_services_supported(EFI_RT_SUPPORTED_SET_VARIABLE))
++		return;
++
++	status = efivar_set_variable(gmux_gpu_active_name, &guid,
++				     EFI_VARIABLE_NON_VOLATILE |
++				     EFI_VARIABLE_BOOTSERVICE_ACCESS |
++				     EFI_VARIABLE_RUNTIME_ACCESS,
++				     sizeof(active), &active);
++	if (status != EFI_SUCCESS)
++		pr_warn("writing gpu-active failed: 0x%lx\n", status);
++	else
++		pr_debug("gpu-active: %u\n", active);
++}
++
+ static int gmux_switchto(enum vga_switcheroo_client_id id)
+ {
+ 	apple_gmux_data->switch_state_ddc = id;
+@@ -497,6 +524,8 @@ static int gmux_switchto(enum vga_switcheroo_client_id id)
+ 		apple_gmux_data->switch_state_external = id;
+ 
+ 	gmux_write_switch_state(apple_gmux_data);
++	if (apple_gmux_data->type == APPLE_GMUX_TYPE_MMIO)
++		gmux_write_switch_state_efi(apple_gmux_data);
+ 
+ 	return 0;
+ }
+@@ -1239,6 +1268,15 @@ static void gmux_remove(struct pnp_dev *pnp)
+ 	kfree(gmux_data);
+ }
+ 
++static void gmux_shutdown(struct pnp_dev *pnp)
++{
++	struct apple_gmux_data *gmux_data = pnp_get_drvdata(pnp);
++
++	gmux_write_switch_state_efi(gmux_data);
++
++	gmux_remove(pnp);
++}
++
+ static const struct pnp_device_id gmux_device_ids[] = {
+ 	{ .id = GMUX_ACPI_HID },
+ 	{ }
+@@ -1253,6 +1291,7 @@ static struct pnp_driver gmux_pnp_driver = {
+ 	.name		= "apple-gmux",
+ 	.probe		= gmux_probe,
+ 	.remove		= gmux_remove,
++	.shutdown	= gmux_shutdown,
+ 	.id_table	= gmux_device_ids,
+ 	.driver		= {
+ 			.pm = &gmux_dev_pm_ops,
+@@ -1264,3 +1303,4 @@ MODULE_AUTHOR("Seth Forshee <seth.forshee@canonical.com>");
+ MODULE_DESCRIPTION("Apple Gmux Driver");
+ MODULE_LICENSE("GPL");
+ MODULE_DEVICE_TABLE(pnp, gmux_device_ids);
++MODULE_IMPORT_NS("EFIVAR");
+-- 
+2.55.0
+
