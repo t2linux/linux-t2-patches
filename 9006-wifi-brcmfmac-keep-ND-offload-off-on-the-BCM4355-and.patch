@@ -1,0 +1,68 @@
+From 4dce3bc04ce25711e03f8430283a87136726e46c Mon Sep 17 00:00:00 2001
+From: Aditya Garg <aditya.garg@linux.dev>
+Date: Wed, 18 Nov 2026 06:05:59 +0000
+Subject: [PATCH] wifi: brcmfmac: keep ND offload off on the BCM4355 and
+ BCM4364 while awake
+
+brcmfmac enables the firmware's ARP and IPv6 ND offload (ndoe) whenever
+the interface is up and not promiscuous. On the Apple firmware for the
+BCM4355 and BCM4364, ndoe makes IPv6 downloads collapse.
+MacBookPro15,1 with BCM4364/3, IPv6 downloads topped out at 55 Mbit/s.
+Same behaviour on the MacBookPro16,1 with the later chip revision and
+MacBookAir8,1 with BCM4355. Also tested on BCM4377 and turned out this
+chip is not affected.
+
+macOS runs these offloads only in sleep. It enables them on suspend
+and disables them on wake. Keep them off on the BCM4355 and BCM4364.
+
+Signed-off-by: Aditya Garg <aditya.garg@linux.dev>
+---
+ .../broadcom/brcm80211/brcmfmac/core.c         | 18 +++++++++++++++++-
+ 1 file changed, 17 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/core.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/core.c
+index 92ec269f43b2..d054d33f3456 100644
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/core.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/core.c
+@@ -13,6 +13,7 @@
+ #include <net/addrconf.h>
+ #include <net/ieee80211_radiotap.h>
+ #include <net/ipv6.h>
++#include <brcm_hw_ids.h>
+ #include <brcmu_utils.h>
+ #include <brcmu_wifi.h>
+ 
+@@ -97,6 +98,7 @@ void brcmf_configure_arp_nd_offload(struct brcmf_if *ifp, bool enable)
+ {
+ 	s32 err;
+ 	u32 mode;
++	bool nd_enable = enable;
+ 
+ 	if (enable && brcmf_is_apmode_operating(ifp->drvr->wiphy)) {
+ 		brcmf_dbg(TRACE, "Skip ARP/ND offload enable when soft AP is running\n");
+@@ -125,7 +127,21 @@ void brcmf_configure_arp_nd_offload(struct brcmf_if *ifp, bool enable)
+ 		}
+ 	}
+ 
+-	err = brcmf_fil_iovar_int_set(ifp, "ndoe", enable);
++	/* With ND offload on while awake, the Apple firmware for the BCM4355
++	 * and BCM4364 makes IPv6 downloads drop to low rates. macOS runs ND
++	 * offload only in sleep, keep it off on this chip.
++	 */
++	if (nd_enable &&
++	    (ifp->drvr->bus_if->chip == BRCM_CC_4355_CHIP_ID ||
++	     ifp->drvr->bus_if->chip == BRCM_CC_4364_CHIP_ID) &&
++	    ifp->drvr->settings->board_type &&
++	    !strncmp(ifp->drvr->settings->board_type, "apple,", 6)) {
++		brcmf_dbg(TRACE, "Skip ND offload enable on BCM%x, board_type=%s\n",
++			  ifp->drvr->bus_if->chip, ifp->drvr->settings->board_type);
++		nd_enable = false;
++	}
++
++	err = brcmf_fil_iovar_int_set(ifp, "ndoe", nd_enable);
+ 	if (err) {
+ 		brcmf_dbg(TRACE, "failed to configure (%d) ND offload err = %d\n",
+ 			  enable, err);
+-- 
+2.56.0
+
