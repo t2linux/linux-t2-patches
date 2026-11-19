@@ -1,0 +1,128 @@
+From: Diego Stamigni <diego.stamigni@gmail.com>
+Subject: [PATCH] drm/amd/pm: Work around Apple W5700X startup clock collapse
+
+On my MacPro7,1 with an Apple W5700X, the factory GFX endpoints are
+300/2025 MHz but fresh SMU exports and DPM queries report 300/300 MHz.
+The GPU remains near 300 MHz under load with automatic policy. Runtime
+table reloads and stock performance policies did not restore boosting.
+
+Lower only the prepared GFX upper endpoint to 2000 MHz before the
+ordinary first SMU upload. This restored automatic boosting to about
+1955 MHz on the tested board, including repeat boots and a full T2
+kernel build. Preserve the original factory table, voltage, power and
+thermal settings, and leave all other table fields unchanged.
+
+Restrict the workaround to the observed Apple PCI/subsystem/revision,
+firmware/interface versions, table metadata and original/prepared table
+shapes. Exclude custom tables, active overdrive and unsupported contexts.
+A mismatch leaves stock initialization unchanged without failing probe.
+Read packed descriptor members directly to avoid an unaligned pointer.
+
+The firmware cause and operation with the unchanged 2025 MHz endpoint
+remain unresolved. DC-mode behavior and reset/resume have not been
+validated; the factory DC-mode ceiling is deliberately unchanged.
+
+Link: https://github.com/t2linux/kernel/issues/29
+Link: https://github.com/diegostamigni/macpro-w5700x-linux
+
+Signed-off-by: Diego Stamigni <diego.stamigni@gmail.com>
+
+---
+diff --git a/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c b/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c
+--- a/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c
++++ b/drivers/gpu/drm/amd/pm/swsmu/smu11/navi10_ppt.c
+@@ -470,6 +470,85 @@
+ 	return 0;
+ }
+ 
++/*
++ * Experimental Apple W5700X first-upload diagnostic. This only lowers the
++ * prepared table's GFX endpoint; ordinary SMU setup owns the existing upload.
++ * A guard mismatch leaves stock behavior unchanged and cannot fail probe.
++ */
++static bool navi10_w5700x_early_ppt_shape(const PPTable_t *ppt)
++{
++	return ppt->Version == PPTABLE_NV10_SMU_VERSION &&
++		ppt->DpmDescriptor[PPCLK_GFXCLK].VoltageMode == VOLTAGE_MODE_AVFS_SS &&
++		!ppt->DpmDescriptor[PPCLK_GFXCLK].SnapToDiscrete &&
++		ppt->DpmDescriptor[PPCLK_GFXCLK].NumDiscreteLevels == 2 &&
++		ppt->FreqTableGfx[0] == 300 && ppt->FreqTableGfx[1] == 2025 &&
++		ppt->GfxclkFinit == 800 && ppt->GfxclkFidle == 800 &&
++		ppt->MinVoltageGfx == 3000 && ppt->MaxVoltageGfx == 4400 &&
++		ppt->MinVoltageSoc == 3000 && ppt->MaxVoltageSoc == 4200 &&
++		ppt->SocketPowerLimitAc[0] == 250 &&
++		ppt->SocketPowerLimitDc[0] == 250 &&
++		ppt->DcModeMaxFreq[PPCLK_GFXCLK] == 2025 &&
++		ppt->DpmDescriptor[PPCLK_UCLK].SnapToDiscrete == 1 &&
++		ppt->DpmDescriptor[PPCLK_UCLK].NumDiscreteLevels == 4 &&
++		ppt->FreqTableUclk[0] == 100 && ppt->FreqTableUclk[1] == 500 &&
++		ppt->FreqTableUclk[2] == 625 && ppt->FreqTableUclk[3] == 875 &&
++		!ppt->DpmDescriptor[PPCLK_SOCCLK].SnapToDiscrete &&
++		ppt->DpmDescriptor[PPCLK_SOCCLK].NumDiscreteLevels == 2 &&
++		ppt->FreqTableSocclk[0] == 507 && ppt->FreqTableSocclk[1] == 1267;
++}
++
++static void navi10_w5700x_prepare_early_ppt(struct smu_context *smu)
++{
++	struct smu_table_context *table;
++	const struct smu_11_0_powerplay_table *factory;
++	struct amdgpu_device *adev;
++	const struct pci_dev *pdev;
++	PPTable_t *prepared;
++
++	if (!smu || !smu->adev || !smu->adev->pdev)
++		return;
++	adev = smu->adev;
++	pdev = adev->pdev;
++	if (pdev->vendor != 0x1002 || pdev->device != 0x7310 ||
++	    pdev->subsystem_vendor != 0x106b || pdev->subsystem_device != 0x0212 ||
++	    pdev->revision != 0)
++		return;
++
++	table = &smu->smu_table;
++	factory = table->power_play_table;
++	prepared = table->driver_pptable;
++	/* These are host fields only: do not query features during SMU setup. */
++	if (amdgpu_sriov_vf(adev) || adev->scpm_enabled || adev->no_hw_access ||
++	    smu->smc_fw_version != 0x002a4100 ||
++	    smu->smc_driver_if_version != SMU11_DRIVER_IF_VERSION_NV10 ||
++	    smu->smc_fw_if_version != SMU11_DRIVER_IF_VERSION_NV10 ||
++	    smu->od_enabled || smu->user_dpm_profile.user_od ||
++	    smu->uploading_custom_pp_table || table->hardcode_pptable ||
++	    table->boot_values.pp_table_id || !factory || !prepared ||
++	    prepared == &factory->smc_pptable ||
++	    table->power_play_table_size != sizeof(*factory)) {
++		dev_info(adev->dev, "W5700X early PPT2000: skipped context guard; prepared table unchanged\n");
++		return;
++	}
++	if (le16_to_cpu(factory->header.structuresize) != sizeof(*factory) ||
++	    factory->header.format_revision != 12 || factory->header.content_revision ||
++	    factory->table_revision != 1 ||
++	    le16_to_cpu(factory->table_size) != offsetof(struct smu_11_0_powerplay_table, smc_pptable) ||
++	    le32_to_cpu(factory->golden_pp_id) != 2260 ||
++	    le32_to_cpu(factory->golden_revision) != 14975 ||
++	    le16_to_cpu(factory->format_id) != 125 || factory->platform_caps ||
++	    factory->overdrive_table.cap[SMU_11_0_ODCAP_GFXCLK_LIMITS] ||
++	    factory->overdrive_table.cap[SMU_11_0_ODCAP_GFXCLK_CURVE] ||
++	    !navi10_w5700x_early_ppt_shape(&factory->smc_pptable) ||
++	    !navi10_w5700x_early_ppt_shape(prepared)) {
++		dev_info(adev->dev, "W5700X early PPT2000: skipped factory-shape guard; prepared table unchanged\n");
++		return;
++	}
++
++	prepared->FreqTableGfx[1] = 2000;
++	dev_info(adev->dev, "W5700X early PPT2000: prepared GFX maximum 2025 -> 2000 MHz before normal upload; voltage and power unchanged\n");
++}
++
+ static int navi10_setup_pptable(struct smu_context *smu)
+ {
+ 	int ret = 0;
+@@ -490,6 +569,8 @@
+ 	if (ret)
+ 		return ret;
+ 
++	navi10_w5700x_prepare_early_ppt(smu);
++
+ 	return navi10_init_ppt_limits(smu);
+ }
+ 
