@@ -1,4 +1,4 @@
-From bd6a6885c102c99f6e6186f99a57d46ae8b11678 Mon Sep 17 00:00:00 2001
+From 25cebf9e6f8ad31b7d67bb72da14cda0bf779644 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sun, 4 Oct 2026 16:54:53 -0400
 Subject: [PATCH 09/14] treewide: disable other rtc's in t2 macs
@@ -9,10 +9,34 @@ machines so macsmc-rtc is the only clock.
 
 Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---
+ arch/x86/kernel/rtc.c   | 5 +++++
  drivers/acpi/acpi_tad.c | 5 +++++
  drivers/rtc/rtc-cmos.c  | 5 +++++
- 2 files changed, 10 insertions(+)
+ 3 files changed, 15 insertions(+)
 
+diff --git a/arch/x86/kernel/rtc.c b/arch/x86/kernel/rtc.c
+index 314b062a1..90f24e6ce 100644
+--- a/arch/x86/kernel/rtc.c
++++ b/arch/x86/kernel/rtc.c
+@@ -3,6 +3,7 @@
+  * RTC related functions
+  */
+ #include <linux/acpi.h>
++#include <linux/platform_data/x86/apple.h>
+ #include <linux/platform_device.h>
+ #include <linux/mc146818rtc.h>
+ #include <linux/export.h>
+@@ -101,6 +102,10 @@ EXPORT_SYMBOL(rtc_cmos_write);
+ 
+ int update_persistent_clock64(struct timespec64 now)
+ {
++	if (IS_ENABLED(CONFIG_MACSMC_ACPI) &&
++			IS_ENABLED(CONFIG_RTC_DRV_MACSMC) && has_apple_t2_chip)
++		return -ENODEV;
++
+ 	return x86_platform.set_wallclock(&now);
+ }
+ 
 diff --git a/drivers/acpi/acpi_tad.c b/drivers/acpi/acpi_tad.c
 index 45459a4ca..a13716451 100644
 --- a/drivers/acpi/acpi_tad.c

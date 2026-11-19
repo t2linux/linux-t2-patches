@@ -1,4 +1,4 @@
-From cee805c14127b695bde44756c86ac018007e36af Mon Sep 17 00:00:00 2001
+From 8e55b7053a8d463d5866385b7a0beb826d760037 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Fri, 11 Sep 2026 16:34:42 -0400
 Subject: [PATCH 02/14] platform/x86: add backend for macsmc in intel macs
@@ -54,7 +54,7 @@ index cab20a414..933aed4a8 100644
  # ASUS
 diff --git a/drivers/platform/x86/macsmc-acpi.c b/drivers/platform/x86/macsmc-acpi.c
 new file mode 100644
-index 000000000..f66f145c8
+index 000000000..3a10904cf
 --- /dev/null
 +++ b/drivers/platform/x86/macsmc-acpi.c
 @@ -0,0 +1,685 @@
@@ -106,8 +106,8 @@ index 000000000..f66f145c8
 +#define SMC_IO_INT_ID_PORT		0x1F
 +
 +#define SMC_MMIO_KEY_DATA		0
-+#define SMC_MMIO_KEY_INFO_SIZE		(SMC_MMIO_KEY_DATA + 4)
-+#define SMC_MMIO_KEY_INFO_FLAGS		(SMC_MMIO_KEY_DATA + 5)
++#define SMC_MMIO_KEY_INFO_SIZE		(SMC_MMIO_KEY_DATA + 5)
++#define SMC_MMIO_KEY_INFO_FLAGS		(SMC_MMIO_KEY_DATA + 6)
 +#define SMC_MMIO_KEY_INTERRUPT_STATUS	0x4000
 +#define SMC_MMIO_KEY_STATUS		0x4005
 +#define SMC_MMIO_KEY_NAME		0x78
