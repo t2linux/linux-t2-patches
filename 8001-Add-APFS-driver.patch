@@ -1,12 +1,12 @@
-From ef4abdf34c577a3b185c17067b2f38ecf3c27207 Mon Sep 17 00:00:00 2001
+From c81d8dbbd4387bf9789219c48ebe1075c9d1e69d Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Wed, 11 Nov 2026 04:01:26 +0000
+Date: Thu, 19 Nov 2026 00:40:52 +0000
 Subject: [PATCH] Add APFS driver
 
 ---
  fs/apfs/Makefile                  |   28 +
- fs/apfs/apfs.h                    | 1374 +++++++++++++
+ fs/apfs/apfs.h                    | 1384 +++++++++++++
  fs/apfs/apfs_raw.h                | 1570 ++++++++++++++
  fs/apfs/btree.c                   | 1174 +++++++++++
  fs/apfs/compress.c                |  478 +++++
@@ -33,13 +33,13 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/spaceman.c                | 1480 ++++++++++++++
  fs/apfs/super.c                   | 2280 +++++++++++++++++++++
  fs/apfs/symlink.c                 |   80 +
- fs/apfs/transaction.c             | 1045 ++++++++++
+ fs/apfs/transaction.c             | 1059 ++++++++++
  fs/apfs/unicode.c                 | 3156 +++++++++++++++++++++++++++++
  fs/apfs/unicode.h                 |   27 +
  fs/apfs/version.h                 |    1 +
  fs/apfs/xattr.c                   |  923 +++++++++
  fs/apfs/xfield.c                  |  171 ++
- 34 files changed, 27479 insertions(+)
+ 34 files changed, 27503 insertions(+)
  create mode 100644 fs/apfs/Makefile
  create mode 100644 fs/apfs/apfs.h
  create mode 100644 fs/apfs/apfs_raw.h
@@ -111,10 +111,10 @@ index 000000000..2bafc31f1
 +	make -C $(KERNEL_DIR) M=$(PWD) clean
 diff --git a/fs/apfs/apfs.h b/fs/apfs/apfs.h
 new file mode 100644
-index 000000000..f1cf5f9e3
+index 000000000..14e483951
 --- /dev/null
 +++ b/fs/apfs/apfs.h
-@@ -0,0 +1,1374 @@
+@@ -0,0 +1,1384 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -188,6 +188,10 @@ index 000000000..f1cf5f9e3
 +		bh->b_end_io = end_buffer_write_sync;			\
 +	submit_bh(op, op_flags, bh);					\
 +} while (0)
++#endif
++
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 4, 0)
++#define page_buffers(page)	folio_buffers(page_folio(page))
 +#endif
 +
 +/*
@@ -1047,6 +1051,12 @@ index 000000000..f1cf5f9e3
 +	ASSERT(le64_to_cpu((obj)->o_xid) == APFS_NXI(sb)->nx_xid);	\
 +} while (0)
 +
++#if LINUX_VERSION_CODE < KERNEL_VERSION(7, 4, 0)
++#define CONST_7_4
++#else
++#define CONST_7_4 const
++#endif
++
 +/* btree.c */
 +extern struct apfs_node *apfs_query_root(const struct apfs_query *query);
 +extern struct apfs_query *apfs_alloc_query(struct apfs_node *node,
@@ -1106,17 +1116,17 @@ index 000000000..f1cf5f9e3
 +extern int apfs_create(struct mnt_idmap *idmap, struct inode *dir,
 +		       struct dentry *dentry, umode_t mode, bool excl);
 +#else
-+extern int apfs_mknod(struct mnt_idmap *idmap, struct inode *dir,
++extern int apfs_mknod(CONST_7_4 struct mnt_idmap *idmap, struct inode *dir,
 +		      struct dentry *dentry, umode_t mode, dev_t rdev);
-+extern struct dentry *apfs_mkdir(struct mnt_idmap *idmap, struct inode *dir, struct dentry *dentry, umode_t mode);
-+extern int apfs_rename(struct mnt_idmap *idmap, struct inode *old_dir,
++extern struct dentry *apfs_mkdir(CONST_7_4 struct mnt_idmap *idmap, struct inode *dir, struct dentry *dentry, umode_t mode);
++extern int apfs_rename(CONST_7_4 struct mnt_idmap *idmap, struct inode *old_dir,
 +		       struct dentry *old_dentry, struct inode *new_dir,
 +		       struct dentry *new_dentry, unsigned int flags);
 +# if LINUX_VERSION_CODE < KERNEL_VERSION(7, 3, 0)
 +extern int apfs_create(struct mnt_idmap *idmap, struct inode *dir,
 +		       struct dentry *dentry, umode_t mode, bool excl);
 +# else
-+extern int apfs_create(struct mnt_idmap *idmap, struct inode *dir,
++extern int apfs_create(CONST_7_4 struct mnt_idmap *idmap, struct inode *dir,
 +		       struct dentry *dentry, umode_t mode);
 +# endif
 +#endif
@@ -1181,7 +1191,7 @@ index 000000000..f1cf5f9e3
 +extern int apfs_setattr(struct user_namespace *mnt_userns,
 +			struct dentry *dentry, struct iattr *iattr);
 +#else
-+extern int apfs_setattr(struct mnt_idmap *idmap,
++extern int apfs_setattr(CONST_7_4 struct mnt_idmap *idmap,
 +			struct dentry *dentry, struct iattr *iattr);
 +#endif
 +
@@ -1206,7 +1216,7 @@ index 000000000..f1cf5f9e3
 +		const struct path *path, struct kstat *stat, u32 request_mask,
 +		unsigned int query_flags);
 +#else
-+extern int apfs_getattr(struct mnt_idmap *idmap,
++extern int apfs_getattr(CONST_7_4 struct mnt_idmap *idmap,
 +		const struct path *path, struct kstat *stat, u32 request_mask,
 +		unsigned int query_flags);
 +#endif
@@ -1219,7 +1229,7 @@ index 000000000..f1cf5f9e3
 +
 +#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0) || RHEL_VERSION_GE(9, 6)
 +extern int apfs_fileattr_get(struct dentry *dentry, struct fileattr *fa);
-+extern int apfs_fileattr_set(struct mnt_idmap *idmap, struct dentry *dentry, struct fileattr *fa);
++extern int apfs_fileattr_set(CONST_7_4 struct mnt_idmap *idmap, struct dentry *dentry, struct fileattr *fa);
 +#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 13, 0)
 +extern int apfs_fileattr_get(struct dentry *dentry, struct fileattr *fa);
 +extern int apfs_fileattr_set(struct user_namespace *mnt_userns, struct dentry *dentry, struct fileattr *fa);
@@ -4731,7 +4741,7 @@ index 000000000..2e05e7a02
 +}
 diff --git a/fs/apfs/dir.c b/fs/apfs/dir.c
 new file mode 100644
-index 000000000..9caba9f0c
+index 000000000..223c5d0b7
 --- /dev/null
 +++ b/fs/apfs/dir.c
 @@ -0,0 +1,1513 @@
@@ -5439,7 +5449,7 @@ index 000000000..9caba9f0c
 +int apfs_mknod(struct user_namespace *mnt_userns, struct inode *dir,
 +	       struct dentry *dentry, umode_t mode, dev_t rdev)
 +#else
-+int apfs_mknod(struct mnt_idmap *idmap, struct inode *dir,
++int apfs_mknod(CONST_7_4 struct mnt_idmap *idmap, struct inode *dir,
 +	       struct dentry *dentry, umode_t mode, dev_t rdev)
 +#endif
 +{
@@ -5471,7 +5481,7 @@ index 000000000..9caba9f0c
 +
 +#else
 +
-+struct dentry *apfs_mkdir(struct mnt_idmap *idmap, struct inode *dir, struct dentry *dentry, umode_t mode)
++struct dentry *apfs_mkdir(CONST_7_4 struct mnt_idmap *idmap, struct inode *dir, struct dentry *dentry, umode_t mode)
 +{
 +	return ERR_PTR(apfs_mknod(idmap, dir, dentry, mode | S_IFDIR, 0 /* rdev */));
 +}
@@ -5505,7 +5515,7 @@ index 000000000..9caba9f0c
 +
 +#else
 +
-+int apfs_create(struct mnt_idmap *idmap, struct inode *dir,
++int apfs_create(CONST_7_4 struct mnt_idmap *idmap, struct inode *dir,
 +		struct dentry *dentry, umode_t mode)
 +{
 +	return apfs_mknod(idmap, dir, dentry, mode, 0 /* rdev */);
@@ -6131,7 +6141,7 @@ index 000000000..9caba9f0c
 +		struct dentry *old_dentry, struct inode *new_dir,
 +		struct dentry *new_dentry, unsigned int flags)
 +#else
-+int apfs_rename(struct mnt_idmap *idmap, struct inode *old_dir,
++int apfs_rename(CONST_7_4 struct mnt_idmap *idmap, struct inode *old_dir,
 +		struct dentry *old_dentry, struct inode *new_dir,
 +		struct dentry *new_dentry, unsigned int flags)
 +#endif
@@ -9034,7 +9044,7 @@ index 000000000..46dfdcb69
 +};
 diff --git a/fs/apfs/inode.c b/fs/apfs/inode.c
 new file mode 100644
-index 000000000..9099578b7
+index 000000000..6637f5a5c
 --- /dev/null
 +++ b/fs/apfs/inode.c
 @@ -0,0 +1,2718 @@
@@ -10253,7 +10263,7 @@ index 000000000..9099578b7
 +		 const struct path *path, struct kstat *stat, u32 request_mask,
 +		 unsigned int query_flags)
 +#else
-+int apfs_getattr(struct mnt_idmap *idmap,
++int apfs_getattr(CONST_7_4 struct mnt_idmap *idmap,
 +		 const struct path *path, struct kstat *stat, u32 request_mask,
 +		 unsigned int query_flags)
 +#endif
@@ -11210,7 +11220,7 @@ index 000000000..9099578b7
 +int apfs_setattr(struct user_namespace *mnt_userns,
 +		 struct dentry *dentry, struct iattr *iattr)
 +#else
-+int apfs_setattr(struct mnt_idmap *idmap,
++int apfs_setattr(CONST_7_4 struct mnt_idmap *idmap,
 +		 struct dentry *dentry, struct iattr *iattr)
 +#endif
 +{
@@ -11673,7 +11683,7 @@ index 000000000..9099578b7
 +	return 0;
 +}
 +
-+int apfs_fileattr_set(struct mnt_idmap *idmap, struct dentry *dentry, struct fileattr *fa)
++int apfs_fileattr_set(CONST_7_4 struct mnt_idmap *idmap, struct dentry *dentry, struct fileattr *fa)
 +{
 +	struct inode *inode = d_inode(dentry);
 +	struct super_block *sb = inode->i_sb;
@@ -15302,7 +15312,7 @@ index 000000000..fdd74ccb8
 +}
 diff --git a/fs/apfs/namei.c b/fs/apfs/namei.c
 new file mode 100644
-index 000000000..626de9f6b
+index 000000000..4204fadfe
 --- /dev/null
 +++ b/fs/apfs/namei.c
 @@ -0,0 +1,146 @@
@@ -15349,7 +15359,7 @@ index 000000000..626de9f6b
 +static int apfs_symlink(struct user_namespace *mnt_userns, struct inode *dir,
 +			struct dentry *dentry, const char *symname)
 +#else
-+static int apfs_symlink(struct mnt_idmap *idmap, struct inode *dir,
++static int apfs_symlink(CONST_7_4 struct mnt_idmap *idmap, struct inode *dir,
 +			struct dentry *dentry, const char *symname)
 +#endif
 +{
@@ -22401,10 +22411,10 @@ index 000000000..be4f9df8f
 +};
 diff --git a/fs/apfs/transaction.c b/fs/apfs/transaction.c
 new file mode 100644
-index 000000000..878a48b5f
+index 000000000..d20010f60
 --- /dev/null
 +++ b/fs/apfs/transaction.c
-@@ -0,0 +1,1045 @@
+@@ -0,0 +1,1059 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2019 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -22413,6 +22423,17 @@ index 000000000..878a48b5f
 +#include <linux/blkdev.h>
 +#include <linux/rmap.h>
 +#include "apfs.h"
++
++static int apfs_blkdev_issue_flush(struct block_device *bdev)
++{
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 12, 0)
++	return blkdev_issue_flush(bdev);
++#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
++	return blkdev_issue_flush(bdev, GFP_KERNEL);
++#else
++	return blkdev_issue_flush(bdev, GFP_KERNEL, NULL);
++#endif
++}
 +
 +/**
 + * apfs_checkpoint_end - End the new checkpoint
@@ -22451,7 +22472,7 @@ index 000000000..878a48b5f
 +	err = filemap_write_and_wait(bdev_map);
 +	if (err)
 +		goto out;
-+	err = blkdev_issue_flush(blkdev);
++	err = apfs_blkdev_issue_flush(blkdev);
 +	if (err)
 +		goto out;
 +
@@ -22463,7 +22484,7 @@ index 000000000..878a48b5f
 +	err = filemap_write_and_wait(bdev_map);
 +	if (err)
 +		goto out;
-+	err = blkdev_issue_flush(blkdev);
++	err = apfs_blkdev_issue_flush(blkdev);
 +	if (err)
 +		goto out;
 +out:
@@ -23168,7 +23189,10 @@ index 000000000..878a48b5f
 +		kfree(bhi);
 +		bhi = NULL;
 +
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 4, 0)
++		folio = bh->b_folio;
++		folio_get(folio);
++#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
 +		folio = page_folio(bh->b_page);
 +		folio_get(folio);
 +#else
@@ -26654,7 +26678,7 @@ index 000000000..e16b23c10
 +#define GIT_COMMIT	""
 diff --git a/fs/apfs/xattr.c b/fs/apfs/xattr.c
 new file mode 100644
-index 000000000..507678656
+index 000000000..94250255e
 --- /dev/null
 +++ b/fs/apfs/xattr.c
 @@ -0,0 +1,923 @@
@@ -27476,7 +27500,7 @@ index 000000000..507678656
 +		  size_t size, int flags)
 +#else
 +static int apfs_xattr_osx_set(const struct xattr_handler *handler,
-+		  struct mnt_idmap *idmap, struct dentry *unused,
++		  CONST_7_4 struct mnt_idmap *idmap, struct dentry *unused,
 +		  struct inode *inode, const char *name, const void *value,
 +		  size_t size, int flags)
 +#endif
@@ -27759,5 +27783,5 @@ index 000000000..b8cbe17fd
 +	return total_len;
 +}
 -- 
-2.56.0
+2.56.1
 
