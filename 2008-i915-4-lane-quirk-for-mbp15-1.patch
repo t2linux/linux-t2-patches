@@ -64,9 +64,9 @@ index cafdebda7..a5296f827 100644
 --- a/drivers/gpu/drm/i915/display/intel_quirks.h
 +++ b/drivers/gpu/drm/i915/display/intel_quirks.h
 @@ -20,6 +20,7 @@ enum intel_quirk_id {
- 	QUIRK_EDP_LIMIT_RATE_HBR2,
  	QUIRK_DISABLE_EDP_PANEL_REPLAY,
  	QUIRK_DISABLE_PSR2,
+ 	QUIRK_ENABLE_DPCD_BACKLIGHT,
 +	QUIRK_DDI_A_FORCE_4_LANES,
  };
  
