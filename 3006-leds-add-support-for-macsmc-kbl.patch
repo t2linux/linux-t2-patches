@@ -1,7 +1,7 @@
-From 9d0c3c6839b6406b350fb7def59967c45ab67157 Mon Sep 17 00:00:00 2001
+From ac2c55912e805e41076b949252bb7d57891e6f64 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sat, 3 Oct 2026 21:18:24 -0400
-Subject: [PATCH 06/14] leds: add support for macsmc kbl
+Subject: [PATCH 06/15] leds: add support for macsmc kbl
 
 Add a LED class driver to control the keyboard backlight.
 

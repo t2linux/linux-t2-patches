@@ -1,7 +1,7 @@
-From 04f58c2f94b07d34b6d1a6deb2a4683ab40857a3 Mon Sep 17 00:00:00 2001
+From af13bb1b2939ab1a329135223f7647df87287416 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Fri, 25 Sep 2026 15:42:28 -0400
-Subject: [PATCH 04/14] iio/light: add new driver for macsmc
+Subject: [PATCH 04/15] iio/light: add new driver for macsmc
 
 Add a driver for the ambient light sensors, exposed through
 the standard IIO interface with left and right channels.

@@ -1,7 +1,7 @@
-From f0f9a2a4597eaec7916ed52b9b34f350bb2a38c7 Mon Sep 17 00:00:00 2001
+From 9e05e5b4053c5bf874aba4d05b92f69ca06b20c7 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sat, 3 Oct 2026 21:15:47 -0400
-Subject: [PATCH 05/14] iio/accel: add driver for apple SMS
+Subject: [PATCH 05/15] iio/accel: add driver for apple SMS
 
 Add a driver for the Sudden Motion Sensor accelerometer,
 exposed through IIO. It reports the three axes and also

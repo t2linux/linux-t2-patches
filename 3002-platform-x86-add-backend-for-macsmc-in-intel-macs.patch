@@ -1,7 +1,7 @@
 From 8e55b7053a8d463d5866385b7a0beb826d760037 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Fri, 11 Sep 2026 16:34:42 -0400
-Subject: [PATCH 02/14] platform/x86: add backend for macsmc in intel macs
+Subject: [PATCH 02/15] platform/x86: add backend for macsmc in intel macs
 
 Add a backend that talks to the SMC on Intel Macs over ACPI.
 It supports the old I/O port interface, and also MMIO and

@@ -1,7 +1,7 @@
-From 25ac4236c11dca712cd8db581aa9f40632455dc4 Mon Sep 17 00:00:00 2001
+From 885ce75c59183ac878988cab498e78a7dccb0918 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Fri, 24 Apr 2026 21:56:06 +0530
-Subject: [PATCH 12/14] hwmon/macsmc: add more types
+Subject: [PATCH 12/15] hwmon/macsmc: add more types
 
 SMC keys come in many data types, and Intel Macs use a lot
 that macsmc-hwmon couldn't read, such as the signed fixed

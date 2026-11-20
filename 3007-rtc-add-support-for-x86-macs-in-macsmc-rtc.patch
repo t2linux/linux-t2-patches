@@ -1,7 +1,7 @@
-From 9299ffab8c73909c99b6a161a9e29c904c3988f3 Mon Sep 17 00:00:00 2001
+From 22be90c7a2ab42af3a3c91f04db510236b892343 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sun, 4 Oct 2026 16:20:13 -0400
-Subject: [PATCH 07/14] rtc: add support for x86 macs in macsmc-rtc
+Subject: [PATCH 07/15] rtc: add support for x86 macs in macsmc-rtc
 
 Make macsmc-rtc work on Intel Macs. The ACPI RTC doesn't
 work correctly on T2 Macs, so the clock from the SMC is

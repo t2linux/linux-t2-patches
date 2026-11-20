@@ -1,7 +1,7 @@
-From d1cb8c9167e78fe74a805e7f9bfcd5e2f49431b1 Mon Sep 17 00:00:00 2001
+From e35192cc11075c3cbb732c2bcfb5e53871bae7b9 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sun, 18 Oct 2026 19:59:55 -0400
-Subject: [PATCH 14/14] mfd/macsmc: add ioctl to access smc keys
+Subject: [PATCH 14/15] mfd/macsmc: add ioctl to access smc keys
 
 Add a /dev/smc device so userspace can talk to the SMC
 directly. Some keys that need to be written aren't handled by

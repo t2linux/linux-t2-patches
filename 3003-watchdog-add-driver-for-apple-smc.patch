@@ -1,7 +1,7 @@
-From 63264b6f5808cb1410b330ae944fbdd3b303503c Mon Sep 17 00:00:00 2001
+From ae4a0a7559bf0ca17f36b14fbd385f328b0c6521 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sat, 12 Sep 2026 16:24:11 -0400
-Subject: [PATCH 03/14] watchdog: add driver for apple smc
+Subject: [PATCH 03/15] watchdog: add driver for apple smc
 
 Add a watchdog driver for the SMC on Intel Macs. It can
 reset the machine if the system stops responding. It works

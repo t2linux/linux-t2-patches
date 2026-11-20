@@ -1,7 +1,7 @@
-From bf08f8a9038a0b37591ead6bea77977c895e5339 Mon Sep 17 00:00:00 2001
+From 99d6c454a2e2ddb2cacc05ecdaeeb540369ca766 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Mon, 5 Oct 2026 03:39:02 -0400
-Subject: [PATCH 13/14] hwmon: add support for x86 macs in macsmc-hwmon
+Subject: [PATCH 13/15] hwmon: add support for x86 macs in macsmc-hwmon
 
 Make macsmc-hwmon work on Intel Macs, as a replacement for
 the hwmon part of applesmc.

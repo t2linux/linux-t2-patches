@@ -1,7 +1,7 @@
-From fdcebd1a66f22920dc53864809f2b7952e0abd07 Mon Sep 17 00:00:00 2001
+From a6467f74093031f0718823c9bc5ec76dfd19d96a Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sun, 4 Oct 2026 23:35:44 -0400
-Subject: [PATCH 11/14] acpi: disable battery and adapter for x86 apple
+Subject: [PATCH 11/15] acpi: disable battery and adapter for x86 apple
  machines
 
 When macsmc-power is enabled on an Intel Mac, skip acpi-sbs

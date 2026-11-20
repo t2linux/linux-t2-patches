@@ -1,7 +1,7 @@
 From 25cebf9e6f8ad31b7d67bb72da14cda0bf779644 Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sun, 4 Oct 2026 16:54:53 -0400
-Subject: [PATCH 09/14] treewide: disable other rtc's in t2 macs
+Subject: [PATCH 09/15] treewide: disable other rtc's in t2 macs
 
 The CMOS RTC and the ACPI TAD clock don't work correctly on
 T2 Macs. When macsmc-rtc is enabled, turn them off on these

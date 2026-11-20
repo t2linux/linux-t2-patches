@@ -1,7 +1,7 @@
 From b68b910ee890765548b7c1ce565ea7c34dede3bf Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Thu, 15 Oct 2026 09:32:53 -0400
-Subject: [PATCH 01/14] treewide: Add backend for macsmc
+Subject: [PATCH 01/15] treewide: Add backend for macsmc
 
 Split the Apple SMC driver into a common core and a backend
 that handles the actual communication. The existing RTKit
