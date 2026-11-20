@@ -1,7 +1,7 @@
-From c81d8dbbd4387bf9789219c48ebe1075c9d1e69d Mon Sep 17 00:00:00 2001
+From c7439e20840de33f4a8de5b7abcfb3fa7d64f0a8 Mon Sep 17 00:00:00 2001
 From: "github-actions[bot]"
  <41898282+github-actions[bot]@users.noreply.github.com>
-Date: Thu, 19 Nov 2026 00:40:52 +0000
+Date: Fri, 20 Nov 2026 00:49:52 +0000
 Subject: [PATCH] Add APFS driver
 
 ---
@@ -11,7 +11,7 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/btree.c                   | 1174 +++++++++++
  fs/apfs/compress.c                |  478 +++++
  fs/apfs/dir.c                     | 1513 ++++++++++++++
- fs/apfs/extents.c                 | 2372 ++++++++++++++++++++++
+ fs/apfs/extents.c                 | 2382 ++++++++++++++++++++++
  fs/apfs/file.c                    |  400 ++++
  fs/apfs/inode.c                   | 2718 +++++++++++++++++++++++++
  fs/apfs/key.c                     |  337 +++
@@ -39,7 +39,7 @@ Subject: [PATCH] Add APFS driver
  fs/apfs/version.h                 |    1 +
  fs/apfs/xattr.c                   |  923 +++++++++
  fs/apfs/xfield.c                  |  171 ++
- 34 files changed, 27503 insertions(+)
+ 34 files changed, 27513 insertions(+)
  create mode 100644 fs/apfs/Makefile
  create mode 100644 fs/apfs/apfs.h
  create mode 100644 fs/apfs/apfs_raw.h
@@ -6260,10 +6260,10 @@ index 000000000..223c5d0b7
 +}
 diff --git a/fs/apfs/extents.c b/fs/apfs/extents.c
 new file mode 100644
-index 000000000..ea9f1412c
+index 000000000..0052062eb
 --- /dev/null
 +++ b/fs/apfs/extents.c
-@@ -0,0 +1,2372 @@
+@@ -0,0 +1,2382 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2018 Ernesto A. Fernández <ernesto.mnd.fernandez@gmail.com>
@@ -8102,6 +8102,16 @@ index 000000000..ea9f1412c
 +	 * set later by apfs_update_inode(), after the xfield gets created.
 +	 */
 +	dst_ai->i_int_flags &= ~xfield_flags;
++
++	/*
++	 * Just make the dstream exclusive right away because it seems that I
++	 * don't quite understand this stuff and it's risky.
++	 */
++	err = apfs_inode_create_exclusive_dstream(dst_inode);
++	if (err) {
++		apfs_err(sb, "dstream creation on clone failed for ino 0x%llx", apfs_ino(dst_inode));
++		goto fail;
++	}
 +
 +	/*
 +	 * Commit the transaction to make sure all buffers in the source inode
