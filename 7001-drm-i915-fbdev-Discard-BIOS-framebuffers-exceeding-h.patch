@@ -1,9 +1,16 @@
-From c4622648e456d122d5938de9bd2372c548442556 Mon Sep 17 00:00:00 2001
-From: Jason Perlow <jperlow@gmail.com>
-Date: Tue, 22 Sep 2026 21:37:52 -0400
-Subject: [PATCH] drm/i915/fbdev: Discard BIOS framebuffers with mismatched
- dimensions
+From 155bb242ee7f4e177386fbdec565db6d4a173d5e Mon Sep 17 00:00:00 2001
+From: Aun-Ali Zaidi <admin@kodeit.net>
+Date: Wed, 16 Sep 2020 18:31:10 -0500
+Subject: [PATCH] drm/i915/fbdev: Discard BIOS framebuffers exceeding hardware
+ supported size
 
+On certain devices with high-DPI panels, the BIOS supplied framebuffer is larger
+than what is physically supported by the panel, resulting in overscan. A previous
+check introduced with edd586fe ("drm/i915: Discard BIOS framebuffers too small to
+accommodate chosen mode"), handles the lower bound case. We extend that check
+to include the upper bound case.
+
+Signed-off-by: Aun-Ali Zaidi <admin@kodeit.net>
 ---
  drivers/gpu/drm/i915/display/intel_fbdev.c | 4 ++--
  1 file changed, 2 insertions(+), 2 deletions(-)
