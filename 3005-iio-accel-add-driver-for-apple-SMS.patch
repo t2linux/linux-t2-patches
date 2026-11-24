@@ -1,4 +1,4 @@
-From 9e05e5b4053c5bf874aba4d05b92f69ca06b20c7 Mon Sep 17 00:00:00 2001
+From 07ba22f4cfab21cd14930434d5ad1a59a6c6520d Mon Sep 17 00:00:00 2001
 From: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 Date: Sat, 3 Oct 2026 21:15:47 -0400
 Subject: [PATCH 05/15] iio/accel: add driver for apple SMS
@@ -13,9 +13,9 @@ Signed-off-by: Atharva Tiwari <atharvatiwarilinuxdev@gmail.com>
 ---
  drivers/iio/accel/Kconfig        |  10 ++
  drivers/iio/accel/Makefile       |   1 +
- drivers/iio/accel/macsmc-accel.c | 252 +++++++++++++++++++++++++++++++
+ drivers/iio/accel/macsmc-accel.c | 257 +++++++++++++++++++++++++++++++
  drivers/mfd/macsmc-core.c        |  10 ++
- 4 files changed, 273 insertions(+)
+ 4 files changed, 278 insertions(+)
  create mode 100644 drivers/iio/accel/macsmc-accel.c
 
 diff --git a/drivers/iio/accel/Kconfig b/drivers/iio/accel/Kconfig
@@ -53,10 +53,10 @@ index fa440a859..52fe661de 100644
  obj-$(CONFIG_MMA7455_I2C)	+= mma7455_i2c.o
 diff --git a/drivers/iio/accel/macsmc-accel.c b/drivers/iio/accel/macsmc-accel.c
 new file mode 100644
-index 000000000..898b253ba
+index 000000000..fcca0b8fa
 --- /dev/null
 +++ b/drivers/iio/accel/macsmc-accel.c
-@@ -0,0 +1,252 @@
+@@ -0,0 +1,257 @@
 +// SPDX-License-Identifier: GPL-2.0-only OR MIT
 +/*
 + * Apple SMC sudden motion sensor (SMS) driver
@@ -106,16 +106,21 @@ index 000000000..898b253ba
 +static int macsmc_accel_dev_init(struct macsmc_accel *drv)
 +{
 +	int ret, total;
-+	u16 buf;
++	u16 buf, write_value;
++
++	ret = apple_smc_read_u16(drv->smc, SMC_KEY(MOCN), &buf);
++	if (ret < 0)
++		return ret;
++
++	/* 0xE0 enables the interrupts and the actual motion sensors */
++	write_value = buf | 0xE0;
 +
 +	for (total = 0; total < 100; total++) {
 +		ret = apple_smc_read_u16(drv->smc, SMC_KEY(MOCN), &buf);
-+		if (!ret && buf)
++		if (!ret && (buf & 0xE0) == 0xE0)
 +			return 0;
 +
-+		/* Magic value that enables the motion sensor*/
-+		buf = 0xE0;
-+		apple_smc_write_u16(drv->smc, SMC_KEY(MOCN), buf);
++		apple_smc_write_u16(drv->smc, SMC_KEY(MOCN), write_value);
 +		msleep(50);
 +	}
 +
