@@ -1,0 +1,347 @@
+From: anomalousmouse <anomalousmouse@thebat.uk>
+Date: Tue, 24 Nov 2026 08:20:00 +0000
+Subject: [PATCH] Bluetooth: hci_bcm4377: quiesce IRQ on suspend and reprobe on S3 power loss
+
+On x86 Apple T2 Macs entering S3 (deep / D3cold), two issues break
+hci_bcm4377 across suspend/resume:
+
+1. bcm4377_suspend() writes BCM4377_BAR0_SLEEP_CONTROL_QUIESCE but
+   leaves the MSI interrupt enabled as PCI PM transitions the function
+   to D3hot. If an interrupt fires while the sibling Wi-Fi function
+   (brcmfmac) is still suspending, bcm4377_irq() reads 0xffffffff from
+   BAR2 ("RTI status is -1") and triggers PCIe Downstream Port
+   Containment (DPC) on the shared root port, isolating both Bluetooth
+   and Wi-Fi.
+
+2. Unlike Apple Silicon s2idle, S3 deep sleep removes power from the
+   BCM4377 combo chip: vendor PCI config BAR windows revert to reset
+   defaults (e.g. BAR0_WINDOW1 reads 0x19328000 instead of 0x1800b000)
+   and volatile firmware and IPC ring state are wiped. bcm4377_resume()
+   previously wrote SLEEP_CONTROL_UNQUIESCE and called hci_resume_dev()
+   against the uninitialized controller, leaving hci0 hung.
+
+Fix both:
+- Disable and synchronize the MSI IRQ in bcm4377_suspend() before D3hot
+  entry, and re-enable it in bcm4377_resume() on the hot-resume path.
+- In bcm4377_resume(), check BAR0_WINDOW1, BAR2_BOOTSTAGE (2 or 3 when
+  running), and BAR2_RTI_STATUS (2 when running). Hot-resume on
+  platforms that retain power is unchanged. When state is lost, mark the
+  instance dead (short-circuiting doomed 1 s control-ring destroy
+  timeouts during teardown) and schedule a deferred device_reprobe(),
+  matching hci_h5 and btintel_pcie.
+- Implement hdev->reset with a rate-limited reprobe (ignoring benign
+  0xfd98 PTB command timeouts during HCI_SETUP while the controller is
+  still healthy) so hci_core can recover automatically if the controller
+  becomes unresponsive.
+
+Tested on MacBookAir9,1 (BCM4377/4, 14e4:5fa0) across 5 consecutive S3
+deep sleep cycles alongside brcmfmac D3-reload: both Wi-Fi and Bluetooth
+stay bound across suspend with 0 DPC/AER errors, 0 HCI timeouts, and 0
+ring-destroy stalls; Wi-Fi reconnects immediately (~2.2 ms gateway ping)
+and post-S3 Bluetooth BLE discovery finds 28-35 device events per cycle.
+
+Link: https://github.com/t2linux/kernel/issues/48
+Link: https://github.com/t2linux/kernel/issues/23
+Signed-off-by: anomalousmouse <anomalousmouse@thebat.uk>
+Assisted-by: Gemini 4 Neon
+---
+--- a/drivers/bluetooth/hci_bcm4377.c
++++ b/drivers/bluetooth/hci_bcm4377.c
+@@ -16,6 +16,8 @@
+ #include <linux/of.h>
+ #include <linux/pci.h>
+ #include <linux/printk.h>
++#include <linux/ratelimit.h>
++#include <linux/workqueue.h>
+ 
+ #include <linux/unaligned.h>
+ 
+@@ -608,6 +610,10 @@ struct bcm4377_data {
+ 	struct bcm4377_transfer_ring sco_d2h_ring;
+ 	struct bcm4377_transfer_ring acl_h2d_ring;
+ 	struct bcm4377_transfer_ring acl_d2h_ring;
++
++	bool dead;
++	bool irq_disabled;
++	atomic_t reprobing;
+ };
+ 
+ static void bcm4377_ring_doorbell(struct bcm4377_data *bcm4377, u8 doorbell,
+@@ -840,6 +846,9 @@ static irqreturn_t bcm4377_irq(int irq,
+ 	struct bcm4377_data *bcm4377 = data;
+ 	u32 bootstage, rti_status;
+ 
++	if (READ_ONCE(bcm4377->dead))
++		return IRQ_NONE;
++
+ 	bootstage = ioread32(bcm4377->bar2 + bcm4377->hw->bar2_offset + BCM4377_BAR2_BOOTSTAGE);
+ 	rti_status = ioread32(bcm4377->bar2 + bcm4377->hw->bar2_offset + BCM4377_BAR2_RTI_STATUS);
+ 
+@@ -879,6 +888,9 @@ static int bcm4377_enqueue(struct bcm437
+ 	int ret, msgid;
+ 	DECLARE_COMPLETION_ONSTACK(event);
+ 
++	if (READ_ONCE(bcm4377->dead))
++		return -ENODEV;
++
+ 	if (len > ring->payload_size && len > ring->mapped_payload_size) {
+ 		dev_warn(
+ 			&bcm4377->pdev->dev,
+@@ -1017,16 +1029,24 @@ static int bcm4377_destroy_completion_ri
+ 	struct bcm4377_destroy_completion_ring_msg msg;
+ 	int ret;
+ 
++	if (READ_ONCE(bcm4377->dead)) {
++		ring->enabled = false;
++		return 0;
++	}
++
+ 	memset(&msg, 0, sizeof(msg));
+ 	msg.msg_type = BCM4377_CONTROL_MSG_DESTROY_COMPLETION_RING;
+ 	msg.ring_id = cpu_to_le16(ring->ring_id);
+ 
+ 	ret = bcm4377_enqueue(bcm4377, &bcm4377->control_h2d_ring, &msg,
+ 			      sizeof(msg), true);
+-	if (ret)
++	if (ret) {
+ 		dev_warn(&bcm4377->pdev->dev,
+ 			 "failed to destroy completion ring %d\n",
+ 			 ring->ring_id);
++		if (ret == -ETIMEDOUT)
++			WRITE_ONCE(bcm4377->dead, true);
++	}
+ 
+ 	ring->enabled = false;
+ 	return ret;
+@@ -1107,15 +1127,23 @@ static int bcm4377_destroy_transfer_ring
+ 	struct bcm4377_destroy_transfer_ring_msg msg;
+ 	int ret;
+ 
++	if (READ_ONCE(bcm4377->dead)) {
++		ring->enabled = false;
++		return 0;
++	}
++
+ 	memset(&msg, 0, sizeof(msg));
+ 	msg.msg_type = BCM4377_CONTROL_MSG_DESTROY_XFER_RING;
+ 	msg.ring_id = cpu_to_le16(ring->ring_id);
+ 
+ 	ret = bcm4377_enqueue(bcm4377, &bcm4377->control_h2d_ring, &msg,
+ 			      sizeof(msg), true);
+-	if (ret)
++	if (ret) {
+ 		dev_warn(&bcm4377->pdev->dev,
+ 			 "failed to destroy transfer ring %d\n", ring->ring_id);
++		if (ret == -ETIMEDOUT)
++			WRITE_ONCE(bcm4377->dead, true);
++	}
+ 
+ 	ring->enabled = false;
+ 	return ret;
+@@ -2273,6 +2301,118 @@ static void bcm4377_hci_unregister_dev(v
+ 	hci_unregister_dev(data);
+ }
+ 
++struct bcm4377_reprobe {
++	struct device *dev;
++	struct work_struct work;
++};
++
++static bool bcm4377_state_lost(struct bcm4377_data *bcm4377, u32 *bar0_win1_out,
++			       u32 *bootstage_out, u32 *rti_status_out)
++{
++	u32 bar0_win1 = 0, bootstage = 0, rti_status = 0;
++	bool lost = false;
++
++	if (pci_read_config_dword(bcm4377->pdev, BCM4377_PCIECFG_BAR0_WINDOW1,
++				  &bar0_win1) ||
++	    bar0_win1 != bcm4377->hw->bar0_window1) {
++		lost = true;
++	} else {
++		bootstage = ioread32(bcm4377->bar2 + bcm4377->hw->bar2_offset +
++				     BCM4377_BAR2_BOOTSTAGE);
++		rti_status = ioread32(bcm4377->bar2 + bcm4377->hw->bar2_offset +
++				      BCM4377_BAR2_RTI_STATUS);
++		if ((bootstage != 2 && bootstage != 3) || rti_status != 2)
++			lost = true;
++	}
++
++	if (bar0_win1_out)
++		*bar0_win1_out = bar0_win1;
++	if (bootstage_out)
++		*bootstage_out = bootstage;
++	if (rti_status_out)
++		*rti_status_out = rti_status;
++
++	return lost;
++}
++
++static void bcm4377_reprobe_worker(struct work_struct *work)
++{
++	struct bcm4377_reprobe *reprobe =
++		container_of(work, struct bcm4377_reprobe, work);
++	struct pci_dev *pdev = to_pci_dev(reprobe->dev);
++	int ret;
++
++	pci_lock_rescan_remove();
++	if (pdev->bus) {
++		ret = device_reprobe(reprobe->dev);
++		if (ret && ret != -EPROBE_DEFER)
++			dev_err(reprobe->dev, "reprobe failed (%d)\n", ret);
++	}
++	pci_unlock_rescan_remove();
++
++	put_device(reprobe->dev);
++	kfree(reprobe);
++	module_put(THIS_MODULE);
++}
++
++static int bcm4377_schedule_reprobe(struct bcm4377_data *bcm4377)
++{
++	struct bcm4377_reprobe *reprobe;
++
++	if (atomic_xchg(&bcm4377->reprobing, 1))
++		return 0;
++
++	WRITE_ONCE(bcm4377->dead, true);
++
++	reprobe = kzalloc(sizeof(*reprobe), GFP_ATOMIC);
++	if (!reprobe) {
++		atomic_set(&bcm4377->reprobing, 0);
++		return -ENOMEM;
++	}
++
++	if (!try_module_get(THIS_MODULE)) {
++		kfree(reprobe);
++		atomic_set(&bcm4377->reprobing, 0);
++		return -ENODEV;
++	}
++
++	reprobe->dev = get_device(&bcm4377->pdev->dev);
++	INIT_WORK(&reprobe->work, bcm4377_reprobe_worker);
++	schedule_work(&reprobe->work);
++	return 0;
++}
++
++static void bcm4377_hci_reset(struct hci_dev *hdev)
++{
++	static DEFINE_RATELIMIT_STATE(reset_rs, 60 * HZ, 3);
++	struct bcm4377_data *bcm4377 = hci_get_drvdata(hdev);
++	u32 bar0_win1 = 0, bootstage = 0, rti_status = 0;
++	bool lost;
++
++	lost = bcm4377_state_lost(bcm4377, &bar0_win1, &bootstage, &rti_status);
++
++	/*
++	 * bcm4377_send_ptb() sends opcode 0xfd98 during setup, which newer
++	 * firmware ignores and lets time out while remaining healthy. Do not
++	 * reprobe on a benign setup timeout unless the controller actually
++	 * lost state (e.g. a sibling brcmfmac watchdog reset).
++	 */
++	if (!lost && hci_dev_test_flag(hdev, HCI_SETUP))
++		return;
++
++	if (!__ratelimit(&reset_rs)) {
++		dev_err(&bcm4377->pdev->dev,
++			"controller reset rate-limited (bar0_win1=0x%x bootstage=%u rti=%u)\n",
++			bar0_win1, bootstage, rti_status);
++		return;
++	}
++
++	dev_warn(&bcm4377->pdev->dev,
++		 "controller unresponsive (bar0_win1=0x%x bootstage=%u rti=%u), reprobing\n",
++		 bar0_win1, bootstage, rti_status);
++	bcm4377_schedule_reprobe(bcm4377);
++}
++
+ static int bcm4377_probe(struct pci_dev *pdev, const struct pci_device_id *id)
+ {
+ 	struct bcm4377_data *bcm4377;
+@@ -2387,6 +2527,7 @@ static int bcm4377_probe(struct pci_dev
+ 	hdev->send = bcm4377_hci_send_frame;
+ 	hdev->set_bdaddr = bcm4377_hci_set_bdaddr;
+ 	hdev->setup = bcm4377_hci_setup;
++	hdev->reset = bcm4377_hci_reset;
+ 
+ 	if (bcm4377->hw->broken_mws_transport_config)
+ 		hci_set_quirk(hdev, HCI_QUIRK_BROKEN_MWS_TRANSPORT_CONFIG);
+@@ -2416,12 +2557,35 @@ static int bcm4377_probe(struct pci_dev
+ 					hdev);
+ }
+ 
++static void bcm4377_disable_irq(struct bcm4377_data *bcm4377)
++{
++	if (!bcm4377->irq_disabled) {
++		disable_irq(pci_irq_vector(bcm4377->pdev, 0));
++		bcm4377->irq_disabled = true;
++	}
++}
++
++static void bcm4377_enable_irq(struct bcm4377_data *bcm4377)
++{
++	if (bcm4377->irq_disabled) {
++		bcm4377->irq_disabled = false;
++		enable_irq(pci_irq_vector(bcm4377->pdev, 0));
++	}
++}
++
+ static int bcm4377_suspend(struct device *dev)
+ {
+ 	struct pci_dev *pdev = to_pci_dev(dev);
+ 	struct bcm4377_data *bcm4377 = pci_get_drvdata(pdev);
+ 	int ret;
+ 
++	if (READ_ONCE(bcm4377->dead) ||
++	    bcm4377_state_lost(bcm4377, NULL, NULL, NULL)) {
++		WRITE_ONCE(bcm4377->dead, true);
++		bcm4377_disable_irq(bcm4377);
++		return 0;
++	}
++
+ 	ret = hci_suspend_dev(bcm4377->hdev);
+ 	if (ret)
+ 		return ret;
+@@ -2429,6 +2593,14 @@ static int bcm4377_suspend(struct device
+ 	iowrite32(BCM4377_BAR0_SLEEP_CONTROL_QUIESCE,
+ 		  bcm4377->bar0 + BCM4377_BAR0_SLEEP_CONTROL);
+ 
++	/*
++	 * Quiesce and synchronize the MSI handler before PCI PM transitions
++	 * the function to D3hot. An IRQ firing after D3hot entry reads
++	 * 0xffffffff from BAR2 (RTI_STATUS) and can trigger PCIe DPC on the
++	 * shared root port, isolating both Bluetooth and Wi-Fi.
++	 */
++	bcm4377_disable_irq(bcm4377);
++
+ 	return 0;
+ }
+ 
+@@ -2436,9 +2608,28 @@ static int bcm4377_resume(struct device
+ {
+ 	struct pci_dev *pdev = to_pci_dev(dev);
+ 	struct bcm4377_data *bcm4377 = pci_get_drvdata(pdev);
++	u32 bar0_win1 = 0, bootstage = 0, rti_status = 0;
++
++	/*
++	 * On x86 platforms entering S3 (D3cold), or if the sibling Wi-Fi
++	 * function watchdog-reset the combo die during its own resume, the
++	 * controller loses its BAR window configuration, firmware, and IPC
++	 * state. Writing SLEEP_CONTROL_UNQUIESCE or resuming HCI against an
++	 * uninitialized chip wedges it and can trigger PCIe DPC. Reprobe
++	 * cleanly instead, matching how hci_h5 and btintel_pcie handle power
++	 * loss across suspend.
++	 */
++	if (READ_ONCE(bcm4377->dead) ||
++	    bcm4377_state_lost(bcm4377, &bar0_win1, &bootstage, &rti_status)) {
++		dev_info(&pdev->dev,
++			 "controller lost state across suspend (bar0_win1=0x%x bootstage=%u rti=%u), reprobing\n",
++			 bar0_win1, bootstage, rti_status);
++		return bcm4377_schedule_reprobe(bcm4377);
++	}
+ 
+ 	iowrite32(BCM4377_BAR0_SLEEP_CONTROL_UNQUIESCE,
+ 		  bcm4377->bar0 + BCM4377_BAR0_SLEEP_CONTROL);
++	bcm4377_enable_irq(bcm4377);
+ 
+ 	return hci_resume_dev(bcm4377->hdev);
+ }
